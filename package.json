@@ -1,0 +1,47 @@
+{
+  "name": "c1milk",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "fallow": "npx fallow",
+    "health": "npx fallow health",
+    "audit": "npm audit",
+    "circular": "npx madge --circular src/",
+    "cprettier": "npx prettier --check .",
+    "wprettier": "npx prettier --write .",
+    "check-deps": "npx depcheck",
+    "spellcheck": "npx cspell \"src/**/*.{js,jsx}\" \"*.md\" \"index.html\"",
+    "check-all": "npm run lint && npm run test && npm run build && npm run audit && npm run circular && npm run fallow && npm run health && npm run spellcheck  && npm run check-deps "
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.110.3",
+    "@types/google-apps-script": "^2.0.11",
+    "globals": "^17.7.0",
+    "lucide-react": "^1.24.0",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
+    "@vitejs/plugin-react": "^6.0.3",
+    "@vitest/coverage-v8": "^4.1.9",
+    "eslint": "^10.6.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.2",
+    "jsdom": "^29.1.1",
+    "vite": "^8.1.3",
+    "vitest": "^4.1.9"
+  }
+}
