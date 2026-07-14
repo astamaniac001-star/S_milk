@@ -1,0 +1,203 @@
+-- ============================================
+-- MILK DELIVERY APP - COMPLETE DATABASE SETUP
+-- ============================================
+
+-- 1. SETTINGS TABLE (for PIN)
+CREATE TABLE IF NOT EXISTS settings (
+  key TEXT PRIMARY KEY,
+  value TEXT,
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+INSERT INTO settings (key, value) VALUES ('PIN', '1234')
+ON CONFLICT (key) DO NOTHING;
+
+-- 2. CUSTOMERS TABLE
+CREATE TABLE IF NOT EXISTS customers (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  name TEXT NOT NULL,
+  phone TEXT,
+  delivery_address TEXT,
+  status TEXT DEFAULT 'Active',
+  product TEXT DEFAULT 'Full Cream',
+  daily_qty NUMERIC DEFAULT 1,
+  delivery_days JSONB DEFAULT '[0,1,2,3,4,5,6]',
+  balance NUMERIC DEFAULT 0,
+  version INT DEFAULT 1,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 3. MILK BRANDS TABLE
+CREATE TABLE IF NOT EXISTS milk_brands (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  brand_name TEXT NOT NULL,
+  supplier_name TEXT,
+  supplier_phone TEXT,
+  default_milk_type TEXT,
+  rate_per_liter NUMERIC DEFAULT 0,
+  status TEXT DEFAULT 'Active',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 4. DAILY LOGS TABLE
+CREATE TABLE IF NOT EXISTS daily_logs (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  customer_id UUID REFERENCES customers(id) ON DELETE CASCADE,
+  date DATE NOT NULL,
+  product TEXT,
+  qty NUMERIC DEFAULT 0,
+  delivered BOOLEAN DEFAULT FALSE,
+  note TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 5. BILLS TABLE
+CREATE TABLE IF NOT EXISTS bills (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  customer_id UUID REFERENCES customers(id) ON DELETE CASCADE,
+  month TEXT NOT NULL,
+  amount NUMERIC DEFAULT 0,
+  amount_paid NUMERIC DEFAULT 0,
+  status TEXT DEFAULT 'Unpaid',
+  locked BOOLEAN DEFAULT FALSE,
+  version INT DEFAULT 1,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 6. MILK IMPORTS TABLE
+CREATE TABLE IF NOT EXISTS milk_imports (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  brand_id UUID REFERENCES milk_brands(id),
+  brand_name TEXT,
+  milk_type TEXT,
+  quantity NUMERIC DEFAULT 0,
+  rate_per_liter NUMERIC DEFAULT 0,
+  total_cost NUMERIC DEFAULT 0,
+  invoice_number TEXT,
+  supplier_name TEXT,
+  date DATE NOT NULL,
+  status TEXT DEFAULT 'Draft',
+  version INT DEFAULT 1,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 7. PAUSE PERIODS TABLE
+CREATE TABLE IF NOT EXISTS pause_periods (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  customer_id UUID REFERENCES customers(id) ON DELETE CASCADE,
+  start_date DATE NOT NULL,
+  end_date DATE,
+  reason TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 8. SUBSCRIPTIONS TABLE
+CREATE TABLE IF NOT EXISTS subscriptions (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  customer_id UUID REFERENCES customers(id) ON DELETE CASCADE,
+  milk_type TEXT DEFAULT 'Full Cream',
+  qty NUMERIC DEFAULT 1,
+  delivery_days JSONB DEFAULT '[0,1,2,3,4,5,6]',
+  is_active BOOLEAN DEFAULT TRUE,
+  version INT DEFAULT 1,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 9. ADJUSTMENTS TABLE
+CREATE TABLE IF NOT EXISTS adjustments (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  customer_id UUID REFERENCES customers(id) ON DELETE CASCADE,
+  bill_id UUID REFERENCES bills(id) ON DELETE SET NULL,
+  amount NUMERIC DEFAULT 0,
+  reason TEXT,
+  applied BOOLEAN DEFAULT FALSE,
+  date DATE,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 10. CREDIT NOTES TABLE
+CREATE TABLE IF NOT EXISTS credit_notes (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  customer_id UUID REFERENCES customers(id) ON DELETE CASCADE,
+  bill_id UUID REFERENCES bills(id) ON DELETE SET NULL,
+  amount NUMERIC DEFAULT 0,
+  reason TEXT,
+  applied BOOLEAN DEFAULT FALSE,
+  date DATE,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ============================================
+-10- DISABLE ROW LEVEL SECURITY (for testing)
+-- ============================================
+ALTER TABLE settings DISABLE ROW LEVEL SECURITY;
+ALTER TABLE customers DISABLE ROW LEVEL SECURITY;
+ALTER TABLE milk_brands DISABLE ROW LEVEL SECURITY;
+ALTER TABLE daily_logs DISABLE ROW LEVEL SECURITY;
+ALTER TABLE bills DISABLE ROW LEVEL SECURITY;
+ALTER TABLE milk_imports DISABLE ROW LEVEL SECURITY;
+ALTER TABLE pause_periods DISABLE ROW LEVEL SECURITY;
+ALTER TABLE subscriptions DISABLE ROW LEVEL SECURITY;
+ALTER TABLE adjustments DISABLE ROW LEVEL SECURITY;
+ALTER TABLE credit_notes DISABLE ROW LEVEL SECURITY;
+
+
+-- ============================================
+-11- ENABLE ROW LEVEL SECURITY
+-- ============================================
+ALTER TABLE settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE customers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE milk_brands ENABLE ROW LEVEL SECURITY;
+ALTER TABLE daily_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE bills ENABLE ROW LEVEL SECURITY;
+ALTER TABLE milk_imports ENABLE ROW LEVEL SECURITY;
+ALTER TABLE pause_periods ENABLE ROW LEVEL SECURITY;
+ALTER TABLE subscriptions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE adjustments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE credit_notes ENABLE ROW LEVEL SECURITY;
+
+-- CREATE POLICIES FOR ALL TABLES
+
+-- SETTINGS: Allow all access (for PIN verification)
+CREATE POLICY "Allow all access to settings" ON settings
+  FOR ALL USING (true) WITH CHECK (true);
+
+-- CUSTOMERS: Allow all access
+CREATE POLICY "Allow all access to customers" ON customers
+  FOR ALL USING (true) WITH CHECK (true);
+
+-- MILK BRANDS: Allow all access
+CREATE POLICY "Allow all access to milk_brands" ON milk_brands
+  FOR ALL USING (true) WITH CHECK (true);
+
+-- DAILY LOGS: Allow all access
+CREATE POLICY "Allow all access to daily_logs" ON daily_logs
+  FOR ALL USING (true) WITH CHECK (true);
+
+-- BILLS: Allow all access
+CREATE POLICY "Allow all access to bills" ON bills
+  FOR ALL USING (true) WITH CHECK (true);
+
+-- MILK IMPORTS: Allow all access
+CREATE POLICY "Allow all access to milk_imports" ON milk_imports
+  FOR ALL USING (true) WITH CHECK (true);
+
+-- PAUSE PERIODS: Allow all access
+CREATE POLICY "Allow all access to pause_periods" ON pause_periods
+  FOR ALL USING (true) WITH CHECK (true);
+
+-- SUBSCRIPTIONS: Allow all access
+CREATE POLICY "Allow all access to subscriptions" ON subscriptions
+  FOR ALL USING (true) WITH CHECK (true);
+
+-- ADJUSTMENTS: Allow all access
+CREATE POLICY "Allow all access to adjustments" ON adjustments
+  FOR ALL USING (true) WITH CHECK (true);
+
+-- CREDIT NOTES: Allow all access
+CREATE POLICY "Allow all access to credit_notes" ON credit_notes
+  FOR ALL USING (true) WITH CHECK (true);
