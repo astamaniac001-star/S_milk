@@ -19,8 +19,9 @@ export default defineConfig({
   },
   build: {
     target: "es2020",
-    // FIX: Enable hidden sourcemaps for production debugging
-    sourcemap: "hidden",
+    // SECURITY: no sourcemaps in prod. Hidden maps leak anon key + source.
+    // If Sentry/error-tracker is added later, wire a separate upload step.
+    sourcemap: false,
     rollupOptions: {
       output: {
         manualChunks(id) {

@@ -1,9 +1,16 @@
 import { Modal, Btn } from "../ui.jsx";
 import { DAYS_OF_WEEK } from "./shared";
 
+function resolveCustomerName(customers, customerId) {
+  if (!customerId) return "Unknown Customer";
+  const c = customers?.find((cu) => cu.id === customerId);
+  return c?.name || "Unknown Customer";
+}
+
 // fallow-ignore-next-line complexity
 export function SubscriptionsListModal({
   subscriptions,
+  customers = [],
   onEdit,
   onViewHistory,
   onClose,
@@ -52,10 +59,10 @@ export function SubscriptionsListModal({
             >
               <div>
                 <div style={{ fontSize: 13, fontWeight: 600, color: "#111" }}>
-                  {sub.customerName || "Unknown Customer"}
+                  {resolveCustomerName(customers, sub.customerId)}
                 </div>
                 <div style={{ fontSize: 12, color: "#6b7280", marginTop: 2 }}>
-                  {sub.milkType} • {sub.quantity}L •{" "}
+                  {sub.milkType} • {sub.qty ?? sub.quantity}L •{" "}
                   {sub.deliveryDays
                     .slice()
                     .sort((a, b) => a - b)

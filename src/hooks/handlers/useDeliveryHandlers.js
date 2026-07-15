@@ -48,10 +48,17 @@ export function useDeliveryHandlers(state) {
   const addAdHocLog = useCallback(
     async (data) => {
       try {
-        await callApi("addAdHocLog", {
-          ...data,
+        // 🗺️ MAP 'custId' from the form to 'customerId' expected by the API
+        const payload = {
+          customerId: data.custId || data.customerId,
+          date: data.date,
+          qty: data.qty,
+          reason: data.reason,
+          product: data.product,
           idempotencyKey: `adhoc-${Date.now()}`,
-        });
+        };
+
+        await callApi("addAdHocLog", payload);
         showToast("Extra delivery added", "success");
         if (closeModal) closeModal();
         if (state.fetchLogs) await state.fetchLogs(data.date);

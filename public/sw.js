@@ -139,6 +139,9 @@ function _isApiCall(url) {
 }
 
 async function _fetchAndCache(request) {
+  if (request.method !== 'GET') {
+    return fetch(request);
+  }
   const fresh = await fetch(request);
   if (fresh.ok) {
     const cache = await caches.open(CACHE);

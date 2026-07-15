@@ -18,6 +18,10 @@
       content="black-translucent"
     />
     <meta name="apple-mobile-web-app-title" content="MilkAdmin" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' 'unsafe-inline' https://qipvmrgieuvpygjytcpt.supabase.co; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://qipvmrgieuvpygjytcpt.supabase.co; worker-src 'self'; manifest-src 'self';"
+    />
 
     <title>Milk Admin V17</title>
 
@@ -29,6 +33,9 @@
   <body>
     <!-- React will mount here and handle all UI, including the Login screen -->
     <div id="app-root"></div>
+
+    <!-- Service worker registration (must be a classic script, not module) -->
+    <script src="/register-sw.js"></script>
 
     <!-- Vite entry point -->
     <script type="module" src="/src/main.jsx"></script>

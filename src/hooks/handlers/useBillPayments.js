@@ -15,7 +15,7 @@ export function useBillPayments(state) {
   const recordPayment = useCallback(async (billIdArg, amountArg) => {
     const billId = billIdArg || modal.data?.id || modal.data?.billId;
     const amount = amountArg !== undefined ? amountArg : form.payAmt;
-    
+
     if (!amount || Number(amount) <= 0) {
       showToast("Enter valid amount", "error");
       return;
@@ -40,7 +40,7 @@ export function useBillPayments(state) {
     const amount = amountArg !== undefined ? amountArg : form.amount;
     const reason = reasonArg !== undefined ? reasonArg : form.reason;
     const customerId = form.custId || modal.data?.custId;
-    
+
     if (!customerId) {
       showToast("Customer ID is missing", "error");
       return;
@@ -79,6 +79,20 @@ export function useBillPayments(state) {
   }, [showToast, setAdjustments, setBills]);
 
   const addCreditNote = useCallback(async (data) => {
+    // 🛡️ PREVENT ORPHANED CREDIT NOTES: Validate required fields before API call
+    if (!data.custId && !data.customerId) {
+      showToast("Please select a customer for the credit note", "error");
+      return;
+    }
+    if (!data.amount || Number(data.amount) <= 0) {
+      showToast("Please enter a valid amount", "error");
+      return;
+    }
+    if (!data.reason || !data.reason.trim()) {
+      showToast("Please enter a reason", "error");
+      return;
+    }
+
     try {
       await callApi("addCreditNote", data);
       showToast("Credit note issued", "success");

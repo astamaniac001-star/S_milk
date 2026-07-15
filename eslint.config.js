@@ -3,9 +3,9 @@ import reactHooks from "eslint-plugin-react-hooks";
 import reactRefresh from "eslint-plugin-react-refresh";
 
 export default [
-  // FIX (AI-3 Medium 9): `ignores` MUST be in its own object at the top level in flat config.
+
   {
-    ignores: ["dist/**", "node_modules/**", "public/sw.js"],
+    ignores: ["dist/**", "node_modules/**", "public/sw.js", ".tmp/**"],
   },
   js.configs.recommended,
   {
@@ -18,7 +18,7 @@ export default [
         document: "readonly",
         window: "readonly",
         console: "readonly",
-        location: true, 
+        location: true,
         localStorage: "readonly",
         sessionStorage: "readonly",
         fetch: "readonly",
@@ -26,13 +26,15 @@ export default [
         CustomEvent: "readonly",
         setTimeout: "readonly",
         clearTimeout: "readonly",
-        TextEncoder: true, 
-        AbortController: true, 
-        crypto: true, 
-        URL: true, 
-        Request: true, 
-        Response: true, 
-        Headers: true, 
+        setInterval: "readonly",
+        clearInterval: "readonly",
+        TextEncoder: true,
+        AbortController: true,
+        crypto: true,
+        URL: true,
+        Request: true,
+        Response: true,
+        Headers: true,
       },
     },
     plugins: {

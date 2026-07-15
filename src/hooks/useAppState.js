@@ -12,6 +12,25 @@ function clampedMonth() {
   return getToday().substring(0, 7);
 }
 
+// FIX (audit 2026-07-15): bump a counter on visibility/focus + every 60s so
+// the app notices midnight rollover. Without this, a phone left open past
+// midnight shows "yesterday" as today and filters by yesterday's logs.
+function useDayTick() {
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const bump = () => setTick((t) => t + 1);
+    document.addEventListener("visibilitychange", bump);
+    window.addEventListener("focus", bump);
+    const id = setInterval(bump, 60_000);
+    return () => {
+      document.removeEventListener("visibilitychange", bump);
+      window.removeEventListener("focus", bump);
+      clearInterval(id);
+    };
+  }, []);
+  return tick;
+}
+
 function useAppUi() {
   const [tab, setTab] = useState("dashboard");
   const [toast, setToast] = useState(null);
@@ -84,15 +103,31 @@ function useAppUi() {
 }
 
 export function useAppState(auth) {
+  const dayTick = useDayTick();
   const entity = useEntityStore(auth?.token);
   const filters = useFilterState();
   const ui = useAppUi();
-  const today = useMemo(() => clampedToday(), []);
+  // dayTick invalidates this on midnight rollover — see useDayTick above.
+  const today = useMemo(() => clampedToday(), [dayTick]);
+
+  // FIX (audit 2026-07-15): if `today` advanced (e.g. across midnight) and
+  // the operator hasn't manually moved them, advance logDate / billMonth.
+  // Skip the bump when the user has navigated to a different day/month.
+  useEffect(() => {
+    if (ui.logDate && ui.logDate < today) ui.setLogDate(today);
+    if (ui.billMonth && ui.billMonth < today.substring(0, 7)) {
+      ui.setBillMonth(today.substring(0, 7));
+    }
+    // We intentionally depend on `today` only — not on the setters.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [today]);
 
   const derived = useAppDerived({
     ...entity,
     ...filters,
     logDate: ui.logDate,
+    // pass tick so the memo recomputes todayLogs on midnight rollover
+    dayTick,
   });
 
   return { today, ...entity, ...filters, ...ui, ...derived };

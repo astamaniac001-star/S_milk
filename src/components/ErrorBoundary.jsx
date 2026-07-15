@@ -48,10 +48,10 @@ export class ErrorBoundary extends Component {
     try {
       // Flush both stores — current build uses sessionStorage, but legacy
       // tokens from before the migration may still live in localStorage.
+      // (sessionSecret was removed in the 2026-07-15 audit; it was never
+      // generated server-side and never validated, just dead bookkeeping.)
       sessionStorage.removeItem("token");
-      sessionStorage.removeItem("sessionSecret");
       localStorage.removeItem("token");
-      localStorage.removeItem("sessionSecret");
     } catch {
       /* ignore */
     }

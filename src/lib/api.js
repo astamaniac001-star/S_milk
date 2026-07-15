@@ -1,5 +1,6 @@
 
 import { supabase } from "./supabaseClient.js";
+import { fmt } from "./utils.js";
 
 const toNum = (val) => {
   if (val === null || val === undefined || val === "") return 0;
@@ -21,6 +22,18 @@ const toArray = (val) => {
 };
 
 const generateKey = () => `${Date.now()}-${Math.random().toString(36).substring(2, 10)}`;
+
+// Day-of-week index for a YYYY-MM-DD date in Asia/Kolkata timezone.
+// `new Date('2025-07-15').getDay()` uses the system TZ, which is wrong if the
+// operator is anywhere other than IST. Format with Intl and map to 0..6 (Sun..Sat).
+const KOLKATA_DOW = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+function dayOfWeekKolkata(date) {
+  const name = new Intl.DateTimeFormat("en-US", {
+    weekday: "short",
+    timeZone: "Asia/Kolkata",
+  }).format(new Date(`${date}T12:00:00Z`));
+  return KOLKATA_DOW[name] ?? 0;
+}
 
 function nextMonthStart(month) {
   const [y, m] = String(month).split("-").map(Number);
@@ -216,6 +229,11 @@ export async function callApi(action, payload = {}) {
         break;
       }
       case "bulkUpsertLogs": {
+        // FIX: guard against undefined / non-array / empty input.
+        if (!Array.isArray(payload.logs) || payload.logs.length === 0) {
+          result.data = { saved: 0 };
+          break;
+        }
         const rows = payload.logs.map((l) => ({
           customer_id: l.customerId, date: l.date, product: l.product || "Full Cream",
           qty: toNum(l.qty), delivered: !!l.delivered, note: l.note || "",
@@ -228,7 +246,8 @@ export async function callApi(action, payload = {}) {
       case "generateDailyLogsForDate": {
         const { date } = payload;
         if (!date) throw new Error("date is required");
-        const dow = new Date(`${date}T00:00:00`).getDay();
+        // FIX: use Asia/Kolkata weekday, not the system-local weekday.
+        const dow = dayOfWeekKolkata(date);
 
         const [custRes, subRes, pauseRes, logRes] = await Promise.all([
           supabase.from("customers").select("id, status"),
@@ -325,6 +344,15 @@ export async function callApi(action, payload = {}) {
         if (bill.locked) {
           const e = new Error("This bill is locked."); e.code = "LOCKED"; throw e;
         }
+        // FIX: cap overpayment. Advance payment = create a credit note, not silent overpay.
+        const pending = toNum(bill.amount) - toNum(bill.amount_paid);
+        if (toNum(amount) > pending + 0.01) {
+          const e = new Error(
+            `Payment ${fmt(toNum(amount))} exceeds pending ${fmt(pending)}. Use a credit note for advance payment.`
+          );
+          e.code = "OVERPAY";
+          throw e;
+        }
         const newPaid = toNum(bill.amount_paid) + toNum(amount);
         const status = newPaid >= toNum(bill.amount) ? "Paid" : newPaid > 0 ? "Partial" : "Unpaid";
 
@@ -382,9 +410,10 @@ export async function callApi(action, payload = {}) {
         must(billErr);
         const { data: cust } = await supabase.from("customers").select("name").eq("id", bill.customer_id).maybeSingle();
         const pending = toNum(bill.amount) - toNum(bill.amount_paid);
+        // FIX: use fmt() so ₹ + en-IN locale formatting is consistent with the UI.
         const text = `Hi ${cust?.name || "there"}, your milk bill for ${bill.month} is ` +
-          `\u20B9${toNum(bill.amount).toFixed(2)}. Paid so far: \u20B9${toNum(bill.amount_paid).toFixed(2)}. ` +
-          (pending > 0 ? `Pending: \u20B9${pending.toFixed(2)}.` : "Fully paid — thank you!");
+          `${fmt(toNum(bill.amount))}. Paid so far: ${fmt(toNum(bill.amount_paid))}. ` +
+          (pending > 0 ? `Pending: ${fmt(pending)}.` : "Fully paid — thank you!");
         result.data = { text };
         break;
       }
@@ -580,7 +609,15 @@ export async function callApi(action, payload = {}) {
         must(impRes.error); must(logRes.error);
         const totalImported = (impRes.data || []).reduce((s, i) => s + toNum(i.quantity), 0);
         const totalDelivered = (logRes.data || []).filter((l) => l.delivered).reduce((s, l) => s + toNum(l.qty), 0);
-        result.data = { date, totalImported, totalDelivered, remaining: totalImported - totalDelivered };
+        const rawRemaining = totalImported - totalDelivered;
+        // FIX: clamp to 0, expose shortage separately when deliveries exceed imports.
+        result.data = {
+          date,
+          totalImported,
+          totalDelivered,
+          remaining: Math.max(0, rawRemaining),
+          shortage: rawRemaining < 0 ? Math.abs(rawRemaining) : 0,
+        };
         break;
       }
       case "rotatePIN": {

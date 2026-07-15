@@ -34,13 +34,23 @@
     "Kolkata",
     "Standardised",
     "idempotency",
+    "reentrancy",
+    "cprettier",
+    "wprettier",
     "upsert",
     "Upsert",
+    "supabase",
+    "SUPABASE",
+    "PGRST",
     "Vite",
     "vite",
     "Vitest",
     "vitest",
     "Netlify",
-    "netlify"
+    "netlify",
+    "Fallow",
+    "fallow",
+    "Madge",
+    "madge"
   ]
 }

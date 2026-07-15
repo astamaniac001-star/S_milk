@@ -10,6 +10,7 @@ export function SubscriptionModal({
   onSave,
   onClose,
   customers,
+  milkTypes = [],
 }) {
   const [busy, save] = useBusy(onSave);
   const currentDays = form?.deliveryDays || data?.deliveryDays || [];
@@ -64,12 +65,13 @@ export function SubscriptionModal({
       <Field label="Milk Type *">
         <select
           style={IS()}
-          value={form?.milkType ?? data?.milkType ?? "FULL_CREAM"}
+          value={form?.milkType ?? data?.milkType ?? ""}
           onChange={onChange("milkType")}
         >
-          <option value="FULL_CREAM">Full Cream</option>
-          <option value="SKIMMED">Skimmed</option>
-          <option value="BUFFALO">Buffalo</option>
+          <option value="">Select Type</option>
+          {milkTypes.map((t) => (
+            <option key={t} value={t}>{t}</option>
+          ))}
         </select>
       </Field>
       <Field label="Quantity (L) *">

@@ -112,8 +112,8 @@ function renderMore(state, handlers) {
           await callApi("runDiagnostics");
           state.setDiagRan(true);
           state.toast$("Diagnostics executed successfully", "success");
-        } catch (e) {
-          state.toast$("Diagnostics failed", "error");
+        } catch (err) {
+          state.toast$(err?.message || "Diagnostics failed", "error");
         }
       }}
 
@@ -121,8 +121,8 @@ function renderMore(state, handlers) {
         try {
           await callApi("healthCheck");
           state.toast$("Health check passed — V17", "success");
-        } catch (e) {
-          state.toast$("Health check failed", "error");
+        } catch (err) {
+          state.toast$(err?.message || "Health check failed", "error");
         }
       }}
     />

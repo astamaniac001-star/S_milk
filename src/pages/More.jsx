@@ -13,33 +13,31 @@ import {
   CardHeader,
 } from "../components/ui.jsx";
 
+// FIX (audit 2026-07-15): most of these labels used to be hardcoded fake
+// values ("SystemState rows: 512", "PINSalt configured", etc.) — the panel
+// looked like it ran live checks but didn't. Now we keep the list as a
+// scaffolding template, mark the items that are actually computed at render
+// time, and tag the rest as a static reference of what a full diagnostic
+// would cover. The two real checks (MilkTypes seeded, MilkBrands seeded)
+// still resolve dynamically below.
 const DIAGNOSTICS = [
-  ["✅", "Missing sheets", "OK"],
-  ["✅", "ShortCode duplicates", "OK"],
-  ["✅", "Duplicate addresses", "OK"],
-  ["✅", "DailyLogsIndex", "OK"],
-  ["⚠️", "Stale bill flags", "2 found"],
-  ["✅", "Unapplied adjustments >60d", "OK"],
-  ["✅", "Untested actions", "71/71"],
-  ["✅", "AmountPaid drift", "OK"],
   ["✅", "Schema version", "V17"],
-  ["✅", "PINSalt configured", "OK"],
-  ["⚠️", "SystemState rows", "512 — high"],
-  ["✅", "PINRate_ key count", "<50"],
-  ["✅", "Daily execution count", "<150"],
-  ["✅", "Failed batch flags", "None"],
-  ["✅", "Products price history", "OK"],
-  ["✅", "sessionSecret active", "Yes"],
-  ["✅", "Milk import sheets", "Present"],
+  ["✅", "API version", "17"],
+  ["✅", "Migration", "Not needed"],
+  ["✅", "Mode", "Production"],
   ["✅", "MilkTypes seeded", ""], // resolved at render time
   ["✅", "MilkBrands seeded", ""], // resolved at render time
+  ["ℹ️", "Detailed checks", "Not yet implemented (see audit)"],
 ];
 
+// FIX (audit 2026-07-15): the previous "Mode" value was a stale reference
+// to a Netlify/Apps-Script deployment that no longer exists. Now reflects
+// the actual Vite + Supabase-direct stack.
 const HEALTH = [
   { label: "Schema Version", value: "V17", ok: true },
   { label: "API Version", value: "17", ok: true },
   { label: "Migration", value: "Not needed", ok: true },
-  { label: "Mode", value: "Production (Netlify + Apps Script)", ok: true },
+  { label: "Mode", value: "Production (Vite + Supabase)", ok: true },
 ];
 
 function AdjustmentAmount({ amount }) {
@@ -202,7 +200,7 @@ function DiagnosticsCard({ diagRan, diagnostics, onRunDiag }) {
   return (
     <Card>
       <CardHeader
-        title="Diagnostics V17"
+        title="System Health"
         action={
           <Btn small onClick={onRunDiag}>
             Run
@@ -218,34 +216,47 @@ function DiagnosticsCard({ diagRan, diagnostics, onRunDiag }) {
             padding: "12px 0",
           }}
         >
-          Tap Run to check diagnostic items
+          Tap Run to check connectivity
         </div>
       ) : (
-        diagnostics.map(([icon, label, val]) => (
-          <div
-            key={label}
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              padding: "5px 0",
-              borderBottom: "0.5px solid #f3f4f6",
-              fontSize: 12,
-            }}
-          >
-            <span>
-              {icon} {label}
-            </span>
-            <span
+        <>
+          {diagnostics.map(([icon, label, val]) => (
+            <div
+              key={label}
               style={{
-                color: icon === "✅" ? "#166534" : "#854d0e",
-                fontWeight: 500,
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                padding: "5px 0",
+                borderBottom: "0.5px solid #f3f4f6",
+                fontSize: 12,
               }}
             >
-              {val}
-            </span>
+              <span>
+                {icon} {label}
+              </span>
+              <span
+                style={{
+                  color: icon === "✅" ? "#166534" : icon === "ℹ️" ? "#1e40af" : "#854d0e",
+                  fontWeight: 500,
+                }}
+              >
+                {val}
+              </span>
+            </div>
+          ))}
+          <div
+            style={{
+              fontSize: 11,
+              color: "#9ca3af",
+              marginTop: 10,
+              fontStyle: "italic",
+            }}
+          >
+            Static reference list. Per-item live checks are not yet wired
+            (see audit AUDIT-2026-07-15.md §3.9).
           </div>
-        ))
+        </>
       )}
     </Card>
   );

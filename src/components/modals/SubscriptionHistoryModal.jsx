@@ -1,21 +1,42 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { Modal } from "../ui.jsx";
 
+function resolveCustomerName(customers, customerId) {
+  if (!customerId) return "Subscription";
+  const c = customers?.find((cu) => cu.id === customerId);
+  return c?.name || "Subscription";
+}
+
 // fallow-ignore-next-line complexity
-export function SubscriptionHistoryModal({ data, onClose, handlers }) {
+export function SubscriptionHistoryModal({ data, onClose, handlers, customers = [] }) {
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // ✅ FIX: fallow was flagging this useEffect arrow function on line 9!
+  // FIX (audit 2026-07-15): keep a ref to the latest handlers so the effect
+  // doesn't refire when App.jsx re-creates the `ctx` object on every render.
+  const handlersRef = useRef(handlers);
+  useEffect(() => { handlersRef.current = handlers; });
+
   // fallow-ignore-next-line complexity
   useEffect(() => {
-    if (data?.id && handlers?.fetchSubscriptionHistory) {
-      handlers.fetchSubscriptionHistory(data.id).then((res) => {
-        setHistory(res);
-        setLoading(false);
-      });
-    }
-  }, [data, handlers]);
+    const id = data?.id;
+    if (!id) return;
+    const fn = handlersRef.current?.fetchSubscriptionHistory;
+    if (!fn) return;
+    let cancelled = false;
+    fn(id).then((res) => {
+      if (cancelled) return;
+      setHistory(res);
+      setLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [data?.id]);
+
+  // ✅ FIX: resolve customer name from id (data carries customerId, not customerName)
+  const title = useMemo(
+    () => `History: ${resolveCustomerName(customers, data?.customerId)}`,
+    [customers, data?.customerId],
+  );
 
   // fallow-ignore-next-line complexity
   const renderHistoryItem = (item, idx) => {
@@ -65,7 +86,7 @@ export function SubscriptionHistoryModal({ data, onClose, handlers }) {
 
   return (
     <Modal
-      title={`History: ${data?.customerName || "Subscription"}`}
+      title={title}
       onClose={onClose}
       wide
     >

@@ -20,7 +20,7 @@ function renderCustomerModal(ctx, isEdit) {
       form={ctx.form}
       data={ctx.modal.data}
       onChange={ctx.setF}
-      onSave={ctx.handlers.saveCustomer}
+      onSave={ctx.saveCustomer}
       isEdit={isEdit}
       onClose={ctx.closeModal}
       products={PRODUCTS}
@@ -34,7 +34,7 @@ function renderImportModal(ctx) {
       form={ctx.form}
       data={ctx.modal.data}
       onChange={ctx.setF}
-      onSave={ctx.handlers.saveImport}
+      onSave={ctx.saveImport}
       onClose={ctx.closeModal}
       today={ctx.today}
       brands={ctx.brands}
@@ -49,7 +49,7 @@ function renderPaymentModal(ctx) {
       form={ctx.form}
       data={ctx.modal.data}
       onChange={ctx.setF}
-      onSave={ctx.handlers.recordPayment}
+      onSave={ctx.recordPayment}
       onClose={ctx.closeModal}
       today={ctx.today}
       payModes={PAY_MODES}
@@ -64,7 +64,7 @@ function renderAdjustmentModal(ctx) {
       form={ctx.form}
       data={ctx.modal.data}
       onChange={ctx.setF}
-      onSave={ctx.handlers.saveAdjustment}
+      onSave={ctx.saveAdjustment}
       onClose={ctx.closeModal}
       today={ctx.today}
       customers={ctx.customers}
@@ -78,7 +78,7 @@ function renderPauseModal(ctx) {
       form={ctx.form}
       data={ctx.modal.data}
       onChange={ctx.setF}
-      onSave={ctx.handlers.savePause}
+      onSave={ctx.savePause}
       onClose={ctx.closeModal}
       today={ctx.today}
       customers={ctx.customers}
@@ -94,7 +94,7 @@ function renderSubscriptionModal(ctx) {
       onChange={ctx.setF}
       // Merge form data with ID/Version for Optimistic Concurrency Control if editing
       onSave={() =>
-        ctx.handlers.saveSubscription({
+        ctx.saveSubscription({
           ...ctx.form,
           id: ctx.modal.data?.id,
           version: ctx.modal.data?.version,
@@ -102,6 +102,7 @@ function renderSubscriptionModal(ctx) {
       }
       onClose={ctx.closeModal}
       customers={ctx.customers || []}
+      milkTypes={MILK_TYPES}
     />
   );
 }
@@ -124,7 +125,7 @@ const MODAL_RENDERERS = {
     <BrandModal
       form={ctx.form}
       onChange={ctx.setF}
-      onSave={ctx.handlers.saveBrand}
+      onSave={ctx.saveBrand}
       onClose={ctx.closeModal}
       milkTypes={MILK_TYPES}
     />
@@ -133,7 +134,7 @@ const MODAL_RENDERERS = {
     <AdHocLogModal
       form={ctx.form}
       onChange={ctx.setF}
-      onSave={() => ctx.handlers.addAdHocLog(ctx.form)}
+      onSave={() => ctx.addAdHocLog(ctx.form)}
       onClose={ctx.closeModal}
       today={ctx.today}
       customers={ctx.customers}
@@ -143,7 +144,7 @@ const MODAL_RENDERERS = {
     <CreditNoteModal
       form={ctx.form}
       onChange={ctx.setF}
-      onSave={() => ctx.handlers.addCreditNote(ctx.form)}
+      onSave={() => ctx.addCreditNote(ctx.form)}
       onClose={ctx.closeModal}
       customers={ctx.customers}
     />
@@ -152,13 +153,15 @@ const MODAL_RENDERERS = {
     <SubscriptionHistoryModal
       data={ctx.modal.data}
       onClose={ctx.closeModal}
-      handlers={ctx.handlers}
+      handlers={ctx}
+      customers={ctx.customers || []}
     />
   ),
   // ── SUBSCRIPTION MODALS ────────────────────────────────────────────────
   subscriptionsList: (ctx) => (
     <SubscriptionsListModal
       subscriptions={ctx.subscriptions || []}
+      customers={ctx.customers || []}
       // fallow-ignore-next-line complexity
       onEdit={(sub) => {
         // Initialize form with defaults for new, or existing data for edit
@@ -167,11 +170,11 @@ const MODAL_RENDERERS = {
             sub
               ? { ...sub }
               : {
-                  isActive: true,
-                  deliveryDays: [1, 2, 3, 4, 5],
-                  quantity: 1,
-                  milkType: "FULL_CREAM",
-                },
+                isActive: true,
+                deliveryDays: [1, 2, 3, 4, 5],
+                quantity: 1,
+                milkType: "FULL_CREAM",
+              },
           );
         }
         // Open the correct modal type
@@ -187,8 +190,8 @@ const MODAL_RENDERERS = {
   editSubscription: renderSubscriptionModal,
 };
 
-export function AppModals(props) {
-  if (!props.modal) return null;
-  const render = MODAL_RENDERERS[props.modal.type];
-  return render ? render(props) : null;
+export function AppModals({ ctx }) {
+  if (!ctx || !ctx.modal) return null;
+  const render = MODAL_RENDERERS[ctx.modal.type];
+  return render ? render(ctx) : null;
 }
