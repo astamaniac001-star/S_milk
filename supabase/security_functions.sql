@@ -38,8 +38,7 @@ DECLARE
   v_locked timestamptz;
   v_token text;
 BEGIN
-  SELECT * INTO v_row FROM settings WHERE key = 'PIN';
-  
+  SELECT * INTO v_row FROM settings WHERE key = 'PIN'; 
   -- Fallback: If plaintext exists but hash doesn't, hash it now
   IF v_row.pin_hash IS NULL AND v_row.value IS NOT NULL THEN
     v_row.pin_salt := encode(gen_random_bytes(16), 'hex');
