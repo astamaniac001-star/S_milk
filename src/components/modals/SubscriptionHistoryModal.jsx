@@ -8,14 +8,21 @@ function resolveCustomerName(customers, customerId) {
 }
 
 // fallow-ignore-next-line complexity
-export function SubscriptionHistoryModal({ data, onClose, handlers, customers = [] }) {
+export function SubscriptionHistoryModal({
+  data,
+  onClose,
+  handlers,
+  customers = [],
+}) {
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
 
   // FIX (audit 2026-07-15): keep a ref to the latest handlers so the effect
   // doesn't refire when App.jsx re-creates the `ctx` object on every render.
   const handlersRef = useRef(handlers);
-  useEffect(() => { handlersRef.current = handlers; });
+  useEffect(() => {
+    handlersRef.current = handlers;
+  });
 
   // fallow-ignore-next-line complexity
   useEffect(() => {
@@ -29,7 +36,9 @@ export function SubscriptionHistoryModal({ data, onClose, handlers, customers = 
       setHistory(res);
       setLoading(false);
     });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [data?.id]);
 
   // ✅ FIX: resolve customer name from id (data carries customerId, not customerName)
@@ -85,11 +94,7 @@ export function SubscriptionHistoryModal({ data, onClose, handlers, customers = 
   };
 
   return (
-    <Modal
-      title={title}
-      onClose={onClose}
-      wide
-    >
+    <Modal title={title} onClose={onClose} wide>
       {loading ? (
         <div style={{ padding: 20, textAlign: "center", color: "#6b7280" }}>
           Loading timeline...

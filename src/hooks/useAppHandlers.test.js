@@ -3,45 +3,84 @@ import { useAppHandlers } from "./useAppHandlers";
 import { renderHook, act } from "@testing-library/react";
 
 // ✅ FIXED: Added the missing mapping functions to the mock!
-vi.mock('../lib/api', () => ({
+vi.mock("../lib/api", () => ({
   callApi: vi.fn(async (action, payload) => {
     // Strict mock: only return success for explicitly handled actions
     const knownActions = [
-      'addCustomer', 'updateCustomer', 'deactivateCustomer', 'getCustomers',
-      'addPausePeriod', 'updateLogEntry', 'bulkUpsertLogs', 'getDailyLogs',
-      'saveSubscription', 'getSubscriptions', 'addAdHocLog', 'generateDailyLogsForDate',
-      'generateMonthBill', 'getBills', 'recordPayment', 'addAdjustment',
-      'applyAdjustment', 'getAdjustments', 'lockBill', 'unlockBill',
-      'addCreditNote', 'getCreditNotes', 'addMilkImport', 'updateMilkImport',
-      'getMilkImports', 'getDailyInventory', 'getBrands', 'addMilkBrand',
-      'runDiagnostics', 'eraseAllData', 'verifyPIN', 'rotatePIN',
+      "addCustomer",
+      "updateCustomer",
+      "deactivateCustomer",
+      "getCustomers",
+      "addPausePeriod",
+      "updateLogEntry",
+      "bulkUpsertLogs",
+      "getDailyLogs",
+      "saveSubscription",
+      "getSubscriptions",
+      "addAdHocLog",
+      "generateDailyLogsForDate",
+      "generateMonthBill",
+      "getBills",
+      "recordPayment",
+      "addAdjustment",
+      "applyAdjustment",
+      "getAdjustments",
+      "lockBill",
+      "unlockBill",
+      "addCreditNote",
+      "getCreditNotes",
+      "addMilkImport",
+      "updateMilkImport",
+      "getMilkImports",
+      "getDailyInventory",
+      "getBrands",
+      "addMilkBrand",
+      "runDiagnostics",
+      "eraseAllData",
+      "verifyPIN",
+      "rotatePIN",
     ];
-    
+
     if (!knownActions.includes(action)) {
       console.warn(`Mock callApi called with unknown action: ${action}`);
-      return { success: false, error: { code: 'UNKNOWN_ACTION', message: `Unknown action: ${action}` } };
+      return {
+        success: false,
+        error: { code: "UNKNOWN_ACTION", message: `Unknown action: ${action}` },
+      };
     }
-    
+
     switch (action) {
-      case 'addCustomer':
-        return { success: true, data: { customerId: payload.idempotencyKey ? 'C-MOCK' : 'C-TEST123' } };
-      case 'updateCustomer':
-        return { success: true, data: { customerId: payload.customerId, newVersion: (payload.expectedVersion || 1) + 1 } };
-      case 'getCustomers':
-        return { success: true, data: { customers: [], total: 0, hasMore: false } };
-      case 'addAdjustment':
-        return { success: true, data: { adjustmentId: 'ADJ-MOCK123' } };
-      case 'recordPayment':
-        return { success: true, data: { paymentId: 'PAY-MOCK123' } };
-      case 'getBills':
+      case "addCustomer":
+        return {
+          success: true,
+          data: { customerId: payload.idempotencyKey ? "C-MOCK" : "C-TEST123" },
+        };
+      case "updateCustomer":
+        return {
+          success: true,
+          data: {
+            customerId: payload.customerId,
+            newVersion: (payload.expectedVersion || 1) + 1,
+          },
+        };
+      case "getCustomers":
+        return {
+          success: true,
+          data: { customers: [], total: 0, hasMore: false },
+        };
+      case "addAdjustment":
+        return { success: true, data: { adjustmentId: "ADJ-MOCK123" } };
+      case "recordPayment":
+        return { success: true, data: { paymentId: "PAY-MOCK123" } };
+      case "getBills":
         return { success: true, data: { bills: [] } };
-      case 'getAdjustments':
+      case "getAdjustments":
         return { success: true, data: { adjustments: [] } };
       default:
         return { success: true, data: {} };
     }
   }),
-  
+
   // ✅ ADDED: Mock the mapping functions so they don't throw "undefined is not a function"
   mapPaymentToApi: vi.fn((billId, amount, meta = {}) => ({
     billId,

@@ -8,7 +8,7 @@ import {
   MoreHorizontal,
   LogOut,
   Wifi,
-  Moon, 
+  Moon,
   Sun,
 } from "lucide-react";
 
@@ -54,17 +54,17 @@ export function AppShell({
   children,
   footer,
 }) {
-    const [darkMode, setDarkMode] = useState(() => 
-    localStorage.getItem('darkMode') === 'true'
+  const [darkMode, setDarkMode] = useState(
+    () => localStorage.getItem("darkMode") === "true",
   );
 
   useEffect(() => {
     if (darkMode) {
-      document.documentElement.classList.add('dark');
+      document.documentElement.classList.add("dark");
     } else {
-      document.documentElement.classList.remove('dark');
+      document.documentElement.classList.remove("dark");
     }
-    localStorage.setItem('darkMode', darkMode);
+    localStorage.setItem("darkMode", darkMode);
   }, [darkMode]);
 
   return (
@@ -107,7 +107,7 @@ export function AppShell({
           <h2>{TAB_TITLES[tab]}</h2>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-                    <button
+          <button
             onClick={() => setDarkMode(!darkMode)}
             style={{
               background: "none",
@@ -116,7 +116,7 @@ export function AppShell({
               cursor: "pointer",
               padding: 4,
               display: "flex",
-              alignItems: "center"
+              alignItems: "center",
             }}
             title="Toggle Dark Mode"
           >

@@ -2,11 +2,12 @@
 // Headless test using puppeteer-like approach via Edge's debugging protocol
 // Actually we'll use a simpler approach - open page with Edge and dump console
 
-const { spawn, execSync } = require('child_process');
-const fs = require('fs');
-const path = require('path');
+const { spawn, execSync } = require("child_process");
+const fs = require("fs");
+const path = require("path");
 
-const EDGE = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
+const EDGE =
+  "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe";
 
 // Write an HTML harness that loads the dev server, tries to click buttons, and dumps console
 const harness = `
@@ -77,7 +78,7 @@ iframe.addEventListener('load', () => {
 </html>
 `;
 
-const harnessPath = path.join(__dirname, 'harness.html');
+const harnessPath = path.join(__dirname, "harness.html");
 fs.writeFileSync(harnessPath, harness);
 
-console.log('Wrote harness to', harnessPath);
+console.log("Wrote harness to", harnessPath);

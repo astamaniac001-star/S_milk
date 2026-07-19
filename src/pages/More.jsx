@@ -237,7 +237,12 @@ function DiagnosticsCard({ diagRan, diagnostics, onRunDiag }) {
               </span>
               <span
                 style={{
-                  color: icon === "✅" ? "#166534" : icon === "ℹ️" ? "#1e40af" : "#854d0e",
+                  color:
+                    icon === "✅"
+                      ? "#166534"
+                      : icon === "ℹ️"
+                        ? "#1e40af"
+                        : "#854d0e",
                   fontWeight: 500,
                 }}
               >
@@ -253,8 +258,8 @@ function DiagnosticsCard({ diagRan, diagnostics, onRunDiag }) {
               fontStyle: "italic",
             }}
           >
-            Static reference list. Per-item live checks are not yet wired
-            (see audit AUDIT-2026-07-15.md §3.9).
+            Static reference list. Per-item live checks are not yet wired (see
+            audit AUDIT-2026-07-15.md §3.9).
           </div>
         </>
       )}

@@ -3,7 +3,6 @@ import { mapCustomerToApi, mapCustomerFromApi } from "../../lib/api.js";
 import { validateCustomerForm } from "../../lib/validation.js";
 import { useHelpers } from "./shared.js";
 
-
 export function useCustomerHandlers(state) {
   const { setCustomers } = state;
   const { handleFormAction, saveWithValidation } = useHelpers(state);

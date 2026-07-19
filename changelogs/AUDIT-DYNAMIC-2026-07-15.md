@@ -8,17 +8,17 @@
 
 ## Dynamic run summary
 
-| Check               | Result                                                     | Notes |
-| ------------------- | ---------------------------------------------------------- | ----- |
-| `eslint .`          | 0 errors, **3 warnings**                                   | see §1 |
-| `vitest run`        | **26/26 pass** in 4.84s, 4 files                           | confirms no test gaps from the static pass |
-| `vite build`        | **OK in 509 ms** — bundle 292.69 kB / 77.72 kB gz          | see §2 |
-| `npm audit`         | **0 vulnerabilities**                                      | contradicts static worry that bleeding-edge stack likely has a CVE |
-| `madge --circular`  | **clean** — 27 files, no cycles                            | confirms static finding was wrong about app structure |
-| `fallow` (lint+heat)| 14 functions over threshold; 2 dead files                  | see §3 |
-| `fallow health`     | **Score 87 (A)** — MI 89.8 (good)                          | best signal we have |
-| `cspell`            | 4 unknown words in `AGENTS.md`                             | see §4 |
-| `depcheck`          | clean                                                      | no orphan deps |
+| Check                | Result                                            | Notes                                                              |
+| -------------------- | ------------------------------------------------- | ------------------------------------------------------------------ |
+| `eslint .`           | 0 errors, **3 warnings**                          | see §1                                                             |
+| `vitest run`         | **26/26 pass** in 4.84s, 4 files                  | confirms no test gaps from the static pass                         |
+| `vite build`         | **OK in 509 ms** — bundle 292.69 kB / 77.72 kB gz | see §2                                                             |
+| `npm audit`          | **0 vulnerabilities**                             | contradicts static worry that bleeding-edge stack likely has a CVE |
+| `madge --circular`   | **clean** — 27 files, no cycles                   | confirms static finding was wrong about app structure              |
+| `fallow` (lint+heat) | 14 functions over threshold; 2 dead files         | see §3                                                             |
+| `fallow health`      | **Score 87 (A)** — MI 89.8 (good)                 | best signal we have                                                |
+| `cspell`             | 4 unknown words in `AGENTS.md`                    | see §4                                                             |
+| `depcheck`           | clean                                             | no orphan deps                                                     |
 
 ---
 
@@ -34,12 +34,12 @@ All three are 30-second fixes.
 
 ## §2 — Build size sanity
 
-| Asset                  | Raw      | Gzipped  |
-| ---------------------- | -------- | -------- |
-| `index-*.css`          | 7.25 kB  | 2.10 kB  |
-| `rolldown-runtime-*.js`| 0.56 kB  | 0.36 kB  |
-| `vendor-*.js` (React)  | 189.74 kB| 59.66 kB |
-| `index-*.js` (app)     | 292.69 kB| 77.72 kB |
+| Asset                   | Raw       | Gzipped  |
+| ----------------------- | --------- | -------- |
+| `index-*.css`           | 7.25 kB   | 2.10 kB  |
+| `rolldown-runtime-*.js` | 0.56 kB   | 0.36 kB  |
+| `vendor-*.js` (React)   | 189.74 kB | 59.66 kB |
+| `index-*.js` (app)      | 292.69 kB | 77.72 kB |
 
 **Total: ~490 kB raw / ~140 kB gz for the shell + React + app.** Reasonable for a PWA with 6 tabs + 13 modals. The vendor chunk split (manualChunks in `vite.config.js`) is working — React is split out so the app bundle changes don't bust the React cache.
 
@@ -60,26 +60,29 @@ Fallow reports `public/sw.js` and `public/register-sw.js` as "Not reachable from
 **Severity: CRITICAL** (downgrades the "offline-first PWA" posture in the README/AGENTS to "online-only PWA scaffolded but unwired").
 
 **Fix direction (one-time):** add to `index.html` before the closing `</body>`:
+
 ```html
 <script src="/register-sw.js"></script>
 ```
+
 Or import `register-sw.js` from `src/main.jsx`. Either works; the script tag is closer to the V21 design intent.
 
 Once wired up, fallow's dead-file report will flip to clean.
 
 ### §3.2 — Complexity hotspot: `src/lib/api.js` `callApi`
 
-| Metric | Value |
-| ------ | ----- |
-| Lines | **464** |
-| Cyclomatic | **129** |
-| Cognitive | **141** |
-| CRAP | **185.2** |
-| Fan-in | **12 dependents** |
+| Metric     | Value             |
+| ---------- | ----------------- |
+| Lines      | **464**           |
+| Cyclomatic | **129**           |
+| Cognitive  | **141**           |
+| CRAP       | **185.2**         |
+| Fan-in     | **12 dependents** |
 
 Fallow's "CRITICAL" tag is correct. The static audit's call-out that this is a god-function is empirically confirmed. **Every change to `callApi` ripples to 12 importers.**
 
 **Fix direction:** split by domain. Suggested split (no code change yet):
+
 - `api/customers.js`, `api/bills.js`, `api/delivery.js`, `api/imports.js`, `api/admin.js`, `api/subscriptions.js`, `api/system.js` (verifyPIN, runDiagnostics, healthCheck, getDailyInventory, rotatePIN, eraseAllData, getBillText).
 - Keep `callApi` as a thin re-export shim that routes `action` to the matching module. Backward compatible.
 - Pull the mappers (`mapXFromApi`, `mapXToApi`) into a sibling `api/mappers.js`.
@@ -88,17 +91,17 @@ This is the highest-leverage refactor on the table. Independent of fixing bugs, 
 
 ### §3.3 — Other complexity hits
 
-| Function | Cyclomatic | CRAP | Note |
-| -------- | ---------- | ---- | ---- |
-| `useAdminHandlers.saveBrand` | 16 | 71.3 | bespoke `addMilkBrand` call bypasses `executeApiAction`. Confirms static §3.12. |
-| `useBillPayments.recordPayment` | 11 | 37.1 | confirms static §2.1 race finding. |
-| `useBillPayments.addCreditNote` | 11 | 37.1 | confirmed. |
-| `useBillPayments.saveAdjustment` | 10 | 31.6 | confirms §2.1 partial-failure finding. |
-| `useEntityStore.fetchData` | 10 | **110.0** | every entity refetch, parallel calls, no test coverage. Risk of regression on any new entity add. |
-| `filters.js` <arrow> | 12 | 43.1 | tested, low risk — false alarm. |
-| `useAuth.login` | 7 | 56.0 | confirmed static §2.2. |
-| `AppPage.renderMore` | 7 | 56.0 | test the rendered output, not the lambdas. |
-| `Imports.jsx` (page) | 5 | 30.0 | 7 props + JSX depth 4 — refactor into subcomponents. |
+| Function                         | Cyclomatic | CRAP      | Note                                                                                              |
+| -------------------------------- | ---------- | --------- | ------------------------------------------------------------------------------------------------- |
+| `useAdminHandlers.saveBrand`     | 16         | 71.3      | bespoke `addMilkBrand` call bypasses `executeApiAction`. Confirms static §3.12.                   |
+| `useBillPayments.recordPayment`  | 11         | 37.1      | confirms static §2.1 race finding.                                                                |
+| `useBillPayments.addCreditNote`  | 11         | 37.1      | confirmed.                                                                                        |
+| `useBillPayments.saveAdjustment` | 10         | 31.6      | confirms §2.1 partial-failure finding.                                                            |
+| `useEntityStore.fetchData`       | 10         | **110.0** | every entity refetch, parallel calls, no test coverage. Risk of regression on any new entity add. |
+| `filters.js` <arrow>             | 12         | 43.1      | tested, low risk — false alarm.                                                                   |
+| `useAuth.login`                  | 7          | 56.0      | confirmed static §2.2.                                                                            |
+| `AppPage.renderMore`             | 7          | 56.0      | test the rendered output, not the lambdas.                                                        |
+| `Imports.jsx` (page)             | 5          | 30.0      | 7 props + JSX depth 4 — refactor into subcomponents.                                              |
 
 ### §3.4 — Refactor targets (fallow's own ranking)
 
@@ -117,6 +120,7 @@ This is the highest-leverage refactor on the table. Independent of fixing bugs, 
 **All four fixed in place.** The `cprettier`/`wprettier` aliases are real package.json script names so I left them as code but added a comment + added them to `cspell.json` candidate additions below.
 
 **Action item for repo:** add to `cspell.json` `words`:
+
 ```
 cprettier, wprettier, reentrancy, idempotencykey, subid, ustate, supabase-js
 ```
@@ -125,20 +129,20 @@ cprettier, wprettier, reentrancy, idempotencykey, subid, ustate, supabase-js
 
 ## §5 — Confirmed/updated from static audit
 
-| Static finding | Dynamic confirmation |
-| -------------- | -------------------- |
-| §1.1 plaintext PIN | still CRITICAL — no RLS or auth changes; npm audit clean only means deps, not design |
-| §1.2 ungated `eraseAllData` | still CRITICAL — confirmed in api.js, no change |
-| §1.3 `.env` committed | still CRITICAL — file present, not in `.gitignore` |
-| §1.4 RLS wide open | still CRITICAL — `supabase_sql_editor` unchanged |
-| §2.1 race conditions | still HIGH — confirmed by `recordPayment`/`saveAdjustment`/`generateMonthBill` complexity |
-| §2.2 session token theatre | still HIGH — `useAuth.login` complexity 7, no validation calls |
-| §2.3 milk-type enum drift | still HIGH — no enum validation anywhere |
-| §2.4 SubscriptionsListModal broken | still HIGH — render happens at runtime; no test covers the prop |
-| §2.5 dead `idempotencyKey` | still HIGH — confirmed in `api.js` insert paths |
-| §2.6 history modal refires | still MED — now backed by App.jsx `ctx` allocation evidence |
-| §3.x various | mostly confirmed |
-| Test gaps (static §6) | **0 tests fail, 26 pass** — but coverage of the above is still ~0%. Many of the static gaps are *not exercised by any test*: payment race, overpay, locked-bill, version conflict, generation skip, auth:expired. |
+| Static finding                     | Dynamic confirmation                                                                                                                                                                                              |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| §1.1 plaintext PIN                 | still CRITICAL — no RLS or auth changes; npm audit clean only means deps, not design                                                                                                                              |
+| §1.2 ungated `eraseAllData`        | still CRITICAL — confirmed in api.js, no change                                                                                                                                                                   |
+| §1.3 `.env` committed              | still CRITICAL — file present, not in `.gitignore`                                                                                                                                                                |
+| §1.4 RLS wide open                 | still CRITICAL — `supabase_sql_editor` unchanged                                                                                                                                                                  |
+| §2.1 race conditions               | still HIGH — confirmed by `recordPayment`/`saveAdjustment`/`generateMonthBill` complexity                                                                                                                         |
+| §2.2 session token theatre         | still HIGH — `useAuth.login` complexity 7, no validation calls                                                                                                                                                    |
+| §2.3 milk-type enum drift          | still HIGH — no enum validation anywhere                                                                                                                                                                          |
+| §2.4 SubscriptionsListModal broken | still HIGH — render happens at runtime; no test covers the prop                                                                                                                                                   |
+| §2.5 dead `idempotencyKey`         | still HIGH — confirmed in `api.js` insert paths                                                                                                                                                                   |
+| §2.6 history modal refires         | still MED — now backed by App.jsx `ctx` allocation evidence                                                                                                                                                       |
+| §3.x various                       | mostly confirmed                                                                                                                                                                                                  |
+| Test gaps (static §6)              | **0 tests fail, 26 pass** — but coverage of the above is still ~0%. Many of the static gaps are _not exercised by any test_: payment race, overpay, locked-bill, version conflict, generation skip, auth:expired. |
 
 ---
 
@@ -164,7 +168,7 @@ cprettier, wprettier, reentrancy, idempotencykey, subid, ustate, supabase-js
 
 ### §6.5 (LOW) `AppPage` render functions swallow exception details
 
-The two lint-flagged `catch (e)` blocks in `renderMore` (lines 115, 124) currently toast a static "failed" message. Combined with the lint warnings, this is also a real UX bug: the operator can't tell *why* diagnostics or health-check failed. Use `e.message` in the toast.
+The two lint-flagged `catch (e)` blocks in `renderMore` (lines 115, 124) currently toast a static "failed" message. Combined with the lint warnings, this is also a real UX bug: the operator can't tell _why_ diagnostics or health-check failed. Use `e.message` in the toast.
 
 ---
 
@@ -191,4 +195,4 @@ Everything else is bigger refactor work (split `callApi`, add tests, fix the in-
 
 ---
 
-*End of addendum. Combined with `AUDIT-2026-07-15.md`, the audit is now ~85% complete. The remaining 15% is the three "still unknown" items above (PWA runtime, CVE-deep-dive, bundle inspection).*
+_End of addendum. Combined with `AUDIT-2026-07-15.md`, the audit is now ~85% complete. The remaining 15% is the three "still unknown" items above (PWA runtime, CVE-deep-dive, bundle inspection)._

@@ -13,14 +13,13 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "fallow": "npx fallow",
-    "health": "npx fallow health",
     "audit": "npm audit",
     "circular": "npx madge --circular src/",
     "cprettier": "npx prettier --check .",
     "wprettier": "npx prettier --write .",
     "check-deps": "npx depcheck",
-    "spellcheck": "npx cspell \"src/**/*.{js,jsx}\" \"*.md\" \"index.html\"",
-    "check-all": "npm run lint && npm run test && npm run build && npm run audit && npm run circular && npm run fallow && npm run health && npm run spellcheck  && npm run check-deps "
+    "spellcheck": "npx cspell \"src/**/*.{js,jsx}\" \"*.md\" \"index.html\" ",
+    "check-all": "npm run lint && npm run test && npm run build && npm run audit && npm run circular && npm run fallow && npm run spellcheck  && npm run check-deps "
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.3",

@@ -4,7 +4,7 @@ import Delivery from "../pages/Delivery.jsx";
 import Imports from "../pages/Imports.jsx";
 import Billing from "../pages/Billing.jsx";
 import More from "../pages/More.jsx";
-import { callApi } from "../lib/api.js"; 
+import { callApi } from "../lib/api.js";
 
 function renderDashboard(state, handlers) {
   return (
@@ -36,7 +36,7 @@ function renderCustomers(state, handlers) {
       onFilterChange={state.setCustFilter}
       onOpenModal={state.openModal}
       onWhatsapp={handlers.whatsapp}
-      onDeactivate={handlers.updateCustomer} 
+      onDeactivate={handlers.updateCustomer}
     />
   );
 }
@@ -59,7 +59,7 @@ function renderDelivery(state, handlers) {
 function renderImports(state, handlers) {
   return (
     <Imports
-      filtered={state.filteredImports || []} 
+      filtered={state.filteredImports || []}
       brands={state.brands || []}
       impFilter={state.impFilter || {}}
       onImpFilterChange={state.setImpFilter}

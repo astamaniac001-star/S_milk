@@ -12,6 +12,7 @@ dist
 dist-ssr
 coverage
 *.local
+.fallowignore
 
 # Environment secrets — NEVER commit these
 .env

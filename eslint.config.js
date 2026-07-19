@@ -3,7 +3,6 @@ import reactHooks from "eslint-plugin-react-hooks";
 import reactRefresh from "eslint-plugin-react-refresh";
 
 export default [
-
   {
     ignores: ["dist/**", "node_modules/**", "public/sw.js", ".tmp/**"],
   },
@@ -43,7 +42,10 @@ export default [
     },
     rules: {
       ...reactHooks.configs.recommended.rules,
-      "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
+      "react-refresh/only-export-components": [
+        "warn",
+        { allowConstantExport: true },
+      ],
       "no-console": ["warn", { allow: ["warn", "error"] }],
       "no-unused-vars": ["warn", { argsIgnorePattern: "^_" }],
     },

@@ -2,7 +2,7 @@
 // Uses native WebSocket (Node 22+)
 
 async function fetchTabs() {
-  const res = await fetch('http://127.0.0.1:9222/json');
+  const res = await fetch("http://127.0.0.1:9222/json");
   return res.json();
 }
 
@@ -10,23 +10,30 @@ function rpc(ws, id, method, params = {}) {
   return new Promise((resolve, reject) => {
     const handler = (event) => {
       let msg;
-      try { msg = JSON.parse(event.data); } catch { return; }
+      try {
+        msg = JSON.parse(event.data);
+      } catch {
+        return;
+      }
       if (msg.id === id) {
-        ws.removeEventListener('message', handler);
+        ws.removeEventListener("message", handler);
         if (msg.error) reject(new Error(JSON.stringify(msg.error)));
         else resolve(msg.result);
       }
     };
-    ws.addEventListener('message', handler);
+    ws.addEventListener("message", handler);
     ws.send(JSON.stringify({ id, method, params }));
   });
 }
 
 async function main() {
   // Create a new tab
-  const newTab = await fetch('http://127.0.0.1:9222/json/new?http://localhost:5173', { method: 'PUT' });
+  const newTab = await fetch(
+    "http://127.0.0.1:9222/json/new?http://localhost:5173",
+    { method: "PUT" },
+  );
   const tab = await newTab.json();
-  console.log('Opened tab:', tab.url, tab.id);
+  console.log("Opened tab:", tab.url, tab.id);
 
   const ws = new WebSocket(tab.webSocketDebuggerUrl);
   await new Promise((r, j) => {
@@ -36,30 +43,46 @@ async function main() {
 
   let id = 0;
   const consoleMessages = [];
-  ws.addEventListener('message', (event) => {
+  ws.addEventListener("message", (event) => {
     let msg;
-    try { msg = JSON.parse(event.data); } catch { return; }
-    if (msg.method === 'Runtime.consoleAPICalled') {
-      const text = msg.params.args.map(a => a.value !== undefined ? String(a.value) : (a.description || '')).join(' ');
+    try {
+      msg = JSON.parse(event.data);
+    } catch {
+      return;
+    }
+    if (msg.method === "Runtime.consoleAPICalled") {
+      const text = msg.params.args
+        .map((a) =>
+          a.value !== undefined ? String(a.value) : a.description || "",
+        )
+        .join(" ");
       consoleMessages.push({ type: msg.params.type, text });
       console.log(`[console.${msg.params.type}]`, text.substring(0, 300));
-    } else if (msg.method === 'Runtime.exceptionThrown') {
+    } else if (msg.method === "Runtime.exceptionThrown") {
       const e = msg.params.exceptionDetails;
-      consoleMessages.push({ type: 'exception', text: e.text + ' ' + (e.exception?.description || '') });
-      console.log('[EXCEPTION]', e.text, e.exception?.description || '');
-    } else if (msg.method === 'Log.entryAdded') {
-      console.log('[log]', msg.params.entry.level, msg.params.entry.text, msg.params.entry.url || '');
+      consoleMessages.push({
+        type: "exception",
+        text: e.text + " " + (e.exception?.description || ""),
+      });
+      console.log("[EXCEPTION]", e.text, e.exception?.description || "");
+    } else if (msg.method === "Log.entryAdded") {
+      console.log(
+        "[log]",
+        msg.params.entry.level,
+        msg.params.entry.text,
+        msg.params.entry.url || "",
+      );
     }
   });
 
-  await rpc(ws, ++id, 'Runtime.enable');
-  await rpc(ws, ++id, 'Log.enable');
-  await rpc(ws, ++id, 'Page.enable');
-  await rpc(ws, ++id, 'Network.enable');
+  await rpc(ws, ++id, "Runtime.enable");
+  await rpc(ws, ++id, "Log.enable");
+  await rpc(ws, ++id, "Page.enable");
+  await rpc(ws, ++id, "Network.enable");
 
-  await new Promise(r => setTimeout(r, 4000));
+  await new Promise((r) => setTimeout(r, 4000));
 
-  const findButtons = await rpc(ws, ++id, 'Runtime.evaluate', {
+  const findButtons = await rpc(ws, ++id, "Runtime.evaluate", {
     expression: `
       JSON.stringify((() => {
         const out = { url: location.href, title: document.title, buttonCount: 0, buttons: [] };
@@ -80,10 +103,10 @@ async function main() {
     `,
     returnByValue: true,
   });
-  console.log('=== INITIAL ===\n', findButtons.result.value);
+  console.log("=== INITIAL ===\n", findButtons.result.value);
 
   // Type PIN
-  await rpc(ws, ++id, 'Runtime.evaluate', {
+  await rpc(ws, ++id, "Runtime.evaluate", {
     expression: `
       (() => {
         const pin = document.getElementById('pin-input');
@@ -96,10 +119,10 @@ async function main() {
     `,
     returnByValue: true,
   });
-  console.log('Pin set to 1234');
+  console.log("Pin set to 1234");
 
-  console.log('--- Clicking Login ---');
-  await rpc(ws, ++id, 'Runtime.evaluate', {
+  console.log("--- Clicking Login ---");
+  await rpc(ws, ++id, "Runtime.evaluate", {
     expression: `
       (() => {
         const btns = document.querySelectorAll('button');
@@ -116,9 +139,9 @@ async function main() {
     returnByValue: true,
   });
 
-  await new Promise(r => setTimeout(r, 5000));
+  await new Promise((r) => setTimeout(r, 5000));
 
-  const afterLogin = await rpc(ws, ++id, 'Runtime.evaluate', {
+  const afterLogin = await rpc(ws, ++id, "Runtime.evaluate", {
     expression: `
       JSON.stringify((() => {
         const out = { activeTab: '', body: document.body.innerText.substring(0, 300), buttonCount: 0, buttons: [] };
@@ -141,11 +164,11 @@ async function main() {
     `,
     returnByValue: true,
   });
-  console.log('=== AFTER LOGIN ===\n', afterLogin.result.value);
+  console.log("=== AFTER LOGIN ===\n", afterLogin.result.value);
 
   // Click customers tab
-  console.log('--- Clicking Customers tab ---');
-  await rpc(ws, ++id, 'Runtime.evaluate', {
+  console.log("--- Clicking Customers tab ---");
+  await rpc(ws, ++id, "Runtime.evaluate", {
     expression: `
       (() => {
         const tabs = document.querySelectorAll('.nav-item');
@@ -157,11 +180,11 @@ async function main() {
     `,
     returnByValue: true,
   });
-  await new Promise(r => setTimeout(r, 2000));
+  await new Promise((r) => setTimeout(r, 2000));
 
   // Click + Add button
-  console.log('--- Clicking + Add ---');
-  const clickResult = await rpc(ws, ++id, 'Runtime.evaluate', {
+  console.log("--- Clicking + Add ---");
+  const clickResult = await rpc(ws, ++id, "Runtime.evaluate", {
     expression: `
       (() => {
         const buttons = document.querySelectorAll('button');
@@ -173,11 +196,11 @@ async function main() {
     `,
     returnByValue: true,
   });
-  console.log('Add click:', clickResult.result.value);
+  console.log("Add click:", clickResult.result.value);
 
-  await new Promise(r => setTimeout(r, 2000));
+  await new Promise((r) => setTimeout(r, 2000));
 
-  const modalState = await rpc(ws, ++id, 'Runtime.evaluate', {
+  const modalState = await rpc(ws, ++id, "Runtime.evaluate", {
     expression: `
       JSON.stringify((() => {
         const modal = document.querySelector('.modal-overlay');
@@ -197,11 +220,11 @@ async function main() {
     `,
     returnByValue: true,
   });
-  console.log('=== MODAL STATE ===\n', modalState.result.value);
+  console.log("=== MODAL STATE ===\n", modalState.result.value);
 
   // Try filling the form
-  console.log('--- Filling form ---');
-  await rpc(ws, ++id, 'Runtime.evaluate', {
+  console.log("--- Filling form ---");
+  await rpc(ws, ++id, "Runtime.evaluate", {
     expression: `
       (() => {
         const inputs = document.querySelectorAll('.modal-content input');
@@ -221,11 +244,11 @@ async function main() {
     returnByValue: true,
   });
 
-  await new Promise(r => setTimeout(r, 1000));
+  await new Promise((r) => setTimeout(r, 1000));
 
   // Click Save in modal
-  console.log('--- Clicking Save in modal ---');
-  const saveResult = await rpc(ws, ++id, 'Runtime.evaluate', {
+  console.log("--- Clicking Save in modal ---");
+  const saveResult = await rpc(ws, ++id, "Runtime.evaluate", {
     expression: `
       (() => {
         const modalBtns = document.querySelectorAll('.modal-content button');
@@ -241,11 +264,11 @@ async function main() {
     `,
     returnByValue: true,
   });
-  console.log('Save click:', saveResult.result.value);
+  console.log("Save click:", saveResult.result.value);
 
-  await new Promise(r => setTimeout(r, 5000));
+  await new Promise((r) => setTimeout(r, 5000));
 
-  const afterSave = await rpc(ws, ++id, 'Runtime.evaluate', {
+  const afterSave = await rpc(ws, ++id, "Runtime.evaluate", {
     expression: `
       JSON.stringify((() => {
         const modal = document.querySelector('.modal-overlay');
@@ -259,17 +282,20 @@ async function main() {
     `,
     returnByValue: true,
   });
-  console.log('=== AFTER SAVE ===\n', afterSave.result.value);
+  console.log("=== AFTER SAVE ===\n", afterSave.result.value);
 
   // Capture screenshot
-  const ss = await rpc(ws, ++id, 'Page.captureScreenshot', { format: 'png' });
-  const buf = Buffer.from(ss.data, 'base64');
-  const fs = await import('fs');
-  fs.writeFileSync('T:/milk/S_milk/.tmp/screenshot.png', buf);
-  console.log('Screenshot saved');
+  const ss = await rpc(ws, ++id, "Page.captureScreenshot", { format: "png" });
+  const buf = Buffer.from(ss.data, "base64");
+  const fs = await import("fs");
+  fs.writeFileSync("T:/milk/S_milk/.tmp/screenshot.png", buf);
+  console.log("Screenshot saved");
 
   ws.close();
   process.exit(0);
 }
 
-main().catch(e => { console.error('ERROR:', e.message); process.exit(1); });
+main().catch((e) => {
+  console.error("ERROR:", e.message);
+  process.exit(1);
+});

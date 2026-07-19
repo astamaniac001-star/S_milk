@@ -18,17 +18,17 @@ from the operator's phone, installable as a PWA, designed to work offline.
 
 ## Tech stack (all bleeding-edge as of build)
 
-| Layer        | Choice                                  | Notes                                       |
-| ------------ | --------------------------------------- | ------------------------------------------- |
-| UI           | React 19.2 + Vite 8.1                   | JSX, no TypeScript                         |
-| Icons        | lucide-react 1.24                       |                                             |
-| Backend      | **Supabase directly** (no Node server)   | `@supabase/supabase-js` v2.110             |
-| Service Wk   | Vanilla `public/sw.js` (V21)            | Cache-first shell, network-only for /api    |
-| State        | React hooks (no Redux/Zustand)          | Composable custom hooks                    |
-| Routing      | Tab-based (no react-router)             | State field `tab` in `useAppState`          |
-| Tests        | Vitest 4 + jsdom + Testing Library      | Very thin coverage — only filters + delivery |
-| Lint         | ESLint 10 + react-hooks + react-refresh | `no-console` warn (warn/error allowed)      |
-| Other tools  | cspell, fallow, madge, prettier, depcheck | `npm run check-all` runs the lot           |
+| Layer       | Choice                                    | Notes                                        |
+| ----------- | ----------------------------------------- | -------------------------------------------- |
+| UI          | React 19.2 + Vite 8.1                     | JSX, no TypeScript                           |
+| Icons       | lucide-react 1.24                         |                                              |
+| Backend     | **Supabase directly** (no Node server)    | `@supabase/supabase-js` v2.110               |
+| Service Wk  | Vanilla `public/sw.js` (V21)              | Cache-first shell, network-only for /api     |
+| State       | React hooks (no Redux/Zustand)            | Composable custom hooks                      |
+| Routing     | Tab-based (no react-router)               | State field `tab` in `useAppState`           |
+| Tests       | Vitest 4 + jsdom + Testing Library        | Very thin coverage — only filters + delivery |
+| Lint        | ESLint 10 + react-hooks + react-refresh   | `no-console` warn (warn/error allowed)       |
+| Other tools | cspell, fallow, madge, prettier, depcheck | `npm run check-all` runs the lot             |
 
 ## Repository layout
 
@@ -117,6 +117,7 @@ If you add new state, add it to the right hook in the chain, not at the top.
 ### 3. Handlers reuse `useHelpers()`
 
 All handler hooks share `useHelpers(state)` from `handlers/shared.js` for:
+
 - `showToast(msg, type)`
 - `executeApiAction(action, payload, successMsg, getList, setList, mapFromApi, resKey)`
 - `handleFormAction(action, formArg, successMsg, mapToApi, getList, setList, mapFromApi, resKey)`
@@ -173,7 +174,7 @@ compare literally and silently fail filtering.
   is purely a UI gate. RLS is fully open (every policy is `USING (true) WITH CHECK (true)`).
 - `callApi` catches Supabase auth codes (`42501`, `PGRST301`, `PGRST302`,
   or `jwt`-matching message) and dispatches `window.dispatchEvent(new
-  CustomEvent("auth:expired"))` → `useAuth` clears both storages and logs out.
+CustomEvent("auth:expired"))` → `useAuth` clears both storages and logs out.
 - **Token storage: sessionStorage, not localStorage** (intentional XSS window
   reduction — see comment in `useAuth.js`). New tabs require re-login.
 
@@ -245,6 +246,7 @@ Or pick any of: `lint`, `lint:fix`, `test`, `test:coverage`, `build`, `audit`,
 ## Environment
 
 `.env` (committed in this repo, treat as dev/test):
+
 - `VITE_SUPABASE_URL` = `https://qipvmrgieuvpygjytcpt.supabase.co`
 - `VITE_SUPABASE_ANON_KEY` = anon JWT, RLS is open so this works for any caller.
 

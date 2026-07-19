@@ -10,7 +10,8 @@ function calculateDeliveryStats(todayLogs) {
     scheduled: logs.length,
     deliveredCount: delivered.length,
     skippedCount: logs.filter((l) => !l.delivered).length,
-    totalLiters: delivered.reduce((s, l) => s + Number(l.qty || 0), 0).toFixed(1) + " L",
+    totalLiters:
+      delivered.reduce((s, l) => s + Number(l.qty || 0), 0).toFixed(1) + " L",
   };
 }
 
@@ -71,7 +72,10 @@ export default function Delivery({
   onOpenModal,
   customers = [],
 }) {
-  const safeLogs = useMemo(() => (Array.isArray(todayLogs) ? todayLogs : []), [todayLogs]);
+  const safeLogs = useMemo(
+    () => (Array.isArray(todayLogs) ? todayLogs : []),
+    [todayLogs],
+  );
 
   const customerMap = useMemo(() => {
     const map = {};

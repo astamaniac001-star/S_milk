@@ -187,7 +187,7 @@ export default function Billing({
           style={IS()}
         />
       </Field>
-      
+
       <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
         {STATUS_FILTERS.map((s) => (
           <button
@@ -199,7 +199,7 @@ export default function Billing({
           </button>
         ))}
       </div>
-      
+
       <StatGrid
         items={[
           {
@@ -224,7 +224,7 @@ export default function Billing({
           { label: "Bills", value: bills.length, icon: "📄" },
         ]}
       />
-      
+
       {filtered.length === 0 ? (
         <Empty msg="No bills match filter" />
       ) : (

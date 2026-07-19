@@ -25,11 +25,15 @@ export function useAuth() {
     setLoading(true);
     setError(null);
     try {
-      const data = await callApi("verifyPIN", { pin });
+      // CRITICAL FIX: Enforce 6-digit PINs to match the new secure RPC requirements
+      const cleanPin = String(pin || "").replace(/\D/g, "");
+      if (cleanPin.length !== 6) {
+        throw new Error("PIN must be exactly 6 digits.");
+      }
 
-      // 🛡️ Defensive guard: prevent writing "undefined" to storage if backend misbehaves
+      const data = await callApi("verifyPIN", { pin: cleanPin });
+
       if (data.token) STORE.setItem(TOKEN_KEY, data.token);
-
       setToken(data.token ?? null);
     } catch (err) {
       setError(err.message || "Login failed");
@@ -48,7 +52,7 @@ export function useAuth() {
     setToken(null);
   }, []);
 
-  // 🚀 Listen for graceful session expiry dispatched by src/lib/api.js
+  // Listen for graceful session expiry dispatched by src/lib/api.js
   useEffect(() => {
     const handleAuthExpired = () => {
       console.warn("Session expired or unauthorized. Logging out gracefully.");

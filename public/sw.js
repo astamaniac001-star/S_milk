@@ -6,25 +6,8 @@
  * Cache strategy:
  *   /assets/*    → Cache-first  (Vite content-hashed bundles — safe forever)
  *   Shell files  → Cache-first  (updated when CACHE name is bumped)
- *   /api calls   → Network-only (never cache — always needs fresh data)
+ *   Supabase/API → Network-only (NEVER cache — prevents data leakage)
  *   Everything else → Network-first with cache fallback
- *
- * Fix #10: added /assets/ branch so Vite's hashed JS/CSS bundles are cached
- * on first load and served offline on subsequent visits.
- *
- * Fix #12 (the real offline fix): the install precache used to list only the
- * stable-URL shell files (/app.js, /app.css, …) and NEVER the React bundle
- * /assets/index-[hash].js. Those filenames are content-hashed and rotate
- * every build, so they can't be hardcoded. Instead, discoverAssets() fetches
- * the live /index.html at install time, scrapes every <script src> and
- * <link href> it references (the hashed JS/CSS/manifest + modulepreloads),
- * and precaches them together with the shell. Without this, an offline
- * revisit loaded /app.js + /app.css but missed the React bundle → blank app.
- *
- * Security Fix (AI-1): Updated _isApiCall to catch both /api and /functions 
- * (Cloudflare proxy) to ensure NO authenticated user data is ever cached.
- *
- * Bump CACHE to milk-v21 to evict old caches on the next visit.
  * ============================================================================ */
 
 const CACHE = "milk-v21"; // Bumped from v20 to force cache eviction on client devices
@@ -39,10 +22,6 @@ const SHELL = [
 ];
 
 // ── discoverAssets: read hashed bundle URLs from the live index.html ──────────
-// Vite emits content-hashed filenames (e.g. /assets/index-Abc123.js) that we
-// can't know at author-time. Parse the served /index.html instead and precache
-// every script/stylesheet/manifest/modulepreload it points at. Keeps us in
-// sync with hash rotation and manualChunks splits automatically.
 function _extractScriptUrls(html) {
   const urls = new Set();
   for (const m of html.matchAll(/<script[^>]+src=["']([^"']+)["']/gi)) {
@@ -59,6 +38,14 @@ function _extractLinkUrls(html) {
   return urls;
 }
 
+// SECURITY HARDENING: Only allow caching of safe, same-origin asset extensions
+// This mitigates the risk of a compromised build pipeline injecting malicious scripts.
+function _isSafeAsset(pathname) {
+  return /\.(js|css|json|png|svg|webmanifest|woff2?|ttf|ico)(\?.*)?$/i.test(
+    pathname,
+  );
+}
+
 function _normalizeUrls(urls, origin) {
   return [...urls]
     .map((u) => {
@@ -68,7 +55,10 @@ function _normalizeUrls(urls, origin) {
         return null;
       }
     })
-    .filter((u) => u && u.origin === origin)
+    .filter((u) => {
+      // Must be same-origin AND have a safe file extension
+      return u && u.origin === origin && _isSafeAsset(u.pathname);
+    })
     .map((u) => u.pathname);
 }
 
@@ -82,8 +72,6 @@ async function discoverAssets() {
     _extractScriptUrls(html).forEach((u) => urls.add(u));
     _extractLinkUrls(html).forEach((u) => urls.add(u));
   } catch (err) {
-    // Network failed during install (unlikely — install only runs online).
-    // Fall back to SHELL only; runtime /assets/ caching still backstops us.
     console.warn(
       "[SW] discoverAssets failed, precaching SHELL only:",
       err.message,
@@ -131,15 +119,30 @@ self.addEventListener("activate", (e) => {
 });
 
 // ── Fetch: routing strategy ───────────────────────────────────────────────────
+
+// CRITICAL SECURITY FIX: Explicitly block caching for direct Supabase calls.
+// Since the app talks straight to Supabase, the pathname is /rest/v1/ or /auth/v1/,
+// NOT /api or /functions. We must check the hostname to be safe.
 function _isApiCall(url) {
-  const path = new URL(url).pathname;
-  // SECURITY FIX: Catch both /api and /functions (Cloudflare Pages proxy)
-  // This ensures NO authenticated user data is ever cached, preventing cross-user leakage.
-  return path.startsWith("/api") || path.startsWith("/functions");
+  const parsedUrl = new URL(url);
+
+  // 1. Block ANY request going directly to Supabase
+  if (parsedUrl.hostname.includes("supabase.co")) {
+    return true;
+  }
+
+  // 2. Block local proxy paths (if you ever add them)
+  const path = parsedUrl.pathname;
+  return (
+    path.startsWith("/api") ||
+    path.startsWith("/functions") ||
+    path.startsWith("/rest/v1") ||
+    path.startsWith("/auth/v1")
+  );
 }
 
 async function _fetchAndCache(request) {
-  if (request.method !== 'GET') {
+  if (request.method !== "GET") {
     return fetch(request);
   }
   const fresh = await fetch(request);
@@ -194,34 +197,30 @@ async function _handleNetworkFirstRequest(request) {
   }
 }
 
-// REFACTORED: Extracted the '||' logic into a helper to drop cyclomatic complexity
 function _isShellUrl(path) {
   return path === "/" || SHELL.includes(path);
 }
 
-// Complexity is now 4 (Base 1 + 3 'if' statements)
 function determineFetchStrategy(url) {
-  if (_isApiCall(url)) return "pass-through";
+  if (_isApiCall(url)) return "pass-through"; // <-- Supabase calls hit this now!
   if (url.pathname.startsWith("/assets/")) return "asset";
   if (_isShellUrl(url.pathname)) return "shell";
   return "network-first";
 }
 
-// Map strategies directly to handler functions to eliminate the switch statement
 const STRATEGY_HANDLERS = {
   asset: _handleAssetRequest,
   shell: _handleShellRequest,
   "network-first": _handleNetworkFirstRequest,
 };
 
-// Complexity reduced by using a lookup map instead of a switch statement
 self.addEventListener("fetch", (e) => {
   const url = new URL(e.request.url);
   const strategy = determineFetchStrategy(url);
   const handler = STRATEGY_HANDLERS[strategy];
 
-  // 'pass-through' is not in the map, so handler will be undefined, and we do nothing.
-  // The browser handles the request natively (Network-only), which is exactly what we want for APIs.
+  // 'pass-through' is not in the map, so handler will be undefined.
+  // The browser handles the request natively (Network-only), preventing caching.
   if (handler) {
     e.respondWith(handler(e.request));
   }

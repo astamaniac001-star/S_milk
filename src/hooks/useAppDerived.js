@@ -20,9 +20,9 @@ export function useAppDerived(state) {
 
   return useMemo(() => {
     const today = getToday();
-    const todayLogs = logs.filter(l => l.date === today);
+    const todayLogs = logs.filter((l) => l.date === today);
     const confirmedStock = todayLogs
-      .filter(l => l.delivered)
+      .filter((l) => l.delivered)
       .reduce((sum, l) => sum + (l.qty || 0), 0);
 
     const activeC = customers.filter((c) => c.status === "Active");
@@ -40,7 +40,9 @@ export function useAppDerived(state) {
     const filteredImports = filterImports(imports, impFilter);
     const filteredB = filterBills(bills, billFilter);
 
-    const activeBrandsCount = brands.filter((b) => b.status === "Active").length;
+    const activeBrandsCount = brands.filter(
+      (b) => b.status === "Active",
+    ).length;
 
     return {
       activeC,
@@ -51,18 +53,19 @@ export function useAppDerived(state) {
       filteredB,
       activeBrandsCount,
       todayLogs,
-      confirmedStock
+      confirmedStock,
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    customers, imports, bills, brands, logs,
-    custSearch, custFilter, impFilter, billFilter,
-    // dayTick: invalidates this memo on midnight rollover so todayLogs
-    // recomputes against the new today. Not read in the body; the dep is
-    // intentional. The eslint-disable below would be unused because
-    // react-hooks/exhaustive-deps does not flag dep arrays containing only
-    // unused-by-body values — it would only fire if `dayTick` were declared
-    // but not in the deps. So no suppression needed; this comment documents
-    // why the entry is here.
-    dayTick,
+    customers,
+    imports,
+    bills,
+    brands,
+    logs,
+    custSearch,
+    custFilter,
+    impFilter,
+    billFilter,
+    dayTick, // Intentional: forces memo invalidation on midnight rollover
   ]);
 }

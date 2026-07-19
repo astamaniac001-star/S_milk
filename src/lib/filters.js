@@ -3,13 +3,14 @@
 export function filterCustomers(customers, search, statusFilter) {
   // FIXED: Added null/undefined guard and trim
   const q = (search || "").toLowerCase().trim();
-  
-  return customers.filter(c => {
-    const matchesStatus = !statusFilter || statusFilter === "All" || c.status === statusFilter;
+
+  return customers.filter((c) => {
+    const matchesStatus =
+      !statusFilter || statusFilter === "All" || c.status === statusFilter;
     if (!matchesStatus) return false;
-    
+
     if (!q) return true;
-    
+
     return (
       (c.name && c.name.toLowerCase().includes(q)) ||
       (c.phone && c.phone.includes(q)) ||

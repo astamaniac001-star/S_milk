@@ -15,7 +15,7 @@ const STATUS_FILTERS = ["Draft", "Confirmed", "Reconciled"];
 
 export default function Imports({
   filtered = [], // 🔥 FIX: Default to empty array
-  brands = [],   // 🔥 FIX: Default to empty array
+  brands = [], // 🔥 FIX: Default to empty array
   impFilter,
   onImpFilterChange,
   onOpenModal,
@@ -24,15 +24,15 @@ export default function Imports({
 }) {
   // 🔥 FIX: Force numbers and ensure filtered is an array
   const safeFiltered = Array.isArray(filtered) ? filtered : [];
-  
+
   const totalQty = safeFiltered
     .filter((i) => i.status === "Confirmed")
     .reduce((s, i) => s + Number(i.qty || 0), 0);
-    
+
   const totalCost = safeFiltered
     .filter((i) => i.status === "Confirmed")
     .reduce((s, i) => s + Number(i.total || 0), 0);
-    
+
   const avgRate = totalQty > 0 ? (totalCost / totalQty).toFixed(2) : "0.00";
 
   return (
@@ -103,7 +103,7 @@ export default function Imports({
           {
             label: "Avg Rate",
             // 🔥 FIX: avgRate is ALREADY a string from .toFixed(2) above!
-            value: "₹" + avgRate + "/L", 
+            value: "₹" + avgRate + "/L",
             icon: "📊",
           },
           { label: "Imports", value: safeFiltered.length, icon: "📦" },

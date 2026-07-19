@@ -70,7 +70,9 @@ export function SubscriptionModal({
         >
           <option value="">Select Type</option>
           {milkTypes.map((t) => (
-            <option key={t} value={t}>{t}</option>
+            <option key={t} value={t}>
+              {t}
+            </option>
           ))}
         </select>
       </Field>

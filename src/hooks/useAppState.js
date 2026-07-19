@@ -107,12 +107,8 @@ export function useAppState(auth) {
   const entity = useEntityStore(auth?.token);
   const filters = useFilterState();
   const ui = useAppUi();
-  // dayTick invalidates this on midnight rollover — see useDayTick above.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const today = useMemo(() => clampedToday(), [dayTick]);
-
-  // FIX (audit 2026-07-15): if `today` advanced (e.g. across midnight) and
-  // the operator hasn't manually moved them, advance logDate / billMonth.
-  // Skip the bump when the user has navigated to a different day/month.
   useEffect(() => {
     if (ui.logDate && ui.logDate < today) ui.setLogDate(today);
     if (ui.billMonth && ui.billMonth < today.substring(0, 7)) {
@@ -126,7 +122,6 @@ export function useAppState(auth) {
     ...entity,
     ...filters,
     logDate: ui.logDate,
-    // pass tick so the memo recomputes todayLogs on midnight rollover
     dayTick,
   });
 

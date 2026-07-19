@@ -5,7 +5,9 @@ export function useBusy(asyncFn) {
   const busyRef = useRef(false);
 
   const fnRef = useRef(asyncFn);
-  useEffect(() => { fnRef.current = asyncFn; }, [asyncFn]);
+  useEffect(() => {
+    fnRef.current = asyncFn;
+  }, [asyncFn]);
 
   const wrapped = useCallback(async (...args) => {
     if (busyRef.current) return;

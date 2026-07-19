@@ -170,11 +170,11 @@ const MODAL_RENDERERS = {
             sub
               ? { ...sub }
               : {
-                isActive: true,
-                deliveryDays: [1, 2, 3, 4, 5],
-                quantity: 1,
-                milkType: "FULL_CREAM",
-              },
+                  isActive: true,
+                  deliveryDays: [1, 2, 3, 4, 5],
+                  quantity: 1,
+                  milkType: "FULL_CREAM",
+                },
           );
         }
         // Open the correct modal type
