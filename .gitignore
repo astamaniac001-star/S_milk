@@ -29,7 +29,7 @@ coverage
 *.njsproj
 *.sln
 *.sw?
-
+supabase/.temp/
 # Local Vercel folder
 .vercel
 # Playwright & Test Artifacts
