@@ -44,12 +44,65 @@ END; $$;
 ALTER FUNCTION "public"."apply_adjustment_rpc"("p_adjustment_id" "uuid", "p_bill_id" "uuid") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."apply_adjustment_rpc"("p_adjustment_id" "uuid", "p_bill_id" "uuid", "p_version" integer) RETURNS "jsonb"
+    LANGUAGE "plpgsql"
+    AS $$
+DECLARE
+  v_adj record;
+  v_bill record;
+BEGIN
+  -- 1. Fetch and lock the adjustment
+  SELECT * INTO v_adj FROM adjustments WHERE id = p_adjustment_id FOR UPDATE;
+  IF v_adj IS NULL THEN RAISE EXCEPTION 'Adjustment not found'; END IF;
+  
+  -- 2. Check version for Optimistic Concurrency Control (OCC)
+  IF v_adj.version != p_version THEN RAISE EXCEPTION 'CONFLICT: Adjustment was modified by another process.'; END IF;
+  
+  -- 3. Check if already applied (using the correct boolean column)
+  IF v_adj.applied = true THEN RAISE EXCEPTION 'Adjustment has already been applied.'; END IF;
+
+  -- 4. Fetch and lock the bill
+  SELECT * INTO v_bill FROM bills WHERE id = p_bill_id FOR UPDATE;
+  IF v_bill IS NULL THEN RAISE EXCEPTION 'Bill not found'; END IF;
+  IF v_bill.locked = true THEN RAISE EXCEPTION 'Cannot apply adjustment to a locked bill.'; END IF;
+
+  -- 5. Apply the adjustment (reduce bill amount)
+  UPDATE bills
+  SET amount = v_bill.amount - v_adj.amount,
+      version = v_bill.version + 1,
+      updated_at = now()
+  WHERE id = p_bill_id;
+
+  -- 6. Mark adjustment as applied and update its version/timestamp
+  UPDATE adjustments
+  SET applied = true,
+      version = version + 1,
+      updated_at = now()
+  WHERE id = p_adjustment_id;
+
+  RETURN jsonb_build_object('success', true);
+END;
+$$;
+
+
+ALTER FUNCTION "public"."apply_adjustment_rpc"("p_adjustment_id" "uuid", "p_bill_id" "uuid", "p_version" integer) OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."generate_month_bill_rpc"("p_customer_id" "uuid", "p_month" "text") RETURNS "jsonb"
     LANGUAGE "plpgsql"
     AS $$
-DECLARE v_rate numeric; v_total_qty numeric; v_amount numeric; v_existing_bill record;
+DECLARE 
+  v_rate numeric; 
+  v_total_qty numeric; 
+  v_amount numeric; 
+  v_existing_bill record;
+  v_product text;
 BEGIN
-  SELECT rate_per_liter INTO v_rate FROM customers WHERE id = p_customer_id;
+  -- Get customer's product to find the correct rate
+  SELECT product INTO v_product FROM customers WHERE id = p_customer_id;
+  
+  -- Fetch rate from milk_brands based on the product (default_milk_type)
+  SELECT rate_per_liter INTO v_rate FROM milk_brands WHERE default_milk_type = v_product LIMIT 1;
   IF v_rate IS NULL THEN v_rate := 0; END IF;
 
   SELECT COALESCE(SUM(qty), 0) INTO v_total_qty FROM daily_logs
@@ -58,10 +111,10 @@ BEGIN
   v_amount := v_total_qty * v_rate;
 
   SELECT * INTO v_existing_bill FROM bills WHERE customer_id = p_customer_id AND month = p_month FOR UPDATE;
-  
+
   IF v_existing_bill IS NOT NULL THEN
-    IF v_existing_bill.locked = true THEN 
-      RAISE EXCEPTION 'Cannot regenerate a locked bill.'; 
+    IF v_existing_bill.locked = true THEN
+      RAISE EXCEPTION 'Cannot regenerate a locked bill.';
     END IF;
     UPDATE bills SET amount = v_amount, version = version + 1, updated_at = now() WHERE id = v_existing_bill.id;
   ELSE
@@ -74,6 +127,16 @@ END; $$;
 
 
 ALTER FUNCTION "public"."generate_month_bill_rpc"("p_customer_id" "uuid", "p_month" "text") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."is_operator"() RETURNS boolean
+    LANGUAGE "sql" STABLE
+    AS $$
+  SELECT auth.uid() = '3947f8aa-c545-41e0-b773-b263749d99ae'::uuid;
+$$;
+
+
+ALTER FUNCTION "public"."is_operator"() OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."record_payment"("p_bill_id" "uuid", "p_amount" numeric, "p_mode" "text" DEFAULT 'Cash'::"text", "p_date" "date" DEFAULT CURRENT_DATE, "p_note" "text" DEFAULT NULL::"text") RETURNS json
@@ -144,6 +207,53 @@ END; $$;
 ALTER FUNCTION "public"."record_payment_rpc"("p_bill_id" "uuid", "p_amount" numeric, "p_mode" "text", "p_note" "text", "p_idempotency_key" "uuid") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."record_payment_rpc"("p_bill_id" "uuid", "p_amount" numeric, "p_mode" "text", "p_date" "date", "p_note" "text", "p_idempotency_key" "uuid") RETURNS "jsonb"
+    LANGUAGE "plpgsql"
+    AS $$
+DECLARE 
+  v_bill record; 
+  v_existing_payment record; 
+  v_pending numeric;
+  v_customer_id uuid;
+BEGIN
+  -- 1. Idempotency check
+  SELECT id INTO v_existing_payment FROM payments WHERE idempotency_key = p_idempotency_key;
+  IF v_existing_payment IS NOT NULL THEN
+    RETURN jsonb_build_object('success', true, 'idempotent', true);
+  END IF;
+
+  -- 2. Lock and validate bill
+  SELECT * INTO v_bill FROM bills WHERE id = p_bill_id FOR UPDATE;
+  IF v_bill IS NULL THEN RAISE EXCEPTION 'Bill not found'; END IF;
+  IF v_bill.locked = true THEN RAISE EXCEPTION 'This bill is locked.'; END IF;
+  IF p_amount <= 0 THEN RAISE EXCEPTION 'Amount must be positive'; END IF;
+
+  v_pending := v_bill.amount - v_bill.amount_paid;
+  IF p_amount > v_pending + 0.01 THEN
+    RAISE EXCEPTION 'Payment exceeds pending amount (%). Use a credit note for advance payment.', v_pending;
+  END IF;
+
+  v_customer_id := v_bill.customer_id;
+
+  -- 3. Insert payment with CORRECT column names (payment_mode, payment_date, customer_id)
+  INSERT INTO payments (id, bill_id, customer_id, amount, payment_mode, payment_date, note, idempotency_key, created_at)
+  VALUES (gen_random_uuid(), p_bill_id, v_customer_id, p_amount, p_mode, p_date, p_note, p_idempotency_key, now());
+
+  -- 4. Update bill atomically
+  UPDATE bills
+  SET amount_paid = amount_paid + p_amount,
+      status = CASE WHEN (amount_paid + p_amount) >= amount THEN 'Paid' ELSE 'Partial' END,
+      version = version + 1,
+      updated_at = now()
+  WHERE id = p_bill_id;
+
+  RETURN jsonb_build_object('success', true);
+END; $$;
+
+
+ALTER FUNCTION "public"."record_payment_rpc"("p_bill_id" "uuid", "p_amount" numeric, "p_mode" "text", "p_date" "date", "p_note" "text", "p_idempotency_key" "uuid") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."update_updated_at_column"() RETURNS "trigger"
     LANGUAGE "plpgsql"
     AS $$
@@ -170,6 +280,7 @@ CREATE TABLE IF NOT EXISTS "public"."adjustments" (
     "applied" boolean DEFAULT false,
     "date" "date",
     "created_at" timestamp with time zone DEFAULT "now"(),
+    "updated_at" timestamp with time zone DEFAULT "now"(),
     CONSTRAINT "chk_adjustments_amount_nonzero" CHECK (("amount" <> (0)::numeric))
 );
 
@@ -210,7 +321,8 @@ CREATE TABLE IF NOT EXISTS "public"."credit_notes" (
     "reason" "text",
     "applied" boolean DEFAULT false,
     "date" "date",
-    "created_at" timestamp with time zone DEFAULT "now"()
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    "updated_at" timestamp with time zone DEFAULT "now"()
 );
 
 ALTER TABLE ONLY "public"."credit_notes" FORCE ROW LEVEL SECURITY;
@@ -585,6 +697,94 @@ CREATE POLICY "strict_auth_only_daily_logs" ON "public"."daily_logs" TO "authent
 
 
 
+CREATE POLICY "strict_auth_only_delete" ON "public"."adjustments" FOR DELETE USING ("public"."is_operator"());
+
+
+
+CREATE POLICY "strict_auth_only_delete" ON "public"."bills" FOR DELETE USING ("public"."is_operator"());
+
+
+
+CREATE POLICY "strict_auth_only_delete" ON "public"."credit_notes" FOR DELETE USING ("public"."is_operator"());
+
+
+
+CREATE POLICY "strict_auth_only_delete" ON "public"."customers" FOR DELETE USING ("public"."is_operator"());
+
+
+
+CREATE POLICY "strict_auth_only_delete" ON "public"."daily_logs" FOR DELETE USING ("public"."is_operator"());
+
+
+
+CREATE POLICY "strict_auth_only_delete" ON "public"."milk_brands" FOR DELETE USING ("public"."is_operator"());
+
+
+
+CREATE POLICY "strict_auth_only_delete" ON "public"."milk_imports" FOR DELETE USING ("public"."is_operator"());
+
+
+
+CREATE POLICY "strict_auth_only_delete" ON "public"."pause_periods" FOR DELETE USING ("public"."is_operator"());
+
+
+
+CREATE POLICY "strict_auth_only_delete" ON "public"."payments" FOR DELETE USING ("public"."is_operator"());
+
+
+
+CREATE POLICY "strict_auth_only_delete" ON "public"."settings" FOR DELETE USING ("public"."is_operator"());
+
+
+
+CREATE POLICY "strict_auth_only_delete" ON "public"."subscriptions" FOR DELETE USING ("public"."is_operator"());
+
+
+
+CREATE POLICY "strict_auth_only_insert" ON "public"."adjustments" FOR INSERT WITH CHECK ("public"."is_operator"());
+
+
+
+CREATE POLICY "strict_auth_only_insert" ON "public"."bills" FOR INSERT WITH CHECK ("public"."is_operator"());
+
+
+
+CREATE POLICY "strict_auth_only_insert" ON "public"."credit_notes" FOR INSERT WITH CHECK ("public"."is_operator"());
+
+
+
+CREATE POLICY "strict_auth_only_insert" ON "public"."customers" FOR INSERT WITH CHECK ("public"."is_operator"());
+
+
+
+CREATE POLICY "strict_auth_only_insert" ON "public"."daily_logs" FOR INSERT WITH CHECK ("public"."is_operator"());
+
+
+
+CREATE POLICY "strict_auth_only_insert" ON "public"."milk_brands" FOR INSERT WITH CHECK ("public"."is_operator"());
+
+
+
+CREATE POLICY "strict_auth_only_insert" ON "public"."milk_imports" FOR INSERT WITH CHECK ("public"."is_operator"());
+
+
+
+CREATE POLICY "strict_auth_only_insert" ON "public"."pause_periods" FOR INSERT WITH CHECK ("public"."is_operator"());
+
+
+
+CREATE POLICY "strict_auth_only_insert" ON "public"."payments" FOR INSERT WITH CHECK ("public"."is_operator"());
+
+
+
+CREATE POLICY "strict_auth_only_insert" ON "public"."settings" FOR INSERT WITH CHECK ("public"."is_operator"());
+
+
+
+CREATE POLICY "strict_auth_only_insert" ON "public"."subscriptions" FOR INSERT WITH CHECK ("public"."is_operator"());
+
+
+
 CREATE POLICY "strict_auth_only_milk_brands" ON "public"."milk_brands" TO "authenticated" USING (true) WITH CHECK (true);
 
 
@@ -601,11 +801,99 @@ CREATE POLICY "strict_auth_only_payments" ON "public"."payments" TO "authenticat
 
 
 
+CREATE POLICY "strict_auth_only_select" ON "public"."adjustments" FOR SELECT USING ("public"."is_operator"());
+
+
+
+CREATE POLICY "strict_auth_only_select" ON "public"."bills" FOR SELECT USING ("public"."is_operator"());
+
+
+
+CREATE POLICY "strict_auth_only_select" ON "public"."credit_notes" FOR SELECT USING ("public"."is_operator"());
+
+
+
+CREATE POLICY "strict_auth_only_select" ON "public"."customers" FOR SELECT USING ("public"."is_operator"());
+
+
+
+CREATE POLICY "strict_auth_only_select" ON "public"."daily_logs" FOR SELECT USING ("public"."is_operator"());
+
+
+
+CREATE POLICY "strict_auth_only_select" ON "public"."milk_brands" FOR SELECT USING ("public"."is_operator"());
+
+
+
+CREATE POLICY "strict_auth_only_select" ON "public"."milk_imports" FOR SELECT USING ("public"."is_operator"());
+
+
+
+CREATE POLICY "strict_auth_only_select" ON "public"."pause_periods" FOR SELECT USING ("public"."is_operator"());
+
+
+
+CREATE POLICY "strict_auth_only_select" ON "public"."payments" FOR SELECT USING ("public"."is_operator"());
+
+
+
+CREATE POLICY "strict_auth_only_select" ON "public"."settings" FOR SELECT USING ("public"."is_operator"());
+
+
+
+CREATE POLICY "strict_auth_only_select" ON "public"."subscriptions" FOR SELECT USING ("public"."is_operator"());
+
+
+
 CREATE POLICY "strict_auth_only_settings" ON "public"."settings" TO "authenticated" USING (true) WITH CHECK (true);
 
 
 
 CREATE POLICY "strict_auth_only_subscriptions" ON "public"."subscriptions" TO "authenticated" USING (true) WITH CHECK (true);
+
+
+
+CREATE POLICY "strict_auth_only_update" ON "public"."adjustments" FOR UPDATE USING ("public"."is_operator"()) WITH CHECK ("public"."is_operator"());
+
+
+
+CREATE POLICY "strict_auth_only_update" ON "public"."bills" FOR UPDATE USING ("public"."is_operator"()) WITH CHECK ("public"."is_operator"());
+
+
+
+CREATE POLICY "strict_auth_only_update" ON "public"."credit_notes" FOR UPDATE USING ("public"."is_operator"()) WITH CHECK ("public"."is_operator"());
+
+
+
+CREATE POLICY "strict_auth_only_update" ON "public"."customers" FOR UPDATE USING ("public"."is_operator"()) WITH CHECK ("public"."is_operator"());
+
+
+
+CREATE POLICY "strict_auth_only_update" ON "public"."daily_logs" FOR UPDATE USING ("public"."is_operator"()) WITH CHECK ("public"."is_operator"());
+
+
+
+CREATE POLICY "strict_auth_only_update" ON "public"."milk_brands" FOR UPDATE USING ("public"."is_operator"()) WITH CHECK ("public"."is_operator"());
+
+
+
+CREATE POLICY "strict_auth_only_update" ON "public"."milk_imports" FOR UPDATE USING ("public"."is_operator"()) WITH CHECK ("public"."is_operator"());
+
+
+
+CREATE POLICY "strict_auth_only_update" ON "public"."pause_periods" FOR UPDATE USING ("public"."is_operator"()) WITH CHECK ("public"."is_operator"());
+
+
+
+CREATE POLICY "strict_auth_only_update" ON "public"."payments" FOR UPDATE USING ("public"."is_operator"()) WITH CHECK ("public"."is_operator"());
+
+
+
+CREATE POLICY "strict_auth_only_update" ON "public"."settings" FOR UPDATE USING ("public"."is_operator"()) WITH CHECK ("public"."is_operator"());
+
+
+
+CREATE POLICY "strict_auth_only_update" ON "public"."subscriptions" FOR UPDATE USING ("public"."is_operator"()) WITH CHECK ("public"."is_operator"());
 
 
 
@@ -624,8 +912,20 @@ GRANT ALL ON FUNCTION "public"."apply_adjustment_rpc"("p_adjustment_id" "uuid", 
 
 
 
+GRANT ALL ON FUNCTION "public"."apply_adjustment_rpc"("p_adjustment_id" "uuid", "p_bill_id" "uuid", "p_version" integer) TO "anon";
+GRANT ALL ON FUNCTION "public"."apply_adjustment_rpc"("p_adjustment_id" "uuid", "p_bill_id" "uuid", "p_version" integer) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."apply_adjustment_rpc"("p_adjustment_id" "uuid", "p_bill_id" "uuid", "p_version" integer) TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."generate_month_bill_rpc"("p_customer_id" "uuid", "p_month" "text") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."generate_month_bill_rpc"("p_customer_id" "uuid", "p_month" "text") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."is_operator"() TO "anon";
+GRANT ALL ON FUNCTION "public"."is_operator"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."is_operator"() TO "service_role";
 
 
 
@@ -636,6 +936,12 @@ GRANT ALL ON FUNCTION "public"."record_payment"("p_bill_id" "uuid", "p_amount" n
 
 GRANT ALL ON FUNCTION "public"."record_payment_rpc"("p_bill_id" "uuid", "p_amount" numeric, "p_mode" "text", "p_note" "text", "p_idempotency_key" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."record_payment_rpc"("p_bill_id" "uuid", "p_amount" numeric, "p_mode" "text", "p_note" "text", "p_idempotency_key" "uuid") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."record_payment_rpc"("p_bill_id" "uuid", "p_amount" numeric, "p_mode" "text", "p_date" "date", "p_note" "text", "p_idempotency_key" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."record_payment_rpc"("p_bill_id" "uuid", "p_amount" numeric, "p_mode" "text", "p_date" "date", "p_note" "text", "p_idempotency_key" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."record_payment_rpc"("p_bill_id" "uuid", "p_amount" numeric, "p_mode" "text", "p_date" "date", "p_note" "text", "p_idempotency_key" "uuid") TO "service_role";
 
 
 

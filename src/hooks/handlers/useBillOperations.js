@@ -1,11 +1,11 @@
 import { useCallback } from "react";
-import { mapBillFromApi, callApi } from "../../lib/api.js";
+import { callApi } from "../../lib/api.js";
 import { useHelpers } from "./shared.js";
 
 export function useBillOperations(state) {
   // FIX (AI-3): Destructure `subscriptions` from state so we can look up the correct rate
   const { customers, subscriptions, setBills } = state;
-  const { showToast, handleIdAction } = useHelpers(state);
+  const { showToast } = useHelpers(state);
 
   const generateMonthlyBills = useCallback(
     async (month) => {
@@ -42,42 +42,69 @@ export function useBillOperations(state) {
         }
 
         const res = await callApi("getBills", {});
-        setBills((res.bills || []).map(mapBillFromApi));
+        setBills((res.bills || []));
       } catch (e) {
         showToast(e.message, "error");
       }
     },
     [customers, subscriptions, setBills, showToast],
-  ); // Added `subscriptions` to dependencies
-
-  const lockBill = useCallback(
-    (billId) =>
-      handleIdAction(
-        "lockBill",
-        "billId",
-        billId,
-        "Bill locked",
-        "getBills",
-        setBills,
-        mapBillFromApi,
-        "bills",
-      ),
-    [handleIdAction, setBills],
   );
 
+  const lockBill = useCallback(
+    async (billId) => {
+      try {
+        // 1. Find the bill in state to get its current version
+        const billToLock = state.bills?.find((b) => b.id === billId);
+        if (!billToLock) {
+          showToast("Bill not found in state", "error");
+          return;
+        }
+
+        // 2. Call the API, explicitly passing the version
+        await callApi("lockBill", {
+          billId: billToLock.id,
+          version: billToLock.version
+        });
+
+        showToast("Bill locked", "success");
+
+        // 3. Refresh the bills list (api.js already maps this, so we just set it)
+        const res = await callApi("getBills", {});
+        setBills(res.bills || []);
+      } catch (err) {
+        showToast(err.message || "Failed to lock bill", "error");
+      }
+    },
+    [state.bills, setBills, showToast],
+  );
+
+
   const unlockBill = useCallback(
-    (billId) =>
-      handleIdAction(
-        "unlockBill",
-        "billId",
-        billId,
-        "Bill unlocked",
-        "getBills",
-        setBills,
-        mapBillFromApi,
-        "bills",
-      ),
-    [handleIdAction, setBills],
+    async (billId) => {
+      try {
+        // 1. Find the bill in state to get its current version
+        const billToUnlock = state.bills?.find((b) => b.id === billId);
+        if (!billToUnlock) {
+          showToast("Bill not found in state", "error");
+          return;
+        }
+
+        // 2. Call the API, explicitly passing the version
+        await callApi("unlockBill", {
+          billId: billToUnlock.id,
+          version: billToUnlock.version
+        });
+
+        showToast("Bill unlocked", "success");
+
+        // 3. Refresh the bills list
+        const res = await callApi("getBills", {});
+        setBills(res.bills || []);
+      } catch (err) {
+        showToast(err.message || "Failed to unlock bill", "error");
+      }
+    },
+    [state.bills, setBills, showToast],
   );
 
   const whatsapp = useCallback(

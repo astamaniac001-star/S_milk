@@ -1,5 +1,5 @@
 import { supabase } from "./supabaseClient.js";
-import { getToday, getDaysAgoIST, fmt, toNum } from "./utils.js";
+import { getToday, getDaysAgoIST, fmt, toNum, generateKey } from "./utils.js";
 
 const toArray = (val) => {
   if (Array.isArray(val)) return val;
@@ -18,9 +18,6 @@ const toArray = (val) => {
   }
   return [];
 };
-
-const generateKey = () =>
-  `${Date.now()}-${Math.random().toString(36).substring(2, 10)}`;
 
 // Day-of-week index for a YYYY-MM-DD date in Asia/Kolkata timezone.
 // `new Date('2025-07-15').getDay()` uses the system TZ, which is wrong if the
@@ -218,7 +215,7 @@ export function mapPaymentToApi(billId, amount, opts = {}) {
     billId,
     amount: Number(amount),
     mode: opts.mode || "Cash",
-    date: opts.date,
+    date: opts.date || getToday(),
     note: opts.note,
     idempotencyKey: generateKey(),
   };
@@ -229,26 +226,6 @@ export async function callApi(action, payload = {}) {
   const result = { data: {} };
   try {
     switch (action) {
-      case "verifyPIN": {
-        const { pin } = payload;
-        if (!pin || String(pin).length !== 6) {
-          const e = new Error("PIN must be exactly 6 digits.");
-          e.code = "INVALID_FORMAT";
-          throw e;
-        }
-        // CRITICAL FIX: Call the secure Postgres RPC instead of reading plaintext settings
-        const { data, error } = await supabase.rpc("verify_pin", { input_pin: pin });
-        if (error || !data?.success) {
-          const e = new Error(
-            data?.message || "Invalid PIN or account temporarily locked.",
-          );
-          e.code = "AUTH_FAILED";
-          throw e;
-        }
-        // The secure RPC returns { success: true, token: "uuid..." }
-        result.data = { token: data.token };
-        break;
-      }
 
       case "getCustomers": {
         const { data, error } = await supabase
@@ -607,7 +584,8 @@ export async function callApi(action, payload = {}) {
         const {
           billId,
           amount,
-          paymentMode,
+          mode,
+          date,
           note,
           idempotencyKey,
         } = payload;
@@ -620,9 +598,10 @@ export async function callApi(action, payload = {}) {
         const { data: rpcResult, error: rpcError } = await supabase.rpc("record_payment_rpc", {
           p_bill_id: billId,
           p_amount: toNum(amount),
-          p_mode: paymentMode || "Cash",
+          p_mode: mode || "Cash",
+          p_date: date || getToday(),
           p_note: note || "",
-          p_idempotency_key: idempotencyKey || crypto.randomUUID()
+          p_idempotency_key: idempotencyKey
         });
 
         if (rpcError) {

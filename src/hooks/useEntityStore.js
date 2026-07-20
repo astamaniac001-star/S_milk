@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback } from "react";
 import {
   callApi,
   mapCustomerFromApi,
-  mapBillFromApi,
   mapImportFromApi,
   mapLogFromApi,
   mapAdjustmentFromApi,
@@ -61,7 +60,7 @@ export function useEntityStore(token, logDate, billMonth) {
           safeFetch("getCreditNotes", {}, "creditNotes"),
         ]);
       if (custs !== null) setCustomers(custs.map(mapCustomerFromApi));
-      if (bils !== null) setBills(bils.map(mapBillFromApi));
+      if (bils !== null) setBills(bils);
       if (imps !== null) setImports(imps.map(mapImportFromApi));
       if (lgs !== null) setLogs(lgs.map(mapLogFromApi));
       if (adjs !== null) setAdjustments(adjs.map(mapAdjustmentFromApi));

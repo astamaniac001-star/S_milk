@@ -24,6 +24,7 @@ export type Database = {
           date: string | null
           id: string
           reason: string | null
+          updated_at: string | null
         }
         Insert: {
           amount?: number | null
@@ -34,6 +35,7 @@ export type Database = {
           date?: string | null
           id?: string
           reason?: string | null
+          updated_at?: string | null
         }
         Update: {
           amount?: number | null
@@ -44,6 +46,7 @@ export type Database = {
           date?: string | null
           id?: string
           reason?: string | null
+          updated_at?: string | null
         }
         Relationships: [
           {
@@ -120,6 +123,7 @@ export type Database = {
           date: string | null
           id: string
           reason: string | null
+          updated_at: string | null
         }
         Insert: {
           amount?: number | null
@@ -131,6 +135,7 @@ export type Database = {
           date?: string | null
           id?: string
           reason?: string | null
+          updated_at?: string | null
         }
         Update: {
           amount?: number | null
@@ -142,6 +147,7 @@ export type Database = {
           date?: string | null
           id?: string
           reason?: string | null
+          updated_at?: string | null
         }
         Relationships: [
           {
@@ -498,14 +504,24 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      apply_adjustment_rpc: {
-        Args: { p_adjustment_id: string; p_bill_id: string }
-        Returns: Json
-      }
+      apply_adjustment_rpc:
+        | {
+            Args: { p_adjustment_id: string; p_bill_id: string }
+            Returns: Json
+          }
+        | {
+            Args: {
+              p_adjustment_id: string
+              p_bill_id: string
+              p_version: number
+            }
+            Returns: Json
+          }
       generate_month_bill_rpc: {
         Args: { p_customer_id: string; p_month: string }
         Returns: Json
       }
+      is_operator: { Args: never; Returns: boolean }
       record_payment: {
         Args: {
           p_amount: number
@@ -516,16 +532,28 @@ export type Database = {
         }
         Returns: Json
       }
-      record_payment_rpc: {
-        Args: {
-          p_amount: number
-          p_bill_id: string
-          p_idempotency_key: string
-          p_mode: string
-          p_note: string
-        }
-        Returns: Json
-      }
+      record_payment_rpc:
+        | {
+            Args: {
+              p_amount: number
+              p_bill_id: string
+              p_date: string
+              p_idempotency_key: string
+              p_mode: string
+              p_note: string
+            }
+            Returns: Json
+          }
+        | {
+            Args: {
+              p_amount: number
+              p_bill_id: string
+              p_idempotency_key: string
+              p_mode: string
+              p_note: string
+            }
+            Returns: Json
+          }
     }
     Enums: {
       [_ in never]: never

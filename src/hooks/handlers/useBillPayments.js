@@ -103,7 +103,7 @@ export function useBillPayments(state) {
           callApi("getBills", {}),
         ]);
         setAdjustments((adjRes.adjustments || []).map(mapAdjustmentFromApi));
-        setBills((billRes.bills || []).map(mapBillFromApi));
+        setBills((billRes.bills || []));
       } catch (err) {
         showToast(err.message || "Failed to apply adjustment", "error");
       }

@@ -49,6 +49,13 @@ export function useImportHandlers(state) {
   const handleImportAction = useCallback(
     async (action, importId, successMsg, fallbackErrMsg) => {
       try {
+        const imp = state.imports?.find((i) => i.id === importId);
+        const payload = { importId };
+        if (imp && imp.version !== undefined) {
+          payload.version = imp.version;
+        }
+        await callApi(action, payload);
+        showToast(successMsg, "success");
         await callApi(action, { importId });
         showToast(successMsg, "success");
         const res = await callApi("getMilkImports", {});
@@ -57,7 +64,7 @@ export function useImportHandlers(state) {
         showToast(err.message || fallbackErrMsg, "error");
       }
     },
-    [showToast, setImports],
+    [state.imports, showToast, setImports],
   );
 
   const confirmMilkImport = useCallback(

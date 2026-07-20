@@ -39,3 +39,16 @@ export const uuid = () => {
     _uuidCounter.toString(36).toUpperCase().padStart(4, "0")
   );
 };
+
+export const generateKey = () => {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  // Strict UUID v4 fallback
+  // cspell:disable-next-line
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+};

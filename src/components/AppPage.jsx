@@ -20,7 +20,7 @@ function renderDashboard(state, handlers, derived) {
       customers={state.customers || []}
       onSetTab={state.setTab}
       onOpenModal={state.openModal}
-      onGenerateBill={handlers.generateMonthlyBills}
+      onGenerateBill={() => handlers.generateMonthlyBills(state.billMonth || state.today.substring(0, 7))}
     />
   );
 }

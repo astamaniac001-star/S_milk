@@ -108,9 +108,9 @@ function useAppUi() {
 
 export function useAppState(auth) {
   const dayTick = useDayTick();
-  const entity = useEntityStore(auth?.token, ui.logDate, ui.billMonth);
-  const filters = useFilterState();
   const ui = useAppUi();
+  const filters = useFilterState();
+  const entity = useEntityStore(auth?.token, ui.logDate, ui.billMonth);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const today = useMemo(() => clampedToday(), [dayTick]);
   useEffect(() => {
