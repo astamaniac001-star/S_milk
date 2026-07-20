@@ -201,7 +201,6 @@ export function mapImportToApi(form) {
     milkType: form.type,
     quantity: Number(form.qty),
     ratePerLiter: Number(form.rate),
-    totalCost: Number(form.total),
     invoiceNumber: form.invoice,
     supplierName: form.supplier,
     date: form.date,
@@ -223,27 +222,6 @@ export function mapPaymentToApi(billId, amount, opts = {}) {
     note: opts.note,
     idempotencyKey: generateKey(),
   };
-}
-
-export async function verifyPIN(pin) {
-  const { data, error } = await supabase
-    .from("settings")
-    .select("value")
-    .eq("key", "PIN")
-    .single();
-  if (error || !data) {
-    const e = new Error("PIN is not configured. Contact an administrator.");
-    e.code = "PIN_NOT_CONFIGURED";
-    throw e;
-  }
-  if (String(data.value).trim() !== String(pin).trim()) {
-    const e = new Error("Incorrect PIN");
-    e.code = "INVALID_PIN";
-    throw e;
-  }
-  const token = crypto.randomUUID();
-  sessionStorage.setItem("token", token);
-  return { token };
 }
 
 // fallow-ignore-next-line complexity
@@ -318,15 +296,6 @@ export async function callApi(action, payload = {}) {
           },
         );
         result.data = { customerId: data.id, newVersion: data.version };
-        break;
-      }
-
-      case "deactivateCustomer": {
-        const { error } = await supabase
-          .from("customers")
-          .update({ status: "Inactive" })
-          .eq("id", payload.customerId);
-        must(error);
         break;
       }
 
@@ -414,16 +383,20 @@ export async function callApi(action, payload = {}) {
         break;
       }
       case "updateLogEntry": {
-        const { error } = await supabase
+        const { logId, delivered, qty, note } = payload;
+        const patch = { delivered };
+        // ONLY update fields that are explicitly provided
+        if (qty !== undefined) patch.qty = qty;
+        if (note !== undefined) patch.note = note;
+
+        const { data, error } = await supabase
           .from("daily_logs")
-          .update({
-            delivered: payload.delivered,
-            qty: toNum(payload.qty),
-            note: payload.note,
-          })
-          .eq("id", payload.logId);
-        must(error);
-        break;
+          .update(patch)
+          .eq("id", logId)
+          .select()
+          .single();
+        if (error) throw error;
+        return { data: mapLogFromApi(data) };
       }
       case "bulkUpsertLogs": {
         // FIX: guard against undefined / non-array / empty input.
@@ -612,33 +585,22 @@ export async function callApi(action, payload = {}) {
       }
 
       case "getBills": {
-        let q = supabase.from("bills").select("*");
-
-        // CRITICAL FIX: Default to the current month to prevent fetching years of historical data.
-        // getToday().slice(0, 7) reliably returns "YYYY-MM" in IST (e.g., "2024-07").
-        const targetMonth = payload.month || getToday().slice(0, 7);
-
-        q = q.eq("month", targetMonth); // Assumes your DB column is named 'month'
-
-        const { data, error } = await q.order("month", { ascending: false });
+        let query = supabase.from("bills").select("*");
+        if (payload.month)
+          query = query.eq("month", payload.month);
+        const { data, error } = await query.order("created_at", { ascending: false });
         must(error);
-        result.data = { bills: data || [] };
+        result.data = { bills: data.map(mapBillFromApi) };
         break;
       }
       case "lockBill": {
-        const { error } = await supabase
-          .from("bills")
-          .update({ locked: true })
-          .eq("id", payload.billId);
-        must(error);
+        const { billId, version } = payload;
+        await updateWithVersion("bills", billId, version, { locked: true });
         break;
       }
       case "unlockBill": {
-        const { error } = await supabase
-          .from("bills")
-          .update({ locked: false })
-          .eq("id", payload.billId);
-        must(error);
+        const { billId, version } = payload;
+        await updateWithVersion("bills", billId, version, { locked: false });
         break;
       }
       case "recordPayment": {
@@ -646,164 +608,92 @@ export async function callApi(action, payload = {}) {
           billId,
           amount,
           paymentMode,
-          paymentDate,
           note,
           idempotencyKey,
         } = payload;
+
         if (!billId || !(toNum(amount) > 0))
           throw new Error("A valid billId and amount are required");
 
-        const { data: bill, error: billErr } = await supabase
+        // Delegate entirely to the atomic RPC to prevent double-counting (C6)
+        // The RPC enforces idempotency, locked status, and overpayment limits.
+        const { data: rpcResult, error: rpcError } = await supabase.rpc("record_payment_rpc", {
+          p_bill_id: billId,
+          p_amount: toNum(amount),
+          p_mode: paymentMode || "Cash",
+          p_note: note || "",
+          p_idempotency_key: idempotencyKey || crypto.randomUUID()
+        });
+
+        if (rpcError) {
+          // Map Postgres RAISE EXCEPTION messages back to UI error codes
+          if (rpcError.message.includes("locked")) {
+            const e = new Error("This bill is locked.");
+            e.code = "LOCKED";
+            throw e;
+          }
+          if (rpcError.message.includes("exceeds")) {
+            const e = new Error(rpcError.message);
+            e.code = "OVERPAY";
+            throw e;
+          }
+          throw rpcError;
+        }
+
+        // Fetch the updated bill to sync the UI state
+        const { data: updatedBill, error: fetchErr } = await supabase
           .from("bills")
           .select("*")
           .eq("id", billId)
           .single();
-        must(billErr);
 
-        if (bill.locked) {
-          const e = new Error("This bill is locked.");
-          e.code = "LOCKED";
-          throw e;
-        }
-
-        const pending = toNum(bill.amount) - toNum(bill.amount_paid);
-        if (toNum(amount) > pending + 0.01) {
-          const e = new Error(
-            `Payment ${fmt(toNum(amount))} exceeds pending ${fmt(pending)}. Use a credit note for advance payment.`,
-          );
-          e.code = "OVERPAY";
-          throw e;
-        }
-
-        const newPaid = toNum(bill.amount_paid) + toNum(amount);
-        const status =
-          newPaid >= toNum(bill.amount)
-            ? "Paid"
-            : newPaid > 0
-              ? "Partial"
-              : "Unpaid";
-        const currentVersion = toNum(bill.version);
-
-        // 1. Update the bill (Optimistic Concurrency)
-        const { data: updatedBill, error: updateErr } = await supabase
-          .from("bills")
-          .update({
-            amount_paid: newPaid,
-            status,
-            version: currentVersion + 1,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", billId)
-          .eq("version", currentVersion)
-          .select()
-          .single();
-
-        if (updateErr) {
-          if (updateErr.code === "PGRST116") {
-            const e = new Error(
-              "CONFLICT: This bill was modified by another tab. Please refresh.",
-            );
-            e.code = "CONFLICT";
-            throw e;
-          }
-          must(updateErr);
-        }
-
-        // 2. CRITICAL FIX: Record the payment metadata in the new 'payments' table
-        if (idempotencyKey) {
-          const { error: paymentErr } = await supabase.from("payments").insert({
-            bill_id: billId,
-            customer_id: bill.customer_id, // Assumes bill has customer_id
-            amount: toNum(amount),
-            payment_mode: paymentMode || "Unknown",
-            payment_date: paymentDate || getToday(),
-            note: note || "",
-            idempotency_key: idempotencyKey,
-          });
-
-          // If it's a duplicate key, it means a retry happened. We can safely ignore the insert error
-          // because the bill was already updated in step 1, but we should log it.
-          if (paymentErr && paymentErr.code !== "23505") {
-            // 23505 is unique_violation
-            console.error("Failed to record payment metadata:", paymentErr);
-          }
-        }
+        must(fetchErr);
 
         result.data = {
           billId: updatedBill.id,
           amountPaid: updatedBill.amount_paid,
           status: updatedBill.status,
+          bill: mapBillFromApi(updatedBill), // Include full bill for UI state update
+          idempotent: rpcResult?.idempotent || false
         };
         break;
       }
 
       case "generateMonthBill": {
-        const { customerId, month, amount } = payload;
+        const { customerId, month } = payload;
         if (!customerId || !month)
           throw new Error("customerId and month are required");
 
-        // 1. Check if bill already exists for this customer/month
-        const { data: existingBill, error: fetchErr } = await supabase
-          .from("bills")
-          .select("*")
-          .eq("customer_id", customerId)
-          .eq("month", month)
-          .maybeSingle();
+        // Delegate to atomic RPC to calculate from daily_logs and prevent zero-value bugs (C5)
+        const { error: rpcError } = await supabase.rpc("generate_month_bill_rpc", {
+          p_customer_id: customerId,
+          p_month: month
+        });
 
-        must(fetchErr);
-
-        if (existingBill) {
-          if (existingBill.locked) {
+        if (rpcError) {
+          // Map Postgres RAISE EXCEPTION messages back to UI error codes
+          if (rpcError.message.includes("locked")) {
             const e = new Error("Cannot regenerate a locked bill.");
             e.code = "LOCKED";
             throw e;
           }
-
-          const currentVersion = toNum(existingBill.version);
-
-          // 2. CRITICAL FIX: True CAS update with version check
-          const { data, error: updateErr } = await supabase
-            .from("bills")
-            .update({
-              amount: toNum(amount),
-              version: currentVersion + 1,
-              updated_at: new Date().toISOString(),
-            })
-            .eq("id", existingBill.id)
-            .eq("version", currentVersion) // <-- Prevents lost updates
-            .select()
-            .single();
-
-          if (updateErr) {
-            if (updateErr.code === "PGRST116") {
-              const e = new Error(
-                "CONFLICT: This bill was modified elsewhere. Please refresh.",
-              );
-              e.code = "CONFLICT";
-              throw e;
-            }
-            must(updateErr);
-          }
-          result.data = { bill: mapBillFromApi(data), action: "updated" };
-        } else {
-          // 3. Create new bill (no version check needed for inserts)
-          const { data, error: insertErr } = await supabase
-            .from("bills")
-            .insert({
-              customer_id: customerId,
-              month,
-              amount: toNum(amount),
-              amount_paid: 0,
-              status: "Unpaid",
-              locked: false,
-              version: 1,
-            })
-            .select()
-            .single();
-
-          must(insertErr);
-          result.data = { bill: mapBillFromApi(data), action: "created" };
+          throw rpcError;
         }
+
+        // Fetch the resulting bill to return to the UI
+        const { data: billData, error: fetchErr } = await supabase
+          .from("bills")
+          .select("*")
+          .eq("customer_id", customerId)
+          .eq("month", month)
+          .single();
+
+        must(fetchErr);
+
+        result.data = {
+          bill: mapBillFromApi(billData),
+          action: "generated"
+        };
         break;
       }
       case "getBillText": {
@@ -974,15 +864,19 @@ export async function callApi(action, payload = {}) {
         break;
       }
       case "addMilkImport": {
+        const qty = toNum(payload.quantity);
+        const rate = toNum(payload.ratePerLiter);
+        const calculatedTotal = qty * rate;
+
         const { data, error } = await supabase
           .from("milk_imports")
           .insert([
             {
               brand_name: payload.brandName,
               milk_type: payload.milkType,
-              quantity: toNum(payload.quantity),
-              rate_per_liter: toNum(payload.ratePerLiter),
-              total_cost: toNum(payload.totalCost),
+              quantity: qty,
+              rate_per_liter: rate,
+              total_cost: calculatedTotal,
               invoice_number: payload.invoiceNumber,
               supplier_name: payload.supplierName,
               date: payload.date,
@@ -995,6 +889,10 @@ export async function callApi(action, payload = {}) {
         break;
       }
       case "updateMilkImport": {
+        const qty = toNum(payload.quantity);
+        const rate = toNum(payload.ratePerLiter);
+        const calculatedTotal = qty * rate;
+
         const data = await updateWithVersion(
           "milk_imports",
           payload.id,
@@ -1002,9 +900,9 @@ export async function callApi(action, payload = {}) {
           {
             brand_name: payload.brandName,
             milk_type: payload.milkType,
-            quantity: toNum(payload.quantity),
-            rate_per_liter: toNum(payload.ratePerLiter),
-            total_cost: toNum(payload.totalCost),
+            quantity: qty,
+            rate_per_liter: rate,
+            total_cost: calculatedTotal,
             invoice_number: payload.invoiceNumber,
             supplier_name: payload.supplierName,
             date: payload.date,
@@ -1022,11 +920,13 @@ export async function callApi(action, payload = {}) {
         break;
       }
       case "deleteMilkImport": {
+        const { importId, version } = payload;
         const { error } = await supabase
           .from("milk_imports")
           .delete()
-          .eq("id", payload.importId);
-        must(error);
+          .eq("id", importId)
+          .eq("version", toNum(version));
+        if (error) throw error;
         break;
       }
       case "getBrands": {
@@ -1170,7 +1070,7 @@ export async function callApi(action, payload = {}) {
         break;
       }
       case "getDailyInventory": {
-        const date = payload.date || new Date().toISOString().slice(0, 10);
+        const date = payload.date || getToday();
         const [impRes, logRes] = await Promise.all([
           supabase.from("milk_imports").select("quantity").eq("date", date),
           supabase.from("daily_logs").select("qty, delivered").eq("date", date),
@@ -1198,61 +1098,31 @@ export async function callApi(action, payload = {}) {
       case "rotatePIN": {
         const { currentPin, newPin } = payload;
 
-        const cleanCurrent = String(currentPin || "").replace(/\D/g, "");
-        const cleanNew = String(newPin || "").replace(/\D/g, "");
-
-        if (cleanCurrent.length !== 6 || cleanNew.length !== 6) {
-          throw new Error(
-            "Both current and new PINs must be exactly 6 digits.",
-          );
-        }
-
-        // Call the secure RPC to rotate the PIN
-        const { data, error } = await supabase.rpc("rotate_pin", {
-          current_pin: cleanCurrent,
-          new_pin: cleanNew,
+        // 1. Re-authenticate to verify the current PIN is correct
+        const { error: authError } = await supabase.auth.signInWithPassword({
+          email: 'operator@milk.local',
+          password: currentPin
         });
 
-        if (error || !data?.success) {
-          const e = new Error(
-            data?.message || "Failed to rotate PIN. Check current PIN.",
-          );
-          e.code = "ROTATE_FAILED";
+        if (authError) {
+          const e = new Error("Current PIN is incorrect.");
+          e.code = "INVALID_CURRENT_PIN";
           throw e;
+        }
+
+        // 2. Update the password securely via Supabase Auth
+        const { error: updateError } = await supabase.auth.updateUser({
+          password: newPin
+        });
+
+        if (updateError) {
+          throw new Error(updateError.message || "Failed to update PIN.");
         }
 
         result.data = { success: true };
         break;
       }
-      case "eraseAllData": {
-        if (payload.confirm !== "ERASE") {
-          const e = new Error(
-            'Refusing to erase data without payload.confirm === "ERASE".',
-          );
-          e.code = "CONFIRMATION_REQUIRED";
-          throw e;
-        }
-        const tables = [
-          "daily_logs",
-          "adjustments",
-          "credit_notes",
-          "bills",
-          "pause_periods",
-          "subscriptions",
-          "milk_imports",
-          "milk_brands",
-          "customers",
-        ];
-        for (const t of tables) {
-          const { error } = await supabase
-            .from(t)
-            .delete()
-            .not("id", "is", null);
-          must(error);
-        }
-        result.data = { erased: true, tables };
-        break;
-      }
+
       case "applyCreditNote": {
         const { creditNoteId, billId } = payload;
         if (!creditNoteId || !billId)
@@ -1329,6 +1199,27 @@ export async function callApi(action, payload = {}) {
         must(cnUpdateErr);
 
         result.data = { creditNoteId, billId, newPaid, status };
+        break;
+      }
+      case "deactivateCustomer": {
+        // FIX H6: Add proper OCC for deactivation
+        const { id, version } = payload;
+        const patch = { status: "Inactive", version: toNum(version) + 1, updated_at: new Date().toISOString() };
+        const { data, error } = await supabase
+          .from("customers")
+          .update(patch)
+          .eq("id", id)
+          .eq("version", toNum(version))
+          .select()
+          .single();
+        if (error) {
+          if (error.code === "PGRST116") {
+            const e = new Error("CONFLICT: Customer was modified elsewhere.");
+            e.code = "CONFLICT"; throw e;
+          }
+          throw error;
+        }
+        result.data = mapCustomerFromApi(data);
         break;
       }
 

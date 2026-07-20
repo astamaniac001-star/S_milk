@@ -1,4 +1,5 @@
 // ── Imports.jsx ───────────────────────────────────────────────────────────────
+import { useRef } from "react";
 import { fmt } from "../lib/utils.js";
 import {
   Card,
@@ -34,6 +35,27 @@ export default function Imports({
     .reduce((s, i) => s + Number(i.total || 0), 0);
 
   const avgRate = totalQty > 0 ? (totalCost / totalQty).toFixed(2) : "0.00";
+
+  // 🔥 FIX M3: busy guard — blocks a second click from firing another
+  // delete while the first one is still in flight
+  const deletingRef = useRef(false);
+
+  // 🔥 FIX M3: Add confirmation and busy guard
+  const handleDelete = async (imp) => {
+    if (
+      !window.confirm(
+        `Permanently delete import from ${imp.brand} on ${imp.date}?`
+      )
+    )
+      return;
+    if (deletingRef.current) return;
+    deletingRef.current = true;
+    try {
+      await onDelete(imp.id, imp.version);
+    } finally {
+      deletingRef.current = false;
+    }
+  };
 
   return (
     <div>
@@ -155,7 +177,7 @@ export default function Imports({
                 <Btn small variant="success" onClick={() => onConfirm(imp.id)}>
                   Confirm
                 </Btn>
-                <Btn small variant="danger" onClick={() => onDelete(imp.id)}>
+                <Btn small variant="danger" onClick={() => handleDelete(imp)}>
                   Delete
                 </Btn>
               </div>

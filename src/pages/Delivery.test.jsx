@@ -39,7 +39,7 @@ describe("Delivery Page", () => {
   const defaultProps = {
     logDate: "2026-07-04",
     onLogDateChange: vi.fn(),
-    todayLogs: mockLogs,
+    logs: mockLogs,
     onToggleLog: vi.fn(),
     fetchLogs: vi.fn(),
     generateDailyLogs: vi.fn(),

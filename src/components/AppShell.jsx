@@ -57,6 +57,7 @@ export function AppShell({
   const [darkMode, setDarkMode] = useState(
     () => localStorage.getItem("darkMode") === "true",
   );
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
 
   useEffect(() => {
     if (darkMode) {
@@ -65,6 +66,14 @@ export function AppShell({
       document.documentElement.classList.remove("dark");
     }
     localStorage.setItem("darkMode", darkMode);
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
   }, [darkMode]);
 
   return (
@@ -154,7 +163,19 @@ export function AppShell({
           )}
         </div>
       </header>
-
+      {!isOnline && (
+        <div style={{
+          background: "var(--warning-bg, #fef9c3)",
+          color: "var(--warning-text, #854d0e)",
+          padding: "8px 16px",
+          textAlign: "center",
+          fontSize: 13,
+          fontWeight: 600,
+          borderBottom: "1px solid var(--border-color)"
+        }}>
+          📡 You are offline. Data may be stale.
+        </div>
+      )}
       <main
         style={{
           flex: 1,

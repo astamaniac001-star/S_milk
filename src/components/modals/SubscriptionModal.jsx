@@ -19,7 +19,7 @@ export function SubscriptionModal({
     const next = currentDays.includes(day)
       ? currentDays.filter((d) => d !== day)
       : [...currentDays, day];
-    onChange("deliveryDays")(next);
+    onChange("deliveryDays", next);
   };
 
   // ✅ Extracted to a named function so fallow can read the ignore comment
@@ -108,7 +108,7 @@ export function SubscriptionModal({
                   ? data.isActive
                   : true
             }
-            onChange={(e) => onChange("isActive")(e.target.checked)}
+            onChange={(e) => onChange("isActive", e.target.checked)}
           />
           <span style={{ fontSize: 13, color: "#111" }}>Active</span>
         </label>

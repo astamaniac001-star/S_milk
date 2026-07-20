@@ -1,15 +1,15 @@
 // ── Delivery.jsx ──────────────────────────────────────────────────────────────
-import { useEffect, useMemo } from "react";
+import { useMemo } from "react";
 import { useBusy } from "../hooks/useBusy.js";
 import { Card, Field, IS, StatGrid, Empty, Btn } from "../components/ui.jsx";
 
-function calculateDeliveryStats(todayLogs) {
-  const logs = Array.isArray(todayLogs) ? todayLogs : [];
-  const delivered = logs.filter((l) => l.delivered);
+function calculateDeliveryStats(logs) {
+  const safeLogs = Array.isArray(logs) ? logs : [];
+  const delivered = safeLogs.filter((l) => l.delivered);
   return {
-    scheduled: logs.length,
+    scheduled: safeLogs.length,
     deliveredCount: delivered.length,
-    skippedCount: logs.filter((l) => !l.delivered).length,
+    skippedCount: safeLogs.filter((l) => !l.delivered).length,
     totalLiters:
       delivered.reduce((s, l) => s + Number(l.qty || 0), 0).toFixed(1) + " L",
   };
@@ -17,14 +17,19 @@ function calculateDeliveryStats(todayLogs) {
 
 function getToggleButtonStyle(delivered) {
   return {
-    background: delivered ? "#dcfce7" : "#fee2e2",
+    // FIX M8: Use CSS variables for dark mode support
+    background: delivered ? "var(--success-bg, #dcfce7)" : "var(--danger-bg, #fee2e2)",
     border: "none",
     borderRadius: 8,
-    padding: "4px 10px",
-    fontSize: 12,
-    fontWeight: 500,
+    // FIX M11: Increased padding to ensure minimum 44x44 touch target for mobile
+    padding: "12px 16px",
+    fontSize: 14,
+    fontWeight: 600,
     cursor: "pointer",
-    color: delivered ? "#166534" : "#991b1b",
+    color: delivered ? "var(--success-text, #166534)" : "var(--danger-text, #991b1b)",
+    minWidth: "90px",
+    textAlign: "center",
+    transition: "opacity 0.2s",
   };
 }
 
@@ -34,16 +39,27 @@ function getToggleButtonText(delivered) {
 
 function DeliveryLogItem({ id, name, product, qty, delivered, onToggle }) {
   return (
-    <div className="flex justify-between items-center p-3 border-b last:border-b-0">
-      <div className="flex flex-col">
-        <span className="font-semibold text-gray-800">{name}</span>
-        <span className="text-sm text-gray-600">
+    // FIX M9: Replaced Tailwind classes with inline flex styles
+    <div style={{
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      padding: "12px 0",
+      borderBottom: "1px solid var(--border-color, #e5e7eb)"
+    }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+        {/* FIX M8: Use CSS variables for text colors to support Dark Mode */}
+        <span style={{ fontWeight: 600, color: "var(--text-main, #111827)" }}>
+          {name}
+        </span>
+        <span style={{ fontSize: 14, color: "var(--text-muted, #6b7280)" }}>
           {product} · {qty}L
         </span>
       </div>
       <button
         onClick={() => onToggle(id, !delivered)}
         style={getToggleButtonStyle(delivered)}
+        aria-label={`Mark ${name} as ${delivered ? 'skipped' : 'delivered'}`}
       >
         {getToggleButtonText(delivered)}
       </button>
@@ -65,16 +81,15 @@ function resolveLog(l, customerMap) {
 export default function Delivery({
   logDate,
   onLogDateChange,
-  todayLogs = [],
+  logs = [], // FIX H5: Renamed from todayLogs to logs to reflect it holds the selected date's data
   onToggleLog,
-  fetchLogs,
   generateDailyLogs,
   onOpenModal,
   customers = [],
 }) {
   const safeLogs = useMemo(
-    () => (Array.isArray(todayLogs) ? todayLogs : []),
-    [todayLogs],
+    () => (Array.isArray(logs) ? logs : []),
+    [logs],
   );
 
   const customerMap = useMemo(() => {
@@ -92,7 +107,6 @@ export default function Delivery({
 
   const stats = calculateDeliveryStats(safeLogs);
 
-  // 🔥 FIX: Convert the stats object into the items array format that StatGrid expects!
   const statItems = [
     { label: "Scheduled", value: stats.scheduled, icon: "📅" },
     { label: "Delivered", value: stats.deliveredCount, icon: "✅" },
@@ -100,11 +114,8 @@ export default function Delivery({
     { label: "Total", value: stats.totalLiters, icon: "🥛" },
   ];
 
-  useEffect(() => {
-    if (logDate && fetchLogs) {
-      fetchLogs(logDate);
-    }
-  }, [logDate, fetchLogs]);
+  // FIX H5: Removed redundant fetchLogs useEffect. 
+  // The parent (AppPage/useEntityStore) now handles fetching when logDate changes, preventing race conditions.
 
   const [busy, handleGenerate] = useBusy(async () => {
     if (generateDailyLogs) {
@@ -113,29 +124,41 @@ export default function Delivery({
   });
 
   return (
-    <div className="space-y-4">
+    // FIX M9: Replaced undefined Tailwind classes with inline flex styles
+    <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
       <Card>
-        <div className="flex flex-col sm:flex-row gap-3 items-end">
-          <Field label="Date" className="flex-1">
+        <div style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: "12px",
+          alignItems: "flex-end"
+        }}>
+          <Field label="Date" style={{ flex: 1, width: "100%" }}>
             <input
               type="date"
               value={logDate}
               onChange={(e) => onLogDateChange(e.target.value)}
-              style={IS()}
+              style={{ ...IS(), width: "100%" }}
             />
           </Field>
 
-          <div className="flex gap-2 flex-wrap">
+          <div style={{
+            display: "flex",
+            gap: "8px",
+            flexWrap: "wrap",
+            width: "100%",
+            justifyContent: "flex-end"
+          }}>
             <Btn
               onClick={handleGenerate}
               disabled={busy}
-              className="flex-1 sm:flex-none"
+              style={{ flex: "1 1 auto", minWidth: "150px" }}
             >
               {busy ? "⏳ Generating..." : "⚡ Generate Deliveries"}
             </Btn>
             <Btn
               onClick={() => onOpenModal("addAdHoc")}
-              style={{ whiteSpace: "nowrap" }}
+              style={{ whiteSpace: "nowrap", flex: "0 0 auto" }}
             >
               + Extra Delivery
             </Btn>
@@ -143,14 +166,13 @@ export default function Delivery({
         </div>
       </Card>
 
-      {/* 🔥 FIX: Pass the array 'statItems' instead of the object 'stats' */}
       <StatGrid items={statItems} />
 
       {safeLogs.length === 0 ? (
         <Empty message="No deliveries scheduled for this date." />
       ) : (
         <Card>
-          <div className="space-y-2">
+          <div style={{ display: "flex", flexDirection: "column" }}>
             {resolvedLogs.map((l) => (
               <DeliveryLogItem
                 key={l.id}

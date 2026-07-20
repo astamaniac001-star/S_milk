@@ -13,7 +13,7 @@ import {
 } from "../lib/api.js";
 import { getToday } from "../lib/utils.js";
 
-export function useEntityStore(token) {
+export function useEntityStore(token, logDate, billMonth) {
   const [customers, setCustomers] = useState([]);
   const [imports, setImports] = useState([]);
   const [bills, setBills] = useState([]);
@@ -51,9 +51,9 @@ export function useEntityStore(token) {
       const [custs, bils, imps, lgs, adjs, paus, brnds, subs, cns] =
         await Promise.all([
           safeFetch("getCustomers", {}, "customers"),
-          safeFetch("getBills", {}, "bills"),
+          safeFetch("getBills", { month: billMonth }, "bills"),
           safeFetch("getMilkImports", {}, "imports"),
-          safeFetch("getDailyLogs", { date: getToday() }, "logs"),
+          safeFetch("getDailyLogs", { date: logDate || getToday() }, "logs"),
           safeFetch("getAdjustments", {}, "adjustments"),
           safeFetch("getPauses", {}, "pauses"),
           safeFetch("getBrands", {}, "brands"),
@@ -71,7 +71,7 @@ export function useEntityStore(token) {
       if (cns !== null) setCreditNotes(cns.map(mapCreditNoteFromApi));
     };
     fetchData();
-  }, [token, safeFetch, refreshKey]);
+  }, [token, safeFetch, refreshKey, logDate, billMonth]);
 
   const fetchLogs = useCallback(async (date) => {
     try {

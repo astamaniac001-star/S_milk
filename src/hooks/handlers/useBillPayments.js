@@ -22,20 +22,30 @@ export function useBillPayments(state) {
   const recordPayment = useCallback(
     async (billIdArg, amountArg) => {
       const billId = billIdArg || modal.data?.id || modal.data?.billId;
-      const amount = amountArg !== undefined ? amountArg : form.payAmt;
+      const billData = modal.data || {};
+
+      // FIX H8: Resolve defaults exactly as the UI displays them
+      const pending = (billData.amount || 0) - (billData.paid || 0);
+      const amount = amountArg !== undefined ? amountArg : (form.payAmt ?? pending);
+      const mode = form.payMode ?? "Cash";
+      const date = form.payDate ?? getToday();
+      const note = form.payNote ?? "";
 
       if (!amount || Number(amount) <= 0) {
         showToast("Enter valid amount", "error");
         return;
       }
+
       try {
         const payload = mapPaymentToApi(billId, amount, {
-          mode: form.payMode,
-          date: form.payDate,
-          note: form.payNote,
+          mode,
+          date,
+          note,
         });
+
         await callApi("recordPayment", payload);
         showToast(`₹${amount} recorded`, "success");
+
         if (closeModal) closeModal();
         const res = await callApi("getBills", {});
         setBills((res.bills || []).map(mapBillFromApi));
@@ -48,20 +58,27 @@ export function useBillPayments(state) {
 
   const saveAdjustment = useCallback(
     async (billIdArg, amountArg, reasonArg) => {
+      // FIX H8: Apply fallbacks for adjustment form as well
       const amount = amountArg !== undefined ? amountArg : form.amount;
       const reason = reasonArg !== undefined ? reasonArg : form.reason;
       const customerId = form.custId || modal.data?.custId;
+      const date = form.date || getToday();
 
       if (!customerId) {
         showToast("Customer ID is missing", "error");
         return;
       }
+      if (!amount || Number(amount) === 0) {
+        showToast("Enter valid amount", "error");
+        return;
+      }
+
       try {
         const payload = {
           customerId,
           amount: Number(amount),
           reason,
-          date: form.date || getToday(),
+          date,
           idempotencyKey: Date.now().toString(),
         };
         await callApi("addAdjustment", payload);
@@ -96,7 +113,6 @@ export function useBillPayments(state) {
 
   const addCreditNote = useCallback(
     async (data) => {
-      // 🛡️ PREVENT ORPHANED CREDIT NOTES: Validate required fields before API call
       if (!data.custId && !data.customerId) {
         showToast("Please select a customer for the credit note", "error");
         return;

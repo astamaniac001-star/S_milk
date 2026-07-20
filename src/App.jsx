@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+
 import { ErrorBoundary } from "./components/ErrorBoundary.jsx";
 import { AppShell } from "./components/AppShell.jsx";
 import { AppPage } from "./components/AppPage.jsx";
@@ -9,11 +9,10 @@ import { useAppState } from "./hooks/useAppState.js";
 import { useAppHandlers } from "./hooks/useAppHandlers.js";
 import { Toast } from "./components/ui.jsx";
 
-// NEW: Import the API and date utilities needed for auto-rollover
+/* NEW: Custom hook to handle automatic monthly rollover
 import { callApi } from "./lib/api.js";
 import { getToday } from "./lib/utils.js";
 
-// NEW: Custom hook to handle automatic monthly rollover
 function useAutoMonthRollover(isAuthenticated) {
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -43,13 +42,14 @@ function useAutoMonthRollover(isAuthenticated) {
     }
   }, [isAuthenticated]);
 }
+*/
 
 export default function App() {
   const auth = useAuth();
 
-  // NEW: Trigger the auto-rollover check as soon as auth is established
+  /* NEW: Trigger the auto-rollover check as soon as auth is established
   useAutoMonthRollover(auth.isAuthenticated);
-
+  */
   const state = useAppState(auth);
   const handlers = useAppHandlers(state);
   const ctx = { ...state, ...handlers, auth };

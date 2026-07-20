@@ -1,6 +1,7 @@
+import { useEffect } from "react";
 import { Field, Modal, Btn, IS } from "../ui.jsx";
 import { useBusy } from "../../hooks/useBusy.js";
-import { fmt } from "../../lib/utils.js";
+import { fmt, getToday } from "../../lib/utils.js";
 import { BLUE_L, BLUE } from "../../lib/constants.js";
 
 // fallow-ignore-next-line complexity
@@ -17,6 +18,16 @@ export function PaymentModal({
   const customerName =
     customers.find((c) => c.id === data.custId)?.name || "Unknown Customer";
   const [busy, save] = useBusy(onSave);
+  useEffect(() => {
+    if (data && form?.payAmt === undefined) {
+      const pending = (data.amount || 0) - (data.paid || 0);
+      // We use the object/event shape that standard onChange handlers expect
+      onChange("payAmt")({ target: { value: pending } });
+      onChange("payMode")({ target: { value: "Cash" } });
+      onChange("payDate")({ target: { value: today || getToday() } });
+    }
+  }, [data, form, onChange, today]);
+
   return (
     <Modal title={"Record Payment — " + customerName} onClose={onClose}>
       <div

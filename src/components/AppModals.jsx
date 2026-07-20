@@ -13,6 +13,7 @@ import {
   AdHocLogModal,
   CreditNoteModal,
 } from "./forms.jsx";
+import { ChangePinModal } from "./modals/ChangePinModal.jsx";
 
 function renderCustomerModal(ctx, isEdit) {
   return (
@@ -91,7 +92,7 @@ function renderSubscriptionModal(ctx) {
     <SubscriptionModal
       form={ctx.form}
       data={ctx.modal.data}
-      onChange={ctx.setF}
+      onChange={ctx.updateForm}
       // Merge form data with ID/Version for Optimistic Concurrency Control if editing
       onSave={() =>
         ctx.saveSubscription({
@@ -112,6 +113,12 @@ const MODAL_RENDERERS = {
   editCustomer: (ctx) => renderCustomerModal(ctx, true),
   addImport: renderImportModal,
   payment: renderPaymentModal,
+  changePin: (ctx) => (
+    <ChangePinModal
+      onClose={ctx.closeModal}
+      showToast={ctx.showToast}
+    />
+  ),
   billDetail: (ctx) => (
     <BillDetailModal
       data={ctx.modal.data}
@@ -170,11 +177,11 @@ const MODAL_RENDERERS = {
             sub
               ? { ...sub }
               : {
-                  isActive: true,
-                  deliveryDays: [1, 2, 3, 4, 5],
-                  quantity: 1,
-                  milkType: "FULL_CREAM",
-                },
+                isActive: true,
+                deliveryDays: [1, 2, 3, 4, 5],
+                quantity: 1,
+                milkType: "FULL_CREAM",
+              },
           );
         }
         // Open the correct modal type

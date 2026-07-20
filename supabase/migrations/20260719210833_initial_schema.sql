@@ -1,0 +1,1115 @@
+
+
+
+SET statement_timeout = 0;
+SET lock_timeout = 0;
+SET idle_in_transaction_session_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = on;
+SELECT pg_catalog.set_config('search_path', '', false);
+SET check_function_bodies = false;
+SET xmloption = content;
+SET client_min_messages = warning;
+SET row_security = off;
+
+
+COMMENT ON SCHEMA "public" IS 'standard public schema';
+
+
+
+CREATE EXTENSION IF NOT EXISTS "pg_stat_statements" WITH SCHEMA "extensions";
+
+
+
+
+
+
+CREATE EXTENSION IF NOT EXISTS "pgcrypto" WITH SCHEMA "extensions";
+
+
+
+
+
+
+CREATE EXTENSION IF NOT EXISTS "supabase_vault" WITH SCHEMA "vault";
+
+
+
+
+
+
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA "extensions";
+
+
+
+
+
+
+CREATE OR REPLACE FUNCTION "public"."apply_adjustment_rpc"("p_adjustment_id" "uuid", "p_bill_id" "uuid") RETURNS "jsonb"
+    LANGUAGE "plpgsql"
+    AS $$
+DECLARE v_adj record; v_bill record;
+BEGIN
+  SELECT * INTO v_adj FROM adjustments WHERE id = p_adjustment_id FOR UPDATE;
+  IF v_adj IS NULL OR v_adj.status = 'Applied' THEN RETURN jsonb_build_object('success', true, 'idempotent', true); END IF;
+
+  SELECT * INTO v_bill FROM bills WHERE id = p_bill_id FOR UPDATE;
+  IF v_bill.customer_id != v_adj.customer_id THEN RAISE EXCEPTION 'Customer mismatch'; END IF;
+
+  UPDATE bills SET amount = amount + v_adj.amount, version = version + 1 WHERE id = p_bill_id;
+  UPDATE adjustments SET status = 'Applied', bill_id = p_bill_id WHERE id = p_adjustment_id;
+
+  RETURN jsonb_build_object('success', true);
+END; $$;
+
+
+ALTER FUNCTION "public"."apply_adjustment_rpc"("p_adjustment_id" "uuid", "p_bill_id" "uuid") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."generate_month_bill_rpc"("p_customer_id" "uuid", "p_month" "text") RETURNS "jsonb"
+    LANGUAGE "plpgsql"
+    AS $$
+DECLARE v_rate numeric; v_total_qty numeric; v_amount numeric; v_existing_bill record;
+BEGIN
+  SELECT rate_per_liter INTO v_rate FROM customers WHERE id = p_customer_id;
+  IF v_rate IS NULL THEN v_rate := 0; END IF;
+
+  SELECT COALESCE(SUM(qty), 0) INTO v_total_qty FROM daily_logs
+  WHERE customer_id = p_customer_id AND to_char(date, 'YYYY-MM') = p_month AND delivered = true;
+
+  v_amount := v_total_qty * v_rate;
+
+  SELECT * INTO v_existing_bill FROM bills WHERE customer_id = p_customer_id AND month = p_month FOR UPDATE;
+  
+  IF v_existing_bill IS NOT NULL THEN
+    IF v_existing_bill.locked = true THEN 
+      RAISE EXCEPTION 'Cannot regenerate a locked bill.'; 
+    END IF;
+    UPDATE bills SET amount = v_amount, version = version + 1, updated_at = now() WHERE id = v_existing_bill.id;
+  ELSE
+    INSERT INTO bills (id, customer_id, month, amount, amount_paid, status, locked, version)
+    VALUES (gen_random_uuid(), p_customer_id, p_month, v_amount, 0, 'Unpaid', false, 1);
+  END IF;
+
+  RETURN jsonb_build_object('success', true, 'amount', v_amount);
+END; $$;
+
+
+ALTER FUNCTION "public"."generate_month_bill_rpc"("p_customer_id" "uuid", "p_month" "text") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."record_payment"("p_bill_id" "uuid", "p_amount" numeric, "p_mode" "text" DEFAULT 'Cash'::"text", "p_date" "date" DEFAULT CURRENT_DATE, "p_note" "text" DEFAULT NULL::"text") RETURNS json
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+DECLARE
+  v_bill bills%ROWTYPE;
+  v_new_paid numeric;
+  v_status text;
+BEGIN
+  SELECT * INTO v_bill FROM bills WHERE id = p_bill_id FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Bill not found' USING ERRCODE = 'P0002'; END IF;
+  IF v_bill.locked THEN RAISE EXCEPTION 'Bill is locked' USING ERRCODE = 'P0001'; END IF;
+  IF p_amount > (v_bill.amount - v_bill.amount_paid) + 0.01 THEN
+    RAISE EXCEPTION 'Payment exceeds pending amount' USING ERRCODE = 'P0001';
+  END IF;
+
+  v_new_paid := v_bill.amount_paid + p_amount;
+  v_status := CASE WHEN v_new_paid >= v_bill.amount THEN 'Paid' WHEN v_new_paid > 0 THEN 'Partial' ELSE 'Unpaid' END;
+
+  UPDATE bills SET amount_paid = v_new_paid, status = v_status WHERE id = p_bill_id;
+  RETURN json_build_object('billId', p_bill_id, 'amountPaid', v_new_paid, 'status', v_status);
+END;
+$$;
+
+
+ALTER FUNCTION "public"."record_payment"("p_bill_id" "uuid", "p_amount" numeric, "p_mode" "text", "p_date" "date", "p_note" "text") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."record_payment_rpc"("p_bill_id" "uuid", "p_amount" numeric, "p_mode" "text", "p_note" "text", "p_idempotency_key" "uuid") RETURNS "jsonb"
+    LANGUAGE "plpgsql"
+    AS $$
+DECLARE v_bill record; v_existing_payment record; v_pending numeric;
+BEGIN
+  -- 1. Idempotency check
+  SELECT id INTO v_existing_payment FROM payments WHERE idempotency_key = p_idempotency_key;
+  IF v_existing_payment IS NOT NULL THEN 
+    RETURN jsonb_build_object('success', true, 'idempotent', true); 
+  END IF;
+
+  -- 2. Lock and validate bill
+  SELECT * INTO v_bill FROM bills WHERE id = p_bill_id FOR UPDATE;
+  IF v_bill IS NULL THEN RAISE EXCEPTION 'Bill not found'; END IF;
+  IF v_bill.locked = true THEN RAISE EXCEPTION 'This bill is locked.'; END IF;
+  IF p_amount <= 0 THEN RAISE EXCEPTION 'Amount must be positive'; END IF;
+  
+  v_pending := v_bill.amount - v_bill.amount_paid;
+  IF p_amount > v_pending + 0.01 THEN 
+    RAISE EXCEPTION 'Payment exceeds pending amount (%). Use a credit note for advance payment.', v_pending; 
+  END IF;
+
+  -- 3. Insert payment and update bill atomically
+  INSERT INTO payments (id, bill_id, amount, mode, note, idempotency_key, created_at)
+  VALUES (gen_random_uuid(), p_bill_id, p_amount, p_mode, p_note, p_idempotency_key, now());
+
+  UPDATE bills 
+  SET amount_paid = amount_paid + p_amount,
+      status = CASE WHEN (amount_paid + p_amount) >= amount THEN 'Paid' ELSE 'Partial' END,
+      version = version + 1,
+      updated_at = now()
+  WHERE id = p_bill_id;
+
+  RETURN jsonb_build_object('success', true);
+END; $$;
+
+
+ALTER FUNCTION "public"."record_payment_rpc"("p_bill_id" "uuid", "p_amount" numeric, "p_mode" "text", "p_note" "text", "p_idempotency_key" "uuid") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."rotate_pin"("p_current" "text", "p_new" "text") RETURNS "jsonb"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
+DECLARE
+  v_hash text;
+  v_settings_id uuid;
+BEGIN
+  SELECT id, pin_hash INTO v_settings_id, v_hash FROM settings LIMIT 1 FOR UPDATE;
+  
+  IF crypt(p_current, v_hash) != v_hash THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Current PIN is incorrect.');
+  END IF;
+
+  UPDATE settings SET pin_hash = crypt(p_new, gen_salt('bf')) WHERE id = v_settings_id;
+  RETURN jsonb_build_object('success', true);
+END;
+$$;
+
+
+ALTER FUNCTION "public"."rotate_pin"("p_current" "text", "p_new" "text") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."update_updated_at_column"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."update_updated_at_column"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."verify_pin"("p_pin" "text") RETURNS "jsonb"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
+DECLARE
+  v_hash text;
+  v_attempts int;
+  v_locked_until timestamptz;
+  v_settings_id uuid;
+BEGIN
+  SELECT id, pin_hash, failed_attempts, locked_until 
+  INTO v_settings_id, v_hash, v_attempts, v_locked_until 
+  FROM settings LIMIT 1 FOR UPDATE; -- Lock row to prevent race conditions
+
+  IF v_locked_until IS NOT NULL AND v_locked_until > now() THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Account locked. Try later.');
+  END IF;
+
+  IF crypt(p_pin, v_hash) = v_hash THEN
+    UPDATE settings SET failed_attempts = 0, locked_until = NULL WHERE id = v_settings_id;
+    RETURN jsonb_build_object('success', true);
+  ELSE
+    v_attempts := v_attempts + 1;
+    IF v_attempts >= 5 THEN
+      UPDATE settings SET failed_attempts = v_attempts, locked_until = now() + interval '15 minutes' WHERE id = v_settings_id;
+      RETURN jsonb_build_object('success', false, 'error', 'Too many attempts. Locked for 15 mins.');
+    ELSE
+      UPDATE settings SET failed_attempts = v_attempts WHERE id = v_settings_id;
+      RETURN jsonb_build_object('success', false, 'error', 'Invalid PIN.');
+    END IF;
+  END IF;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."verify_pin"("p_pin" "text") OWNER TO "postgres";
+
+SET default_tablespace = '';
+
+SET default_table_access_method = "heap";
+
+
+CREATE TABLE IF NOT EXISTS "public"."adjustments" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "customer_id" "uuid",
+    "bill_id" "uuid",
+    "amount" numeric DEFAULT 0,
+    "reason" "text",
+    "applied" boolean DEFAULT false,
+    "date" "date",
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    CONSTRAINT "chk_adjustments_amount_nonzero" CHECK (("amount" <> (0)::numeric))
+);
+
+ALTER TABLE ONLY "public"."adjustments" FORCE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."adjustments" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."auth_tokens" (
+    "token" "text" NOT NULL,
+    "issued_at" timestamp with time zone DEFAULT "now"(),
+    "expires_at" timestamp with time zone NOT NULL,
+    "consumed" boolean DEFAULT false
+);
+
+ALTER TABLE ONLY "public"."auth_tokens" FORCE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."auth_tokens" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."bills" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "customer_id" "uuid",
+    "month" "text" NOT NULL,
+    "amount" numeric DEFAULT 0,
+    "amount_paid" numeric DEFAULT 0,
+    "status" "text" DEFAULT 'Unpaid'::"text",
+    "locked" boolean DEFAULT false,
+    "version" integer DEFAULT 1,
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    "updated_at" timestamp with time zone DEFAULT "now"(),
+    CONSTRAINT "chk_bills_amount_positive" CHECK ((("amount" >= (0)::numeric) AND ("amount_paid" >= (0)::numeric))),
+    CONSTRAINT "chk_bills_paid_lte_amount" CHECK (("amount_paid" <= "amount")),
+    CONSTRAINT "chk_bills_status_valid" CHECK (("status" = ANY (ARRAY['Unpaid'::"text", 'Partial'::"text", 'Paid'::"text", 'Draft'::"text"])))
+);
+
+ALTER TABLE ONLY "public"."bills" FORCE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."bills" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."credit_notes" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "customer_id" "uuid",
+    "bill_id" "uuid",
+    "applied_to_bill_id" "uuid",
+    "amount" numeric DEFAULT 0,
+    "reason" "text",
+    "applied" boolean DEFAULT false,
+    "date" "date",
+    "created_at" timestamp with time zone DEFAULT "now"()
+);
+
+ALTER TABLE ONLY "public"."credit_notes" FORCE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."credit_notes" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."customers" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "name" "text" NOT NULL,
+    "phone" "text",
+    "delivery_address" "text",
+    "status" "text" DEFAULT 'Active'::"text",
+    "product" "text" DEFAULT 'Full Cream'::"text",
+    "daily_qty" numeric DEFAULT 1,
+    "delivery_days" "jsonb" DEFAULT '[0, 1, 2, 3, 4, 5, 6]'::"jsonb",
+    "balance" numeric DEFAULT 0,
+    "version" integer DEFAULT 1,
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    "updated_at" timestamp with time zone DEFAULT "now"()
+);
+
+ALTER TABLE ONLY "public"."customers" FORCE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."customers" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."daily_logs" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "customer_id" "uuid",
+    "date" "date" NOT NULL,
+    "product" "text",
+    "qty" numeric DEFAULT 0,
+    "delivered" boolean DEFAULT false,
+    "note" "text",
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    "updated_at" timestamp with time zone DEFAULT "now"()
+);
+
+ALTER TABLE ONLY "public"."daily_logs" FORCE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."daily_logs" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."milk_brands" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "brand_name" "text" NOT NULL,
+    "supplier_name" "text",
+    "supplier_phone" "text",
+    "default_milk_type" "text",
+    "rate_per_liter" numeric DEFAULT 0,
+    "status" "text" DEFAULT 'Active'::"text",
+    "created_at" timestamp with time zone DEFAULT "now"()
+);
+
+ALTER TABLE ONLY "public"."milk_brands" FORCE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."milk_brands" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."milk_imports" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "brand_id" "uuid",
+    "brand_name" "text",
+    "milk_type" "text",
+    "quantity" numeric DEFAULT 0,
+    "rate_per_liter" numeric DEFAULT 0,
+    "total_cost" numeric DEFAULT 0,
+    "invoice_number" "text",
+    "supplier_name" "text",
+    "date" "date" NOT NULL,
+    "status" "text" DEFAULT 'Draft'::"text",
+    "version" integer DEFAULT 1,
+    "created_at" timestamp with time zone DEFAULT "now"()
+);
+
+ALTER TABLE ONLY "public"."milk_imports" FORCE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."milk_imports" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."pause_periods" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "customer_id" "uuid",
+    "start_date" "date" NOT NULL,
+    "end_date" "date",
+    "reason" "text",
+    "created_at" timestamp with time zone DEFAULT "now"()
+);
+
+ALTER TABLE ONLY "public"."pause_periods" FORCE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."pause_periods" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."payments" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "bill_id" "uuid" NOT NULL,
+    "customer_id" "uuid" NOT NULL,
+    "amount" numeric NOT NULL,
+    "payment_mode" "text" DEFAULT 'Cash'::"text",
+    "payment_date" "date" NOT NULL,
+    "note" "text",
+    "idempotency_key" "text",
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    CONSTRAINT "chk_payments_amount_positive" CHECK (("amount" > (0)::numeric))
+);
+
+ALTER TABLE ONLY "public"."payments" FORCE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."payments" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."settings" (
+    "key" "text" NOT NULL,
+    "value" "text",
+    "pin_hash" "text",
+    "pin_salt" "text",
+    "failed_attempts" integer DEFAULT 0,
+    "locked_until" timestamp with time zone,
+    "updated_at" timestamp with time zone DEFAULT "now"()
+);
+
+ALTER TABLE ONLY "public"."settings" FORCE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."settings" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."subscriptions" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "customer_id" "uuid",
+    "milk_type" "text" DEFAULT 'Full Cream'::"text",
+    "qty" numeric DEFAULT 1,
+    "delivery_days" "jsonb" DEFAULT '[0, 1, 2, 3, 4, 5, 6]'::"jsonb",
+    "is_active" boolean DEFAULT true,
+    "version" integer DEFAULT 1,
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    "updated_at" timestamp with time zone DEFAULT "now"()
+);
+
+ALTER TABLE ONLY "public"."subscriptions" FORCE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."subscriptions" OWNER TO "postgres";
+
+
+ALTER TABLE ONLY "public"."adjustments"
+    ADD CONSTRAINT "adjustments_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."auth_tokens"
+    ADD CONSTRAINT "auth_tokens_pkey" PRIMARY KEY ("token");
+
+
+
+ALTER TABLE ONLY "public"."bills"
+    ADD CONSTRAINT "bills_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."credit_notes"
+    ADD CONSTRAINT "credit_notes_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."customers"
+    ADD CONSTRAINT "customers_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."daily_logs"
+    ADD CONSTRAINT "daily_logs_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."milk_brands"
+    ADD CONSTRAINT "milk_brands_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."milk_imports"
+    ADD CONSTRAINT "milk_imports_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."pause_periods"
+    ADD CONSTRAINT "pause_periods_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."payments"
+    ADD CONSTRAINT "payments_idempotency_key_key" UNIQUE ("idempotency_key");
+
+
+
+ALTER TABLE ONLY "public"."payments"
+    ADD CONSTRAINT "payments_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."settings"
+    ADD CONSTRAINT "settings_pkey" PRIMARY KEY ("key");
+
+
+
+ALTER TABLE ONLY "public"."subscriptions"
+    ADD CONSTRAINT "subscriptions_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."daily_logs"
+    ADD CONSTRAINT "unique_customer_date" UNIQUE ("customer_id", "date");
+
+
+
+ALTER TABLE ONLY "public"."bills"
+    ADD CONSTRAINT "unique_customer_month" UNIQUE ("customer_id", "month");
+
+
+
+CREATE INDEX "idx_bills_customer_month" ON "public"."bills" USING "btree" ("customer_id", "month");
+
+
+
+CREATE INDEX "idx_daily_logs_customer_date" ON "public"."daily_logs" USING "btree" ("customer_id", "date");
+
+
+
+CREATE INDEX "idx_payments_bill_id" ON "public"."payments" USING "btree" ("bill_id");
+
+
+
+CREATE INDEX "idx_subscriptions_customer" ON "public"."subscriptions" USING "btree" ("customer_id");
+
+
+
+CREATE OR REPLACE TRIGGER "set_updated_at" BEFORE UPDATE ON "public"."adjustments" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at_column"();
+
+
+
+CREATE OR REPLACE TRIGGER "set_updated_at" BEFORE UPDATE ON "public"."bills" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at_column"();
+
+
+
+CREATE OR REPLACE TRIGGER "set_updated_at" BEFORE UPDATE ON "public"."credit_notes" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at_column"();
+
+
+
+CREATE OR REPLACE TRIGGER "set_updated_at" BEFORE UPDATE ON "public"."customers" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at_column"();
+
+
+
+CREATE OR REPLACE TRIGGER "set_updated_at" BEFORE UPDATE ON "public"."daily_logs" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at_column"();
+
+
+
+CREATE OR REPLACE TRIGGER "set_updated_at" BEFORE UPDATE ON "public"."settings" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at_column"();
+
+
+
+CREATE OR REPLACE TRIGGER "set_updated_at" BEFORE UPDATE ON "public"."subscriptions" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at_column"();
+
+
+
+ALTER TABLE ONLY "public"."adjustments"
+    ADD CONSTRAINT "adjustments_bill_id_fkey" FOREIGN KEY ("bill_id") REFERENCES "public"."bills"("id") ON DELETE SET NULL;
+
+
+
+ALTER TABLE ONLY "public"."adjustments"
+    ADD CONSTRAINT "adjustments_customer_id_fkey" FOREIGN KEY ("customer_id") REFERENCES "public"."customers"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."bills"
+    ADD CONSTRAINT "bills_customer_id_fkey" FOREIGN KEY ("customer_id") REFERENCES "public"."customers"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."credit_notes"
+    ADD CONSTRAINT "credit_notes_applied_to_bill_id_fkey" FOREIGN KEY ("applied_to_bill_id") REFERENCES "public"."bills"("id");
+
+
+
+ALTER TABLE ONLY "public"."credit_notes"
+    ADD CONSTRAINT "credit_notes_bill_id_fkey" FOREIGN KEY ("bill_id") REFERENCES "public"."bills"("id") ON DELETE SET NULL;
+
+
+
+ALTER TABLE ONLY "public"."credit_notes"
+    ADD CONSTRAINT "credit_notes_customer_id_fkey" FOREIGN KEY ("customer_id") REFERENCES "public"."customers"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."daily_logs"
+    ADD CONSTRAINT "daily_logs_customer_id_fkey" FOREIGN KEY ("customer_id") REFERENCES "public"."customers"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."milk_imports"
+    ADD CONSTRAINT "milk_imports_brand_id_fkey" FOREIGN KEY ("brand_id") REFERENCES "public"."milk_brands"("id");
+
+
+
+ALTER TABLE ONLY "public"."pause_periods"
+    ADD CONSTRAINT "pause_periods_customer_id_fkey" FOREIGN KEY ("customer_id") REFERENCES "public"."customers"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."payments"
+    ADD CONSTRAINT "payments_bill_id_fkey" FOREIGN KEY ("bill_id") REFERENCES "public"."bills"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."payments"
+    ADD CONSTRAINT "payments_customer_id_fkey" FOREIGN KEY ("customer_id") REFERENCES "public"."customers"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."subscriptions"
+    ADD CONSTRAINT "subscriptions_customer_id_fkey" FOREIGN KEY ("customer_id") REFERENCES "public"."customers"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE "public"."adjustments" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "app_access_adjustments" ON "public"."adjustments" TO "authenticated", "anon" USING (true) WITH CHECK (true);
+
+
+
+CREATE POLICY "app_access_bills" ON "public"."bills" TO "authenticated", "anon" USING (true) WITH CHECK (true);
+
+
+
+CREATE POLICY "app_access_credit_notes" ON "public"."credit_notes" TO "authenticated", "anon" USING (true) WITH CHECK (true);
+
+
+
+CREATE POLICY "app_access_customers" ON "public"."customers" TO "authenticated", "anon" USING (true) WITH CHECK (true);
+
+
+
+CREATE POLICY "app_access_daily_logs" ON "public"."daily_logs" TO "authenticated", "anon" USING (true) WITH CHECK (true);
+
+
+
+CREATE POLICY "app_access_milk_brands" ON "public"."milk_brands" TO "authenticated", "anon" USING (true) WITH CHECK (true);
+
+
+
+CREATE POLICY "app_access_milk_imports" ON "public"."milk_imports" TO "authenticated", "anon" USING (true) WITH CHECK (true);
+
+
+
+CREATE POLICY "app_access_pause_periods" ON "public"."pause_periods" TO "authenticated", "anon" USING (true) WITH CHECK (true);
+
+
+
+CREATE POLICY "app_access_payments" ON "public"."payments" TO "authenticated", "anon" USING (true) WITH CHECK (true);
+
+
+
+CREATE POLICY "app_access_subscriptions" ON "public"."subscriptions" TO "authenticated", "anon" USING (true) WITH CHECK (true);
+
+
+
+CREATE POLICY "auth_all_adjustments" ON "public"."adjustments" TO "authenticated" USING (true) WITH CHECK (true);
+
+
+
+CREATE POLICY "auth_all_auth_tokens" ON "public"."auth_tokens" TO "authenticated" USING (true) WITH CHECK (true);
+
+
+
+CREATE POLICY "auth_all_bills" ON "public"."bills" TO "authenticated" USING (true) WITH CHECK (true);
+
+
+
+CREATE POLICY "auth_all_credit_notes" ON "public"."credit_notes" TO "authenticated" USING (true) WITH CHECK (true);
+
+
+
+CREATE POLICY "auth_all_customers" ON "public"."customers" TO "authenticated" USING (true) WITH CHECK (true);
+
+
+
+CREATE POLICY "auth_all_daily_logs" ON "public"."daily_logs" TO "authenticated" USING (true) WITH CHECK (true);
+
+
+
+CREATE POLICY "auth_all_milk_brands" ON "public"."milk_brands" TO "authenticated" USING (true) WITH CHECK (true);
+
+
+
+CREATE POLICY "auth_all_milk_imports" ON "public"."milk_imports" TO "authenticated" USING (true) WITH CHECK (true);
+
+
+
+CREATE POLICY "auth_all_pause_periods" ON "public"."pause_periods" TO "authenticated" USING (true) WITH CHECK (true);
+
+
+
+CREATE POLICY "auth_all_payments" ON "public"."payments" TO "authenticated" USING (true) WITH CHECK (true);
+
+
+
+CREATE POLICY "auth_all_settings" ON "public"."settings" TO "authenticated" USING (true) WITH CHECK (true);
+
+
+
+CREATE POLICY "auth_all_subscriptions" ON "public"."subscriptions" TO "authenticated" USING (true) WITH CHECK (true);
+
+
+
+ALTER TABLE "public"."auth_tokens" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "auth_tokens_allow" ON "public"."auth_tokens" TO "authenticated" USING (true) WITH CHECK (true);
+
+
+
+CREATE POLICY "auth_tokens_block" ON "public"."auth_tokens" TO "anon" USING (false) WITH CHECK (false);
+
+
+
+ALTER TABLE "public"."bills" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."credit_notes" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."customers" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."daily_logs" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."milk_brands" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."milk_imports" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."pause_periods" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."payments" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."settings" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "settings_read" ON "public"."settings" FOR SELECT TO "authenticated", "anon" USING (true);
+
+
+
+CREATE POLICY "settings_write" ON "public"."settings" FOR UPDATE TO "authenticated", "anon" USING (true) WITH CHECK (true);
+
+
+
+ALTER TABLE "public"."subscriptions" ENABLE ROW LEVEL SECURITY;
+
+
+
+
+ALTER PUBLICATION "supabase_realtime" OWNER TO "postgres";
+
+
+GRANT USAGE ON SCHEMA "public" TO "postgres";
+GRANT USAGE ON SCHEMA "public" TO "anon";
+GRANT USAGE ON SCHEMA "public" TO "authenticated";
+GRANT USAGE ON SCHEMA "public" TO "service_role";
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+GRANT ALL ON FUNCTION "public"."apply_adjustment_rpc"("p_adjustment_id" "uuid", "p_bill_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."apply_adjustment_rpc"("p_adjustment_id" "uuid", "p_bill_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."apply_adjustment_rpc"("p_adjustment_id" "uuid", "p_bill_id" "uuid") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."generate_month_bill_rpc"("p_customer_id" "uuid", "p_month" "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."generate_month_bill_rpc"("p_customer_id" "uuid", "p_month" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."generate_month_bill_rpc"("p_customer_id" "uuid", "p_month" "text") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."record_payment"("p_bill_id" "uuid", "p_amount" numeric, "p_mode" "text", "p_date" "date", "p_note" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."record_payment"("p_bill_id" "uuid", "p_amount" numeric, "p_mode" "text", "p_date" "date", "p_note" "text") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."record_payment_rpc"("p_bill_id" "uuid", "p_amount" numeric, "p_mode" "text", "p_note" "text", "p_idempotency_key" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."record_payment_rpc"("p_bill_id" "uuid", "p_amount" numeric, "p_mode" "text", "p_note" "text", "p_idempotency_key" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."record_payment_rpc"("p_bill_id" "uuid", "p_amount" numeric, "p_mode" "text", "p_note" "text", "p_idempotency_key" "uuid") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."rotate_pin"("p_current" "text", "p_new" "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."rotate_pin"("p_current" "text", "p_new" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."rotate_pin"("p_current" "text", "p_new" "text") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."update_updated_at_column"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."update_updated_at_column"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."verify_pin"("p_pin" "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."verify_pin"("p_pin" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."verify_pin"("p_pin" "text") TO "service_role";
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+GRANT ALL ON TABLE "public"."adjustments" TO "authenticated";
+GRANT ALL ON TABLE "public"."adjustments" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."auth_tokens" TO "authenticated";
+GRANT ALL ON TABLE "public"."auth_tokens" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."bills" TO "authenticated";
+GRANT ALL ON TABLE "public"."bills" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."credit_notes" TO "authenticated";
+GRANT ALL ON TABLE "public"."credit_notes" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."customers" TO "authenticated";
+GRANT ALL ON TABLE "public"."customers" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."daily_logs" TO "authenticated";
+GRANT ALL ON TABLE "public"."daily_logs" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."milk_brands" TO "authenticated";
+GRANT ALL ON TABLE "public"."milk_brands" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."milk_imports" TO "authenticated";
+GRANT ALL ON TABLE "public"."milk_imports" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."pause_periods" TO "authenticated";
+GRANT ALL ON TABLE "public"."pause_periods" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."payments" TO "authenticated";
+GRANT ALL ON TABLE "public"."payments" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."settings" TO "authenticated";
+GRANT ALL ON TABLE "public"."settings" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."subscriptions" TO "authenticated";
+GRANT ALL ON TABLE "public"."subscriptions" TO "service_role";
+
+
+
+
+
+
+
+
+
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON SEQUENCES TO "postgres";
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON SEQUENCES TO "anon";
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON SEQUENCES TO "authenticated";
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON SEQUENCES TO "service_role";
+
+
+
+
+
+
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON FUNCTIONS TO "postgres";
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON FUNCTIONS TO "anon";
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON FUNCTIONS TO "authenticated";
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON FUNCTIONS TO "service_role";
+
+
+
+
+
+
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "postgres";
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "anon";
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "authenticated";
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "service_role";
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -273,3 +273,27 @@ a guard in `supabaseClient.js`.
   refactor to a sequential loop or you'll kill the "Generate" button perf.
 - **Service worker: never cache `/api` or `/functions`** — security fix
   baked into the V21 `sw.js`.
+
+## 🗄️ Database Migrations & Schema Context
+
+### AI Agent Context Rules (STRICT ENFORCEMENT)
+**DO NOT** read the `supabase/migrations/` folder to understand the database schema. Migrations represent *historical changes* and will confuse you with dropped columns, renamed tables, and superseded logic. 
+
+To understand the **PRESENT WORKING STATE** of the database, you must **ONLY** read these two files:
+1. **`supabase/schema.sql`**: The complete, compiled, current SQL blueprint of all tables, RLS policies, RPCs, and triggers.
+2. **`src/lib/database.types.ts`**: The auto-generated TypeScript definitions. Use this as your primary source of truth to verify column names, types, and relationships before writing any `callApi` switch cases or mappers.
+
+**Ignored / Archived Files:**
+AI Agents MUST IGNORE THESE DIRECTORIES ENTIRELY:
+- `supabase/migrations/` (Historical ledger only, do not read for current schema)
+- `supabase/_archive/` (Legacy manual SQL scripts)
+- `supabase_sql_editor/` (Legacy directory)
+
+### Migration Workflow Rules (For Humans & AI)
+1. **Never use the Supabase Table Editor UI.** All schema changes must be written as SQL migrations.
+2. **Never edit** `supabase/schema.sql` or `src/lib/database.types.ts` manually. They are auto-generated artifacts.
+3. **Never edit an existing migration file** in `supabase/migrations/` if it has already been committed to Git or pushed to production.
+4. **Always create a new migration** for any schema change using: `supabase migration new <descriptive_name>`
+5. **Applying Migrations:** Use `supabase db push` to apply pending migrations to the linked cloud database. Do not manually copy-paste SQL into the Supabase Dashboard unless explicitly instructed for a hotfix.
+6. **Reverting:** If a migration fails or is incorrect, do not delete the file. Create a *new* migration that undoes the change (e.g., `DROP COLUMN`).
+7. **Syncing Artifacts (CRITICAL):** After pushing a migration, **always** regenerate the present-state artifacts by running `npm run db:sync`. Commit the new migration file AND the updated `schema.sql` / `database.types.ts` to Git together.

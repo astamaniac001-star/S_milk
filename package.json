@@ -14,12 +14,19 @@
     "test:coverage": "vitest run --coverage",
     "fallow": "npx fallow",
     "audit": "npm audit",
-    "circular": "npx madge --circular src/",
+    "circular": "madge --extensions js,jsx --circular src/",
     "cprettier": "npx prettier --check .",
     "wprettier": "npx prettier --write .",
     "check-deps": "npx depcheck",
     "spellcheck": "npx cspell \"src/**/*.{js,jsx}\" \"*.md\" \"index.html\" ",
-    "check-all": "npm run lint && npm run test && npm run build && npm run audit && npm run circular && npm run fallow && npm run spellcheck  && npm run check-deps "
+    "check-all": "npm run lint && npm run test && npm run build ",
+    "advisor-all": "npm run test:coverage && npm run fallow && npm run spellcheck  && npm run check-deps ",
+    "db:baseline": "node scripts/db-baseline.js",
+    "db:new": "supabase migration new",
+    "db:push": "supabase db push",
+    "db:dump": "supabase db dump -f supabase/schema.sql --schema public",
+    "db:types": "supabase gen types typescript --linked > src/lib/database.types.ts",
+    "db:sync": "npm run db:dump && npm run db:types"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.3",

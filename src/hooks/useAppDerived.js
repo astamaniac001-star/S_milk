@@ -13,13 +13,14 @@ export function useAppDerived(state) {
     custFilter,
     impFilter,
     billFilter,
-    // dayTick: forces the memo to re-run across midnight so `todayLogs`
-    // matches the new today. Passed in by useAppState.
     dayTick = 0,
+    logDate,
   } = state;
 
   return useMemo(() => {
     const today = getToday();
+    const targetDate = logDate || today;
+    const selectedDateLogs = logs.filter((l) => l.date === targetDate);
     const todayLogs = logs.filter((l) => l.date === today);
     const confirmedStock = todayLogs
       .filter((l) => l.delivered)
@@ -53,6 +54,7 @@ export function useAppDerived(state) {
       filteredB,
       activeBrandsCount,
       todayLogs,
+      selectedDateLogs,
       confirmedStock,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -66,6 +68,7 @@ export function useAppDerived(state) {
     custFilter,
     impFilter,
     billFilter,
-    dayTick, // Intentional: forces memo invalidation on midnight rollover
+    dayTick,
+    logDate
   ]);
 }

@@ -1,40 +1,56 @@
 // src/hooks/useAuth.js
-import { useState, useEffect, useCallback } from "react";
-import { callApi } from "../lib/api.js";
+import { useState, useEffect } from 'react';
+import { supabase } from '../lib/supabaseClient';
 
-// SECURITY: tokens live in sessionStorage (not localStorage) so a stolen
-// session is bounded to a single tab + its reloads. localStorage would
-// persist across tabs and across site close, giving any XSS payload a much
-// longer window to exfiltrate the token.
+// MIGRATION: Replaced the fake sessionStorage-based token with real Supabase
+// Auth (signInWithPassword). The operator's Supabase user must be pre-created
+// via Dashboard → Authentication → Users with email `operator@milk.local` and
+// the 6-digit PIN as the password.
 //
-// Trade-off: opening the app in a second tab requires re-auth. That's the
-// intended security posture for an internal admin tool.
-//
-// NOTE: a previous build also kept a `sessionSecret` here. It was never
-// generated server-side, never validated, and never read by any code path —
-// just bookkeeping noise. Removed in the 2026-07-15 audit.
-const STORE = sessionStorage;
-const TOKEN_KEY = "token";
+// The hook now returns `session` (the full Supabase session object) instead of
+// a plain `token` string. Downstream code that used `auth.token` as a truthy
+// gate (e.g. useEntityStore) should use `auth.session` or `auth.isAuthenticated`.
 
 export function useAuth() {
-  const [token, setToken] = useState(STORE.getItem(TOKEN_KEY));
-  const [loading, setLoading] = useState(false);
+  const [session, setSession] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  useEffect(() => {
+    // Hydrate from existing Supabase session (persisted in localStorage by
+    // @supabase/supabase-js — this replaces the old sessionStorage approach).
+    supabase.auth.getSession().then(({ data: { session: s } }) => {
+      setSession(s);
+      setLoading(false);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
+      setSession(s);
+      if (_event === 'SIGNED_OUT') {
+        window.dispatchEvent(new CustomEvent("auth:expired"));
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
 
   const login = async (pin) => {
     setLoading(true);
     setError(null);
     try {
-      // CRITICAL FIX: Enforce 6-digit PINs to match the new secure RPC requirements
+      // Enforce 6-digit PIN (same validation the old hook had)
       const cleanPin = String(pin || "").replace(/\D/g, "");
       if (cleanPin.length !== 6) {
         throw new Error("PIN must be exactly 6 digits.");
       }
 
-      const data = await callApi("verifyPIN", { pin: cleanPin });
-
-      if (data.token) STORE.setItem(TOKEN_KEY, data.token);
-      setToken(data.token ?? null);
+      // Map the PIN to the Supabase Auth password for the operator account
+      const { error: authError } = await supabase.auth.signInWithPassword({
+        email: 'operator@milk.local',
+        password: cleanPin,
+      });
+      if (authError) throw new Error(authError.message || 'Invalid PIN');
+      // Session will be set by onAuthStateChange listener above
     } catch (err) {
       setError(err.message || "Login failed");
     } finally {
@@ -42,36 +58,22 @@ export function useAuth() {
     }
   };
 
-  // Wrap in useCallback so the event listener doesn't constantly re-bind
-  const logout = useCallback(() => {
-    STORE.removeItem(TOKEN_KEY);
+  const logout = async () => {
+    await supabase.auth.signOut();
+    setSession(null);
 
-    // Clear localStorage too, just in case legacy tokens exist from older versions
-    localStorage.removeItem(TOKEN_KEY);
-
-    setToken(null);
-  }, []);
-
-  // Listen for graceful session expiry dispatched by src/lib/api.js
-  useEffect(() => {
-    const handleAuthExpired = () => {
-      console.warn("Session expired or unauthorized. Logging out gracefully.");
-      logout();
-    };
-
-    window.addEventListener("auth:expired", handleAuthExpired);
-
-    return () => {
-      window.removeEventListener("auth:expired", handleAuthExpired);
-    };
-  }, [logout]);
+    // Clean up any legacy sessionStorage tokens from the old auth system
+    sessionStorage.removeItem("token");
+    localStorage.removeItem("token");
+  };
 
   return {
-    token,
+    session,
+    token: session?.access_token ?? null,
     login,
     logout,
     loading,
     error,
-    isAuthenticated: !!token,
+    isAuthenticated: !!session,
   };
 }

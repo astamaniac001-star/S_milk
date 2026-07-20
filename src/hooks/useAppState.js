@@ -43,6 +43,9 @@ function useAppUi() {
     (k) => (e) => setForm((p) => ({ ...p, [k]: e.target.value })),
     [],
   );
+  const updateForm = useCallback((k, v) => {
+    setForm((p) => ({ ...p, [k]: v }));
+  }, []);
 
   // ✅ Fix U2: Track timer ID to clear on unmount and prevent leaks
   const toastIdRef = useRef(0);
@@ -96,6 +99,7 @@ function useAppUi() {
     logDate,
     setLogDate,
     setF,
+    updateForm,
     toast$,
     openModal,
     closeModal,
@@ -104,7 +108,7 @@ function useAppUi() {
 
 export function useAppState(auth) {
   const dayTick = useDayTick();
-  const entity = useEntityStore(auth?.token);
+  const entity = useEntityStore(auth?.token, ui.logDate, ui.billMonth);
   const filters = useFilterState();
   const ui = useAppUi();
   // eslint-disable-next-line react-hooks/exhaustive-deps

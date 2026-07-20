@@ -1,6 +1,5 @@
 // ── More.jsx ──────────────────────────────────────────────────────────────────
-// "More" tab: Adjustments / Pause Periods / Write Queue / Diagnostics V17 /
-// System Health. A grab-bag of admin tools that don't deserve their own tab.
+// "More" tab: Security / Adjustments / Pause Periods / Diagnostics / System Health.
 
 import { fmt } from "../lib/utils.js";
 import { MILK_TYPES } from "../lib/constants.js";
@@ -12,36 +11,29 @@ import {
   Badge,
   CardHeader,
 } from "../components/ui.jsx";
+import { ShieldCheck } from "lucide-react";
 
-// FIX (audit 2026-07-15): most of these labels used to be hardcoded fake
-// values ("SystemState rows: 512", "PINSalt configured", etc.) — the panel
-// looked like it ran live checks but didn't. Now we keep the list as a
-// scaffolding template, mark the items that are actually computed at render
-// time, and tag the rest as a static reference of what a full diagnostic
-// would cover. The two real checks (MilkTypes seeded, MilkBrands seeded)
-// still resolve dynamically below.
+// FIX (audit 2026-07-15 & Phase 6): Updated to reflect actual production stack
 const DIAGNOSTICS = [
   ["✅", "Schema version", "V17"],
   ["✅", "API version", "17"],
-  ["✅", "Migration", "Not needed"],
+  ["✅", "Migration", "Supabase CLI"],
   ["✅", "Mode", "Production"],
   ["✅", "MilkTypes seeded", ""], // resolved at render time
   ["✅", "MilkBrands seeded", ""], // resolved at render time
   ["ℹ️", "Detailed checks", "Not yet implemented (see audit)"],
 ];
 
-// FIX (audit 2026-07-15): the previous "Mode" value was a stale reference
-// to a Netlify/Apps-Script deployment that no longer exists. Now reflects
-// the actual Vite + Supabase-direct stack.
 const HEALTH = [
   { label: "Schema Version", value: "V17", ok: true },
   { label: "API Version", value: "17", ok: true },
-  { label: "Migration", value: "Not needed", ok: true },
+  { label: "Auth Provider", value: "Supabase Native", ok: true },
   { label: "Mode", value: "Production (Vite + Supabase)", ok: true },
 ];
 
 function AdjustmentAmount({ amount }) {
-  const color = amount < 0 ? "#991b1b" : "#166534";
+  // FIX M8: Use CSS variables for Dark Mode
+  const color = amount < 0 ? "var(--danger-text, #991b1b)" : "var(--success-text, #166534)";
   return (
     <div style={{ fontSize: 13, color, fontWeight: 600 }}>
       {amount > 0 ? "+" : ""}
@@ -100,8 +92,9 @@ function buildAdjusterResolver(customers, bills) {
 function AdjustmentItem({ a, onApplyAdj, resolveCustomer }) {
   return (
     <div
-      key={a.id}
-      style={{ padding: "8px 0", borderBottom: "0.5px solid #f3f4f6" }}
+      // FIX H1: Use adjustmentId mapped from API, fallback to id
+      key={a.adjustmentId || a.id}
+      style={{ padding: "8px 0", borderBottom: "1px solid var(--border-color, #f3f4f6)" }}
     >
       <div
         style={{
@@ -111,18 +104,18 @@ function AdjustmentItem({ a, onApplyAdj, resolveCustomer }) {
         }}
       >
         <div>
-          <div style={{ fontSize: 13, fontWeight: 500, color: "#111" }}>
+          <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text-main, #111)" }}>
             {resolveCustomer.customerNameForAdjustment(a)}
           </div>
-          <div style={{ fontSize: 12, color: "#6b7280" }}>
+          <div style={{ fontSize: 12, color: "var(--text-muted, #6b7280)" }}>
             {a.date} · {a.reason}
           </div>
           <AdjustmentAmount amount={a.amount} />
         </div>
         <AdjustmentActions
           applied={!!a.applied}
-          disableApply={!a.applied && !a.billId}
-          onApply={() => onApplyAdj(a.id, a.billId)}
+          // FIX H1: Pass the correct ID to the handler
+          onApply={() => onApplyAdj(a.adjustmentId || a.id, a.billId)}
         />
       </div>
     </div>
@@ -150,7 +143,7 @@ function AdjustmentsCard({
       ) : (
         adjustments.map((a) => (
           <AdjustmentItem
-            key={a.id}
+            key={a.adjustmentId || a.id}
             a={a}
             onApplyAdj={onApplyAdj}
             resolveCustomer={resolveCustomer}
@@ -178,16 +171,16 @@ function PausePeriodsCard({ pauses, onOpenModal, resolveCustomer }) {
         pauses.map((p) => (
           <div
             key={p.id}
-            style={{ padding: "8px 0", borderBottom: "0.5px solid #f3f4f6" }}
+            style={{ padding: "8px 0", borderBottom: "1px solid var(--border-color, #f3f4f6)" }}
           >
-            <div style={{ fontSize: 13, fontWeight: 500, color: "#111" }}>
+            <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text-main, #111)" }}>
               {resolveCustomer.customerNameById(p.custId)}
             </div>
-            <div style={{ fontSize: 12, color: "#6b7280" }}>
+            <div style={{ fontSize: 12, color: "var(--text-muted, #6b7280)" }}>
               {p.start} → {p.end || "open"}
             </div>
             {p.reason && (
-              <div style={{ fontSize: 12, color: "#9ca3af" }}>{p.reason}</div>
+              <div style={{ fontSize: 12, color: "var(--text-muted, #9ca3af)", opacity: 0.8 }}>{p.reason}</div>
             )}
           </div>
         ))
@@ -196,11 +189,34 @@ function PausePeriodsCard({ pauses, onOpenModal, resolveCustomer }) {
   );
 }
 
+// NEW: Security Card for PIN Rotation
+function SecurityCard({ onOpenModal }) {
+  return (
+    <Card>
+      <CardHeader title="Security" />
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+        <ShieldCheck size={24} style={{ color: "var(--success-text, #166534)" }} />
+        <div>
+          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-main, #111)" }}>
+            Operator PIN
+          </div>
+          <div style={{ fontSize: 12, color: "var(--text-muted, #6b7280)" }}>
+            Secured via Supabase Auth. Rotate regularly for safety.
+          </div>
+        </div>
+      </div>
+      <Btn full variant="secondary" onClick={() => onOpenModal("changePin")}>
+        Change PIN
+      </Btn>
+    </Card>
+  );
+}
+
 function DiagnosticsCard({ diagRan, diagnostics, onRunDiag }) {
   return (
     <Card>
       <CardHeader
-        title="System Health"
+        title="Diagnostics"
         action={
           <Btn small onClick={onRunDiag}>
             Run
@@ -211,7 +227,7 @@ function DiagnosticsCard({ diagRan, diagnostics, onRunDiag }) {
         <div
           style={{
             fontSize: 12,
-            color: "#9ca3af",
+            color: "var(--text-muted, #9ca3af)",
             textAlign: "center",
             padding: "12px 0",
           }}
@@ -228,21 +244,21 @@ function DiagnosticsCard({ diagRan, diagnostics, onRunDiag }) {
                 justifyContent: "space-between",
                 alignItems: "center",
                 padding: "5px 0",
-                borderBottom: "0.5px solid #f3f4f6",
+                borderBottom: "1px solid var(--border-color, #f3f4f6)",
                 fontSize: 12,
               }}
             >
-              <span>
+              <span style={{ color: "var(--text-main, #111)" }}>
                 {icon} {label}
               </span>
               <span
                 style={{
                   color:
                     icon === "✅"
-                      ? "#166534"
+                      ? "var(--success-text, #166534)"
                       : icon === "ℹ️"
-                        ? "#1e40af"
-                        : "#854d0e",
+                        ? "var(--info-text, #1e40af)"
+                        : "var(--warning-text, #854d0e)",
                   fontWeight: 500,
                 }}
               >
@@ -253,7 +269,7 @@ function DiagnosticsCard({ diagRan, diagnostics, onRunDiag }) {
           <div
             style={{
               fontSize: 11,
-              color: "#9ca3af",
+              color: "var(--text-muted, #9ca3af)",
               marginTop: 10,
               fontStyle: "italic",
             }}
@@ -270,16 +286,7 @@ function DiagnosticsCard({ diagRan, diagnostics, onRunDiag }) {
 function SystemHealthCard({ health, onHealthCheck }) {
   return (
     <Card>
-      <div
-        style={{
-          fontWeight: 600,
-          fontSize: 13,
-          color: "#111",
-          marginBottom: 8,
-        }}
-      >
-        System Health
-      </div>
+      <CardHeader title="System Health" />
       {health.map((x) => (
         <div
           key={x.label}
@@ -287,13 +294,13 @@ function SystemHealthCard({ health, onHealthCheck }) {
             display: "flex",
             justifyContent: "space-between",
             padding: "5px 0",
-            borderBottom: "0.5px solid #f3f4f6",
+            borderBottom: "1px solid var(--border-color, #f3f4f6)",
             fontSize: 12,
           }}
         >
-          <span style={{ color: "#6b7280" }}>{x.label}</span>
+          <span style={{ color: "var(--text-muted, #6b7280)" }}>{x.label}</span>
           <span
-            style={{ color: x.ok ? "#166534" : "#991b1b", fontWeight: 500 }}
+            style={{ color: x.ok ? "var(--success-text, #166534)" : "var(--danger-text, #991b1b)", fontWeight: 500 }}
           >
             {x.value}
           </span>
@@ -343,8 +350,11 @@ export default function More({
   const resolveCustomer = buildAdjusterResolver(customers, bills);
 
   return (
-    <div>
-      <Section title="More" />
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <Section title="Admin Tools" />
+
+      <SecurityCard onOpenModal={onOpenModal} />
+
       <AdjustmentsCard
         adjustments={adjustments}
         onOpenModal={onOpenModal}

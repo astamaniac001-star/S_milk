@@ -5,8 +5,9 @@ import { useHelpers } from "./shared.js";
 
 export function useCustomerHandlers(state) {
   const { setCustomers } = state;
-  const { handleFormAction, saveWithValidation } = useHelpers(state);
+  const { handleFormAction, saveWithValidation, executeApiAction } = useHelpers(state);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const customerHandlers = useMemo(
     () => ({
       addCustomer: async (formArg) =>
@@ -31,8 +32,19 @@ export function useCustomerHandlers(state) {
           mapCustomerFromApi,
           "customers",
         ),
+      deactivateCustomer: async (customer) => {
+        if (!window.confirm(`Deactivate ${customer.name}?`)) return;
+        await executeApiAction(
+          "deactivateCustomer",
+          { id: customer.id, version: customer.version },
+          "Customer deactivated",
+          state.customers,
+          setCustomers,
+          mapCustomerFromApi
+        );
+      },
     }),
-    [setCustomers, handleFormAction],
+    [setCustomers, handleFormAction, state.customers],
   );
 
   const saveCustomer = useCallback(

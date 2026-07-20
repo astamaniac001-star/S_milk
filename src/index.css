@@ -29,21 +29,44 @@
   --radius-md: 8px;
   --radius-lg: 12px;
   --radius-xl: 16px;
+  --success-bg: #dcfce7;
+  --success-text: #166534;
+  --danger-bg: #fee2e2;
+  --danger-text: #991b1b;
+  --warning-bg: #fef9c3;
+  --warning-text: #854d0e;
+  --info-bg: #dbeafe;
+  --info-text: #1e40af;
 }
 
 /* =========================================
    2. DARK MODE (Properly Overrides the Top)
    ========================================= */
 .dark {
-  --bg-primary: #0f172a; /* Slate 900 */
-  --bg-surface: #1e293b; /* Slate 800 (Cards) */
-  --bg-muted: #334155; /* Slate 700 (Hover states) */
+  --bg-primary: #0f172a;
+  /* Slate 900 */
+  --bg-surface: #1e293b;
+  /* Slate 800 (Cards) */
+  --bg-muted: #334155;
+  /* Slate 700 (Hover states) */
 
-  --text-primary: #f8fafc; /* Slate 50 */
-  --text-secondary: #cbd5e1; /* Slate 300 */
-  --text-muted: #94a3b8; /* Slate 400 */
+  --text-primary: #f8fafc;
+  /* Slate 50 */
+  --text-secondary: #cbd5e1;
+  /* Slate 300 */
+  --text-muted: #94a3b8;
+  /* Slate 400 */
 
-  --border-color: #334155; /* Slate 700 */
+  --border-color: #334155;
+  /* Slate 700 */
+  --success-bg: #064e3b;
+  --success-text: #6ee7b7;
+  --danger-bg: #7f1d1d;
+  --danger-text: #fca5a5;
+  --warning-bg: #713f12;
+  --warning-text: #fde047;
+  --info-bg: #1e3a8a;
+  --info-text: #93c5fd;
 }
 
 /* =========================================
@@ -68,14 +91,25 @@ body {
   transition:
     background-color 0.3s ease,
     color 0.3s ease;
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  min-height: 100dvh;
+
 }
 
 button,
+.btn,
+.nav-item,
+.close-btn {
+  min-height: 44px;
+  min-width: 44px;
+}
+
 input,
 select,
 textarea {
-  font: inherit;
-  color: inherit;
+  font-size: 16px !important;
+  /* 16px is the magic number to prevent iOS auto-zoom */
 }
 
 /* =========================================
@@ -95,57 +129,70 @@ textarea {
   border: 1px solid transparent;
   white-space: nowrap;
 }
+
 .btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
+
 .btn-primary {
   background: var(--brand-600);
   color: white;
   box-shadow: var(--shadow-sm);
 }
+
 .btn-primary:hover:not(:disabled) {
   background: var(--brand-700);
   transform: translateY(-1px);
   box-shadow: var(--shadow-md);
 }
+
 .btn-secondary {
   background: var(--bg-surface);
   color: var(--text-primary);
   border-color: var(--border-color);
 }
+
 .btn-secondary:hover:not(:disabled) {
   background: var(--bg-muted);
   border-color: #cbd5e1;
 }
+
 .btn-danger {
   background: #fef2f2;
   color: #dc2626;
   border-color: #fecaca;
 }
+
 .btn-ghost {
   background: transparent;
   color: var(--brand-600);
 }
+
 .btn-ghost:hover:not(:disabled) {
   background: var(--brand-50);
 }
+
 .btn-sm {
   padding: 6px 12px;
   font-size: 13px;
 }
+
 .btn-md {
   padding: 8px 16px;
   font-size: 14px;
 }
+
 .btn-full {
   width: 100%;
 }
+
 .btn-success {
   background: #16a34a;
   color: white;
   box-shadow: var(--shadow-sm);
 }
+
 .btn-success:hover:not(:disabled) {
   background: #15803d;
   transform: translateY(-1px);
@@ -162,11 +209,13 @@ textarea {
   font-size: 14px;
   transition: all 0.2s ease;
 }
+
 .input:focus {
   outline: none;
   border-color: var(--brand-500);
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
 }
+
 .input::placeholder {
   color: var(--text-muted);
 }
@@ -182,6 +231,7 @@ textarea {
     background-color 0.3s ease,
     border-color 0.3s ease;
 }
+
 .modal-overlay {
   position: fixed;
   inset: 0;
@@ -193,6 +243,7 @@ textarea {
   z-index: 1000;
   animation: fadeIn 0.2s ease;
 }
+
 .modal-content {
   background: var(--bg-surface);
   width: 100%;
@@ -203,10 +254,13 @@ textarea {
   display: flex;
   flex-direction: column;
   animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  padding-bottom: env(safe-area-inset-bottom);
 }
+
 .modal-content.wide {
   max-width: 640px;
 }
+
 .modal-header {
   display: flex;
   justify-content: space-between;
@@ -214,10 +268,12 @@ textarea {
   padding: 20px 24px;
   border-bottom: 1px solid var(--border-color);
 }
+
 .modal-header h3 {
   font-size: 18px;
   font-weight: 600;
 }
+
 .modal-body {
   padding: 24px;
   overflow-y: auto;
@@ -225,6 +281,7 @@ textarea {
   flex-direction: column;
   gap: 16px;
 }
+
 .close-btn {
   background: none;
   border: none;
@@ -236,6 +293,7 @@ textarea {
   align-items: center;
   transition: all 0.2s;
 }
+
 .close-btn:hover {
   background: var(--bg-muted);
   color: var(--text-primary);
@@ -247,6 +305,7 @@ textarea {
   flex-direction: column;
   gap: 6px;
 }
+
 .field-label {
   font-size: 13px;
   font-weight: 500;
@@ -262,6 +321,7 @@ textarea {
   font-size: 12px;
   font-weight: 500;
 }
+
 .toast {
   position: fixed;
   bottom: 24px;
@@ -295,9 +355,11 @@ textarea {
   top: 0;
   z-index: 100;
 }
+
 /* Dark mode override for sticky header */
 .dark .app-header {
-  background: rgba(30, 41, 59, 0.8); /* Slate 800 with opacity */
+  background: rgba(30, 41, 59, 0.8);
+  /* Slate 800 with opacity */
 }
 
 .app-header h1 {
@@ -307,6 +369,7 @@ textarea {
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
+
 .app-header h2 {
   font-size: 20px;
   font-weight: 700;
@@ -327,9 +390,11 @@ textarea {
   padding: 8px 0 calc(8px + env(safe-area-inset-bottom));
   z-index: 100;
 }
+
 /* Dark mode override for bottom nav */
 .dark .bottom-nav {
-  background: rgba(30, 41, 59, 0.9); /* Slate 800 with opacity */
+  background: rgba(30, 41, 59, 0.9);
+  /* Slate 800 with opacity */
 }
 
 .nav-item {
@@ -346,9 +411,11 @@ textarea {
   border-radius: var(--radius-md);
   position: relative;
 }
+
 .nav-item.active {
   color: var(--brand-600);
 }
+
 .nav-item.active::before {
   content: "";
   position: absolute;
@@ -360,6 +427,7 @@ textarea {
   background: var(--brand-600);
   border-radius: 0 0 4px 4px;
 }
+
 .nav-item span {
   font-size: 11px;
   font-weight: 500;
@@ -373,6 +441,7 @@ textarea {
   grid-template-columns: repeat(2, 1fr);
   gap: 12px;
 }
+
 .stat-tile {
   background: var(--bg-surface);
   border: 1px solid var(--border-color);
@@ -382,6 +451,7 @@ textarea {
   flex-direction: column;
   gap: 4px;
 }
+
 .stat-tile .stat-label {
   font-size: 12px;
   font-weight: 500;
@@ -390,6 +460,7 @@ textarea {
   align-items: center;
   gap: 6px;
 }
+
 .stat-tile .stat-value {
   font-size: 24px;
   font-weight: 700;
@@ -402,6 +473,7 @@ textarea {
   grid-template-columns: repeat(3, 1fr);
   gap: 10px;
 }
+
 .quick-action-btn {
   display: flex;
   flex-direction: column;
@@ -415,6 +487,7 @@ textarea {
   transition: all 0.2s;
   color: var(--text-secondary);
 }
+
 .quick-action-btn:hover {
   border-color: var(--brand-500);
   background: var(--brand-50);
@@ -422,6 +495,7 @@ textarea {
   transform: translateY(-2px);
   box-shadow: var(--shadow-sm);
 }
+
 .quick-action-btn span {
   font-size: 12px;
   font-weight: 500;
@@ -439,9 +513,11 @@ textarea {
   background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
   padding: 20px;
 }
+
 .dark .login-container {
   background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
 }
+
 .login-card {
   background: var(--bg-surface);
   padding: 40px;
@@ -452,11 +528,13 @@ textarea {
   text-align: center;
   border: 1px solid var(--border-color);
 }
+
 .login-card h2 {
   font-size: 24px;
   font-weight: 700;
   margin-bottom: 8px;
 }
+
 .login-card p {
   color: var(--text-muted);
   font-size: 14px;
@@ -470,15 +548,18 @@ textarea {
   from {
     opacity: 0;
   }
+
   to {
     opacity: 1;
   }
 }
+
 @keyframes slideUp {
   from {
     transform: translateY(20px);
     opacity: 0;
   }
+
   to {
     transform: translateY(0);
     opacity: 1;

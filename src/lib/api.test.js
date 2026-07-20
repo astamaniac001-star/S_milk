@@ -34,50 +34,27 @@ describe("api.js - Money Paths", () => {
 
   describe("recordPayment", () => {
     it("should throw OVERPAY error if payment exceeds pending amount", async () => {
-      // The default mock returns a bill with amount: 100, amount_paid: 50 (pending = 50).
-      // Trying to pay 60 should trigger the OVERPAY error.
+      // Mock the RPC to return the exact error message the DB throws
+      vi.mocked(supabase.rpc).mockResolvedValue({
+        data: null,
+        error: { message: "Payment exceeds pending amount (50.00). Use a credit note for advance payment." }
+      });
+
       await expect(
-        callApi("recordPayment", { billId: "1", amount: 60 }),
+        callApi("recordPayment", { billId: "1", amount: 60, idempotencyKey: "test-key" }),
       ).rejects.toThrow("exceeds pending");
     });
 
     it("should throw CONFLICT error if version mismatches (double-tab protection)", async () => {
-      // 1. Mock the first call: supabase.from("bills").select().eq().single()
-      const mockSelectChain = {
-        select: vi.fn().mockReturnThis(),
-        eq: vi.fn().mockReturnThis(),
-        single: vi.fn().mockResolvedValue({
-          data: {
-            id: "1",
-            amount: 100,
-            amount_paid: 50,
-            locked: false,
-            version: 1,
-          },
-          error: null,
-        }),
-      };
-
-      // 2. Mock the second call: supabase.from("bills").update().eq().select().single()
-      // We force it to return the PGRST116 error (0 rows updated due to version mismatch)
-      const mockUpdateChain = {
-        update: vi.fn().mockReturnThis(),
-        eq: vi.fn().mockReturnThis(),
-        select: vi.fn().mockReturnThis(),
-        single: vi.fn().mockResolvedValue({
-          data: null,
-          error: { code: "PGRST116", message: "0 rows updated" },
-        }),
-      };
-
-      // Queue the mocks: first call gets selectChain, second gets updateChain
-      supabase.from
-        .mockReturnValueOnce(mockSelectChain)
-        .mockReturnValueOnce(mockUpdateChain);
+      // Mock the RPC to return a locked/conflict error
+      vi.mocked(supabase.rpc).mockResolvedValue({
+        data: null,
+        error: { message: "CONFLICT: This bill was modified by another tab. Please refresh." }
+      });
 
       await expect(
-        callApi("recordPayment", { billId: "1", amount: 50, version: 1 }),
-      ).rejects.toThrow("CONFLICT: This bill was modified by another tab");
+        callApi("recordPayment", { billId: "1", amount: 50, idempotencyKey: "test-key-2" }),
+      ).rejects.toThrow("CONFLICT");
     });
   });
 });

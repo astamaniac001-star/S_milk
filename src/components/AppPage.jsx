@@ -1,3 +1,4 @@
+import { useAppDerived } from "../hooks/useAppDerived.js";
 import Dashboard from "../pages/Dashboard.jsx";
 import Customers from "../pages/Customers.jsx";
 import Delivery from "../pages/Delivery.jsx";
@@ -6,7 +7,7 @@ import Billing from "../pages/Billing.jsx";
 import More from "../pages/More.jsx";
 import { callApi } from "../lib/api.js";
 
-function renderDashboard(state, handlers) {
+function renderDashboard(state, handlers, derived) {
   return (
     <Dashboard
       today={state.today}
@@ -14,7 +15,7 @@ function renderDashboard(state, handlers) {
       totalRevenue={state.totalRevenue || 0}
       pendingDues={state.pendingDues || 0}
       confirmedStock={state.confirmedStock || 0}
-      todayLogs={state.todayLogs || []}
+      todayLogs={derived?.todayLogs || state.todayLogs || []}
       bills={state.bills || []}
       customers={state.customers || []}
       onSetTab={state.setTab}
@@ -24,7 +25,7 @@ function renderDashboard(state, handlers) {
   );
 }
 
-function renderCustomers(state, handlers) {
+function renderCustomers(state, handlers, _derived) {
   return (
     <Customers
       filtered={state.filteredC || []}
@@ -36,19 +37,18 @@ function renderCustomers(state, handlers) {
       onFilterChange={state.setCustFilter}
       onOpenModal={state.openModal}
       onWhatsapp={handlers.whatsapp}
-      onDeactivate={handlers.updateCustomer}
+      onDeactivate={handlers.deactivateCustomer}
     />
   );
 }
 
-function renderDelivery(state, handlers) {
+function renderDelivery(state, handlers, derived) {
   return (
     <Delivery
       logDate={state.logDate}
       onLogDateChange={state.setLogDate}
-      todayLogs={state.todayLogs || []}
+      logs={derived?.selectedDateLogs || []}
       onToggleLog={handlers.toggleDeliveryLog}
-      fetchLogs={state.fetchLogs}
       generateDailyLogs={handlers.generateDailyLogs}
       onOpenModal={state.openModal}
       customers={state.customers || []}
@@ -56,7 +56,7 @@ function renderDelivery(state, handlers) {
   );
 }
 
-function renderImports(state, handlers) {
+function renderImports(state, handlers, _derived) {
   return (
     <Imports
       filtered={state.filteredImports || []}
@@ -70,7 +70,7 @@ function renderImports(state, handlers) {
   );
 }
 
-function renderBilling(state, handlers) {
+function renderBilling(state, handlers, _derived) {
   return (
     <Billing
       bills={state.bills || []}
@@ -94,7 +94,7 @@ function renderBilling(state, handlers) {
   );
 }
 
-function renderMore(state, handlers) {
+function renderMore(state, handlers, _derived) {
   return (
     <More
       adjustments={state.adjustments || []}
@@ -106,7 +106,6 @@ function renderMore(state, handlers) {
       activeBrandsCount={state.activeBrandsCount || 0}
       onOpenModal={state.openModal}
       onApplyAdj={(adjId, billId) => handlers.applyAdjustment(adjId, billId)}
-
       onRunDiag={async () => {
         try {
           await callApi("runDiagnostics");
@@ -116,7 +115,6 @@ function renderMore(state, handlers) {
           state.toast$(err?.message || "Diagnostics failed", "error");
         }
       }}
-
       onHealthCheck={async () => {
         try {
           await callApi("healthCheck");
@@ -139,6 +137,7 @@ const PAGE_RENDERERS = {
 };
 
 export function AppPage({ tab, state, handlers }) {
+  const derived = useAppDerived(state);
   const render = PAGE_RENDERERS[tab] || PAGE_RENDERERS.dashboard;
-  return render(state, handlers);
+  return render(state, handlers, derived);
 }
