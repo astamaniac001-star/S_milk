@@ -276,3 +276,47 @@ ALTER TABLE adjustments ADD CONSTRAINT chk_adjustments_amount_nonzero CHECK (amo
 
 -- Add version columns to tables that were missing OCC (M2)
 ALTER TABLE milk_imports ADD COLUMN IF NOT EXISTS version int DEFAULT 1;
+
+-- ==========================================
+-- MASTER SECURITY & CLEANUP SCRIPT
+-- ==========================================
+
+-- 1. DESTROY CUSTOM AUTH ARTIFACTS
+DROP TABLE IF EXISTS public.auth_tokens;
+DROP FUNCTION IF EXISTS public.verify_pin(text);
+DROP FUNCTION IF EXISTS public.rotate_pin(text, text);
+
+ALTER TABLE public.settings 
+  DROP COLUMN IF EXISTS pin_hash,
+  DROP COLUMN IF EXISTS pin_salt,
+  DROP COLUMN IF EXISTS failed_attempts,
+  DROP COLUMN IF EXISTS locked_until;
+
+-- 2. NUKE ALL EXISTING POLICIES (Including the 'app_access_*' and 'settings_*' ghosts)
+DO $$
+DECLARE
+  pol record;
+BEGIN
+  FOR pol IN SELECT policyname, tablename FROM pg_policies WHERE schemaname = 'public'
+  LOOP
+    EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', pol.policyname, pol.tablename);
+  END LOOP;
+END $$;
+
+-- 3. REVOKE ALL ANONYMOUS PRIVILEGES
+REVOKE ALL ON ALL TABLES IN SCHEMA public FROM anon;
+REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM anon;
+REVOKE ALL ON ALL FUNCTIONS IN SCHEMA public FROM anon;
+
+-- 4. REBUILD STRICT "AUTHENTICATED-ONLY" POLICIES FOR EVERY TABLE
+DO $$
+DECLARE
+  tbl text;
+BEGIN
+  FOR tbl IN SELECT tablename FROM pg_tables WHERE schemaname = 'public'
+  LOOP
+    EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', tbl);
+    EXECUTE format('ALTER TABLE public.%I FORCE ROW LEVEL SECURITY', tbl);
+    EXECUTE format('CREATE POLICY "strict_auth_only_%I" ON public.%I FOR ALL TO authenticated USING (true) WITH CHECK (true)', tbl, tbl);
+  END LOOP;
+END $$;
