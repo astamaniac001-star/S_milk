@@ -92,7 +92,7 @@ function renderSubscriptionModal(ctx) {
     <SubscriptionModal
       form={ctx.form}
       data={ctx.modal.data}
-      onChange={ctx.updateForm}
+      onChange={ctx.setF}
       // Merge form data with ID/Version for Optimistic Concurrency Control if editing
       onSave={() =>
         ctx.saveSubscription({
@@ -116,7 +116,7 @@ const MODAL_RENDERERS = {
   changePin: (ctx) => (
     <ChangePinModal
       onClose={ctx.closeModal}
-      showToast={ctx.showToast}
+      showToast={ctx.toast$}
     />
   ),
   billDetail: (ctx) => (
@@ -165,28 +165,20 @@ const MODAL_RENDERERS = {
     />
   ),
   // ── SUBSCRIPTION MODALS ────────────────────────────────────────────────
+  // ── SUBSCRIPTION MODALS ────────────────────────────────────────────────
   subscriptionsList: (ctx) => (
     <SubscriptionsListModal
       subscriptions={ctx.subscriptions || []}
       customers={ctx.customers || []}
-      // fallow-ignore-next-line complexity
       onEdit={(sub) => {
-        // Initialize form with defaults for new, or existing data for edit
-        if (ctx.setForm) {
-          ctx.setForm(
-            sub
-              ? { ...sub }
-              : {
-                isActive: true,
-                deliveryDays: [1, 2, 3, 4, 5],
-                quantity: 1,
-                milkType: "FULL_CREAM",
-              },
-          );
-        }
-        // Open the correct modal type
+        const defaultForm = {
+          isActive: true,
+          deliveryDays: [1, 2, 3, 4, 5],
+          qty: 1,
+          milkType: "Full Cream",
+        };
         if (ctx.openModal) {
-          ctx.openModal(sub ? "editSubscription" : "addSubscription");
+          ctx.openModal(sub ? "editSubscription" : "addSubscription", sub || defaultForm);
         }
       }}
       onViewHistory={(sub) => ctx.openModal("subscriptionHistory", sub)}

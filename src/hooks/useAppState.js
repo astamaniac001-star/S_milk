@@ -94,6 +94,7 @@ function useAppUi() {
     setToast,
     modal,
     form,
+    setForm,
     billMonth,
     setBillMonth,
     logDate,

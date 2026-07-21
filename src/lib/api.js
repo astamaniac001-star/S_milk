@@ -283,7 +283,7 @@ export async function callApi(action, payload = {}) {
         // 1. Fetch ONLY active subscriptions (manually cancelled ones are safely ignored)
         const { data: subs, error: subErr } = await supabase
           .from("subscriptions")
-          .select("id, customer_id, end_date")
+          .select("id, customer_id")
           .eq("is_active", true);
         must(subErr);
 
@@ -731,77 +731,40 @@ export async function callApi(action, payload = {}) {
       }
 
       case "applyAdjustment": {
-        const { adjustmentId, billId } = payload;
+        const { adjustmentId, billId, version } = payload;
+
         if (!adjustmentId) throw new Error("adjustmentId is required");
+        if (!billId) throw new Error("billId is required");
+        if (version === undefined) throw new Error("adjustment version is required for OCC");
 
-        if (billId) {
-          const { data: adj, error: adjErr } = await supabase
-            .from("adjustments")
-            .select("*")
-            .eq("id", adjustmentId)
-            .single();
-          must(adjErr);
+        // ✅ NEW ATOMIC RPC CALL
+        const { error } = await supabase.rpc('apply_adjustment_rpc', {
+          p_adjustment_id: adjustmentId,
+          p_bill_id: billId,
+          p_version: version
+        });
 
-          // CRITICAL FIX: Prevent double-application if a previous attempt partially failed
-          if (adj.applied) {
+        if (error) {
+          // Map RPC errors to standard app error codes for consistent UI handling
+          if (error.message.includes('CONFLICT')) {
+            const e = new Error("CONFLICT: This adjustment was modified elsewhere. Please refresh.");
+            e.code = "CONFLICT";
+            throw e;
+          }
+          if (error.message.includes('already been applied')) {
             const e = new Error("This adjustment has already been applied.");
             e.code = "ALREADY_APPLIED";
             throw e;
           }
-
-          const { data: bill, error: billErr } = await supabase
-            .from("bills")
-            .select("*")
-            .eq("id", billId)
-            .single();
-          must(billErr);
-
-          if (bill.locked) {
+          if (error.message.includes('locked')) {
             const e = new Error("Cannot apply an adjustment to a locked bill.");
             e.code = "LOCKED";
             throw e;
           }
-
-          const newAmount = toNum(bill.amount) + toNum(adj.amount);
-          const paid = toNum(bill.amount_paid);
-          const status =
-            paid >= newAmount && newAmount > 0
-              ? "Paid"
-              : paid > 0
-                ? "Partial"
-                : "Unpaid";
-          const currentVersion = toNum(bill.version);
-
-          // CRITICAL FIX: Optimistic Concurrency Control for the bill update
-          const { error: updErr } = await supabase
-            .from("bills")
-            .update({
-              amount: newAmount,
-              status,
-              version: currentVersion + 1,
-              updated_at: new Date().toISOString(),
-            })
-            .eq("id", billId)
-            .eq("version", currentVersion);
-
-          if (updErr) {
-            if (updErr.code === "PGRST116") {
-              const e = new Error(
-                "CONFLICT: This bill was modified elsewhere. Please refresh.",
-              );
-              e.code = "CONFLICT";
-              throw e;
-            }
-            must(updErr);
-          }
+          throw new Error(error.message || "Failed to apply adjustment");
         }
 
-        const { error } = await supabase
-          .from("adjustments")
-          .update({ applied: true })
-          .eq("id", adjustmentId);
-        must(error);
-        result.data = { adjustmentId, billId: billId || null };
+        result.data = { adjustmentId, billId };
         break;
       }
       case "getCreditNotes": {
@@ -1103,83 +1066,47 @@ export async function callApi(action, payload = {}) {
       }
 
       case "applyCreditNote": {
-        const { creditNoteId, billId } = payload;
-        if (!creditNoteId || !billId)
-          throw new Error("creditNoteId and billId are required");
+        const { creditNoteId, billId, version } = payload;
 
-        // 1. Fetch the credit note
-        const { data: cn, error: cnErr } = await supabase
-          .from("credit_notes")
-          .select("*")
-          .eq("id", creditNoteId)
-          .single();
-        must(cnErr);
+        if (!creditNoteId) throw new Error("creditNoteId is required");
+        if (!billId) throw new Error("billId is required");
+        if (version === undefined) throw new Error("credit note version is required for OCC");
 
-        if (cn.applied) {
-          const e = new Error("This credit note has already been applied.");
-          e.code = "ALREADY_APPLIED";
-          throw e;
-        }
+        // ✅ NEW ATOMIC RPC CALL
+        const { data, error } = await supabase.rpc('apply_credit_note_rpc', {
+          p_credit_note_id: creditNoteId,
+          p_bill_id: billId,
+          p_version: version
+        });
 
-        // 2. Fetch the bill
-        const { data: bill, error: billErr } = await supabase
-          .from("bills")
-          .select("*")
-          .eq("id", billId)
-          .single();
-        must(billErr);
-
-        if (bill.locked) {
-          const e = new Error("Cannot apply a credit note to a locked bill.");
-          e.code = "LOCKED";
-          throw e;
-        }
-
-        // 3. Apply the credit note to the bill's amount_paid
-        const newPaid = toNum(bill.amount_paid) + toNum(cn.amount);
-        const status =
-          newPaid >= toNum(bill.amount)
-            ? "Paid"
-            : newPaid > 0
-              ? "Partial"
-              : "Unpaid";
-        const currentVersion = toNum(bill.version);
-
-        const { error: billUpdateErr } = await supabase
-          .from("bills")
-          .update({
-            amount_paid: newPaid,
-            status,
-            version: currentVersion + 1,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", billId)
-          .eq("version", currentVersion);
-
-        if (billUpdateErr) {
-          if (billUpdateErr.code === "PGRST116") {
-            const e = new Error(
-              "CONFLICT: This bill was modified elsewhere. Please refresh.",
-            );
+        if (error) {
+          if (error.message.includes('CONFLICT')) {
+            const e = new Error("CONFLICT: This credit note was modified elsewhere. Please refresh.");
             e.code = "CONFLICT";
             throw e;
           }
-          must(billUpdateErr);
+          if (error.message.includes('already been applied')) {
+            const e = new Error("This credit note has already been applied.");
+            e.code = "ALREADY_APPLIED";
+            throw e;
+          }
+          if (error.message.includes('locked')) {
+            const e = new Error("Cannot apply a credit note to a locked bill.");
+            e.code = "LOCKED";
+            throw e;
+          }
+          throw new Error(error.message || "Failed to apply credit note");
         }
-        // 4. Mark the credit note as applied
-        const { error: cnUpdateErr } = await supabase
-          .from("credit_notes")
-          .update({
-            applied: true,
-            applied_to_bill_id: billId,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", creditNoteId);
-        must(cnUpdateErr);
 
-        result.data = { creditNoteId, billId, newPaid, status };
+        result.data = {
+          creditNoteId,
+          billId,
+          newPaid: data?.newPaid,
+          status: data?.status
+        };
         break;
       }
+
       case "deactivateCustomer": {
         // FIX H6: Add proper OCC for deactivation
         const { id, version } = payload;

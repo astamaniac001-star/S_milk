@@ -1,6 +1,5 @@
 import { useCallback } from "react";
 import {
-  mapBillFromApi,
   mapAdjustmentFromApi,
   mapPaymentToApi,
   callApi,
@@ -48,7 +47,7 @@ export function useBillPayments(state) {
 
         if (closeModal) closeModal();
         const res = await callApi("getBills", {});
-        setBills((res.bills || []).map(mapBillFromApi));
+        setBills((res.bills || []));
       } catch (e) {
         showToast(e.message, "error");
       }
@@ -94,16 +93,19 @@ export function useBillPayments(state) {
   );
 
   const applyAdjustment = useCallback(
-    async (adjustmentId, billId) => {
+    async (adjustmentId, billId, version) => { // ✅ FIX 1: Add version to parameters
       try {
-        await callApi("applyAdjustment", { adjustmentId, billId });
+        // ✅ FIX 2: Pass version to the API call
+        await callApi("applyAdjustment", { adjustmentId, billId, version });
         showToast("Adjustment applied", "success");
+
         const [adjRes, billRes] = await Promise.all([
           callApi("getAdjustments", {}),
           callApi("getBills", {}),
         ]);
+
         setAdjustments((adjRes.adjustments || []).map(mapAdjustmentFromApi));
-        setBills((billRes.bills || []));
+        setBills(billRes.bills || []); // Cleaned up extra parentheses
       } catch (err) {
         showToast(err.message || "Failed to apply adjustment", "error");
       }

@@ -38,14 +38,14 @@ export function useCustomerHandlers(state) {
           "deactivateCustomer",
           { id: customer.id, version: customer.version },
           "Customer deactivated",
-          state.customers,
+          "getCustomers",
           setCustomers,
           mapCustomerFromApi,
           "customers"
         );
       },
     }),
-    [setCustomers, handleFormAction, executeApiAction, state.customers],
+    [setCustomers, handleFormAction, executeApiAction],
   );
 
   const saveCustomer = useCallback(

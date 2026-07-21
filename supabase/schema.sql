@@ -102,11 +102,14 @@ BEGIN
   SELECT product INTO v_product FROM customers WHERE id = p_customer_id;
   
   -- Fetch rate from milk_brands based on the product (default_milk_type)
-  SELECT rate_per_liter INTO v_rate FROM milk_brands WHERE default_milk_type = v_product LIMIT 1;
-  IF v_rate IS NULL THEN v_rate := 0; END IF;
+  SELECT rate_per_liter INTO v_rate FROM milk_brands WHERE default_milk_type = v_product AND is_active = true ORDER BY created_at DESC LIMIT 1;
+
+  IF v_rate IS NULL THEN
+        RAISE EXCEPTION 'No active rate found for milk type %', v_product;
+    END IF;
 
   SELECT COALESCE(SUM(qty), 0) INTO v_total_qty FROM daily_logs
-  WHERE customer_id = p_customer_id AND to_char(date, 'YYYY-MM') = p_month AND delivered = true;
+  WHERE customer_id = p_customer_id AND to_char(date, 'YYYY-MM') = p_month A    ND delivered = true;
 
   v_amount := v_total_qty * v_rate;
 

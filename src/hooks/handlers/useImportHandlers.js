@@ -46,20 +46,28 @@ export function useImportHandlers(state) {
     [saveWithValidation, importHandlers],
   );
 
+  // src/hooks/handlers/useImportHandlers.js
+
   const handleImportAction = useCallback(
     async (action, importId, successMsg, fallbackErrMsg) => {
       try {
         const imp = state.imports?.find((i) => i.id === importId);
         const payload = { importId };
+
+        // Attach version if it exists (crucial for OCC)
         if (imp && imp.version !== undefined) {
           payload.version = imp.version;
         }
+
+        // ✅ FIX: Call the API ONLY ONCE with the versioned payload
         await callApi(action, payload);
+
         showToast(successMsg, "success");
-        await callApi(action, { importId });
-        showToast(successMsg, "success");
+
+        // Refetch the updated list
         const res = await callApi("getMilkImports", {});
         setImports((res.imports || []).map(mapImportFromApi));
+
       } catch (err) {
         showToast(err.message || fallbackErrMsg, "error");
       }

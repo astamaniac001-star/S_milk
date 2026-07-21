@@ -81,8 +81,8 @@ export function SubscriptionModal({
           type="number"
           step="0.5"
           style={IS()}
-          value={form?.quantity ?? data?.quantity ?? 1}
-          onChange={onChange("quantity")}
+          value={form?.qty ?? data?.qty ?? 1}
+          onChange={onChange("qty")}
         />
       </Field>
       <Field label="Delivery Days *">
