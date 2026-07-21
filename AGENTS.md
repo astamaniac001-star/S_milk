@@ -1,6 +1,10 @@
 # AGENTS.md — c1milk / S_milk
 
 > Single source of truth for AI agents working in this repo. Read this first.
+>
+> **Accuracy rule:** verify claims against the current working tree. A passing build,
+> an audit comment, or a commit message is not proof that behavior is correct.
+> Generated database artifacts describe the deployed schema; historical SQL does not.
 
 ## What this app is
 
@@ -18,17 +22,17 @@ from the operator's phone, installable as a PWA, designed to work offline.
 
 ## Tech stack (all bleeding-edge as of build)
 
-| Layer       | Choice                                    | Notes                                        |
-| ----------- | ----------------------------------------- | -------------------------------------------- |
-| UI          | React 19.2 + Vite 8.1                     | JSX, no TypeScript                           |
-| Icons       | lucide-react 1.24                         |                                              |
-| Backend     | **Supabase directly** (no Node server)    | `@supabase/supabase-js` v2.110               |
-| Service Wk  | Vanilla `public/sw.js` (V21)              | Cache-first shell, network-only for /api     |
-| State       | React hooks (no Redux/Zustand)            | Composable custom hooks                      |
-| Routing     | Tab-based (no react-router)               | State field `tab` in `useAppState`           |
-| Tests       | Vitest 4 + jsdom + Testing Library        | Very thin coverage — only filters + delivery |
-| Lint        | ESLint 10 + react-hooks + react-refresh   | `no-console` warn (warn/error allowed)       |
-| Other tools | cspell, fallow, madge, prettier, depcheck | `npm run check-all` runs the lot             |
+| Layer       | Choice                                    | Notes                                         |
+| ----------- | ----------------------------------------- | --------------------------------------------- |
+| UI          | React 19.2 + Vite 8.1                     | JSX, no TypeScript                            |
+| Icons       | lucide-react 1.24                         |                                               |
+| Backend     | **Supabase directly** (no Node server)    | `@supabase/supabase-js` v2.110                |
+| Service Wk  | Vanilla `public/sw.js` (V21)              | Cache-first shell, network-only for /api      |
+| State       | React hooks (no Redux/Zustand)            | Composable custom hooks                       |
+| Routing     | Tab-based (no react-router)               | State field `tab` in `useAppState`            |
+| Tests       | Vitest 4 + jsdom + Testing Library        | Coverage is intentionally enforced separately |
+| Lint        | ESLint 10 + react-hooks + react-refresh   | `no-console` warn (warn/error allowed)        |
+| Other tools | cspell, fallow, madge, prettier, depcheck | Advisory tools are not all in `check-all`     |
 
 ## Repository layout
 
@@ -42,10 +46,11 @@ src/
 │   ├── api.js             # 🔑 callApi(action, payload) — all data ops live here
 │   ├── constants.js       # SC (status colors), DAYS, MILK_TYPES, PRODUCTS, PAY_MODES
 │   ├── filters.js         # Pure filter helpers (filterCustomers/Imports/Bills)
-│   ├── utils.js           # fmt(), getToday() [Asia/Kolkata], cleanPhone(), uuid()
+│   ├── utils.js           # fmt(), getToday() [Asia/Kolkata], cleanPhone(), UUID helpers
+│   ├── database.types.ts  # Generated current Supabase types; never edit manually
 │   └── validation/        # validateCustomerForm, validateImportForm
 ├── hooks/
-│   ├── useAuth.js                  # PIN login, sessionStorage token, auth:expired event
+│   ├── useAuth.js                  # Supabase Auth session + 6-digit operator PIN login
 │   ├── useAppState.js              # Composes: useEntityStore + useFilterState + useAppUi + useAppDerived
 │   ├── useAppDerived.js            # Memoized: activeC, totalRevenue, pendingDues, filteredC, todayLogs…
 │   ├── useAppHandlers.js           # Composes 6 domain handler hooks (see below)
@@ -73,19 +78,21 @@ src/
 │   ├── AppPage.jsx         # PAGE_RENDERERS table: tab → page component
 │   ├── AppModals.jsx       # MODAL_RENDERERS table: modal type → component
 │   ├── ErrorBoundary.jsx   # Class component — Reload / Sign-out & reload
-│   ├── login.jsx           # 4-digit PIN form
+│   ├── login.jsx           # 6-digit operator PIN form
 │   ├── ui.jsx              # Badge, Toast, Modal, Btn, Field, Card, Empty, Section, StatGrid
 │   ├── forms.jsx           # All 13 modal components (Customer, Import, Payment, …)
 │   └── modals/             # One file per modal (same as forms.jsx exports)
 └── test/setup.js
 
 public/
-├── sw.js                   # V21 service worker (offline-first PWA)
+├── sw.js                   # Service worker (offline-first PWA)
 ├── register-sw.js
 ├── app.css
 ├── favicon.svg, icons.svg, icon-512.png, apple-touch-icon.png
 
-supabase_sql_editor         # Full DB schema (paste into Supabase SQL editor)
+supabase/
+├── schema.sql              # Generated present-state schema; never edit manually
+└── migrations/             # Historical ledger; ignore except a newly created migration
 ```
 
 ## Architecture rules — please follow
@@ -94,18 +101,20 @@ supabase_sql_editor         # Full DB schema (paste into Supabase SQL editor)
 
 There is **no** REST backend. The `callApi` function is a giant `switch` that
 dispatches to a Supabase query. New endpoints = new `case` in the switch.
-**Never** call `supabase.from(...)` directly from a component or page.
+**Never** call `supabase.from(...)` or `supabase.rpc(...)` directly from a component,
+page, or handler. Supabase Auth calls in `useAuth.js` are the narrow exception.
 
 Action names are CamelCase strings: `getCustomers`, `addCustomer`, `recordPayment`,
-`generateDailyLogsForDate`, etc. Read the existing switch before adding.
+`generateDailyLogsForDate`, etc. Read the existing switch before adding. Unknown
+actions must throw; do not silently report success.
 
 ### 2. State composition pattern (don't break it)
 
 ```
 useAppState(auth)
-  ├─ useEntityStore(token)   // raw arrays: customers, bills, logs, …
+  ├─ useAppUi()              // must initialize before consumers of logDate/billMonth
   ├─ useFilterState()        // search/filter inputs
-  ├─ useAppUi()              // tab, toast, modal, form, billMonth, logDate
+  ├─ useEntityStore(token, logDate, billMonth)
   └─ useAppDerived(state)    // memoized: activeC, totalRevenue, pendingDues, filteredC…
 
 useAppHandlers(state)
@@ -113,6 +122,9 @@ useAppHandlers(state)
 ```
 
 If you add new state, add it to the right hook in the chain, not at the top.
+Never reference a local hook result before its declaration; bundling may succeed while
+the app still crashes at runtime from the temporal dead zone. Derived state should be
+computed once in `useAppState`, not recomputed by page components.
 
 ### 3. Handlers reuse `useHelpers()`
 
@@ -126,7 +138,14 @@ All handler hooks share `useHelpers(state)` from `handlers/shared.js` for:
 
 `saveWithValidation` expects the handler object to have
 `add<Entity>` and `update<Entity>` methods keyed on `entityName` passed in.
-Look at `useCustomerHandlers` for the canonical pattern.
+
+Arguments are positional: `getList` is an action string such as `"getCustomers"`,
+not an array or getter result; `resKey` is the response key such as `"customers"`.
+Check every UI callback contract too: if a page passes an ID, the handler must accept
+an ID; if it needs the full entity/version, pass the full entity explicitly.
+
+Each user action must call its mutation exactly once and show at most one success
+toast. Copy/paste leftovers that invoke the same action twice are release blockers.
 
 ### 4. API ↔ UI shape mapping
 
@@ -136,14 +155,23 @@ DB uses `snake_case` (e.g. `delivery_address`, `daily_qty`, `amount_paid`,
 via `mapXFromApi` (DB→UI) and `mapXToApi` (UI→DB). **Do not** sprinkle
 snake_case reads in pages or camelCase writes in the switch.
 
+Map every row **exactly once**. Before mapping a response in a store or handler,
+inspect the corresponding `callApi` case to determine whether it already returns UI
+shape. Double-mapping silently turns fields such as `custId`/`paid` into
+`undefined`/`0`. Add a regression test for the returned shape when changing a mapper.
+
 ### 5. Optimistic concurrency control
 
-`customers`, `milk_imports`, `bills`, `subscriptions` all carry a `version INT`
-column. The `updateWithVersion(table, id, expectedVersion, patch)` helper in
-`lib/api.js` does a compare-and-set update: `eq("version", ev)` — if the
-row was changed elsewhere, Supabase returns `PGRST116` and we throw a
-`CONFLICT` error that the UI surfaces as a toast. Always pass the version
-through when editing these entities.
+`customers`, `milk_imports`, `bills`, and `subscriptions` currently carry a
+`version INT` column. Confirm this in `database.types.ts` before relying on it;
+do not invent a version field for another table. The
+`updateWithVersion(table, id, expectedVersion, patch)` helper performs a
+compare-and-set update. Always pass the version through update, lock, unlock,
+confirm, deactivate, and delete paths for versioned entities.
+
+A versioned update/delete must verify that exactly one row was affected. A Supabase
+mutation can return no error while matching zero rows, so a successful HTTP response
+alone is not proof that the mutation happened.
 
 ### 6. JSONB array columns
 
@@ -168,15 +196,21 @@ compare literally and silently fail filtering.
 
 ### 9. Auth model
 
-- 4-digit PIN stored in `settings.key = 'PIN'` (default seed: `"1234"`).
-- `verifyPIN(pin)` generates a random UUID, stores in sessionStorage
-  (`token` + `sessionSecret`). **No JWT, no server validation** — the token
-  is purely a UI gate. RLS is fully open (every policy is `USING (true) WITH CHECK (true)`).
-- `callApi` catches Supabase auth codes (`42501`, `PGRST301`, `PGRST302`,
-  or `jwt`-matching message) and dispatches `window.dispatchEvent(new
-CustomEvent("auth:expired"))` → `useAuth` clears both storages and logs out.
-- **Token storage: sessionStorage, not localStorage** (intentional XSS window
-  reduction — see comment in `useAuth.js`). New tabs require re-login.
+- Authentication uses **Supabase Auth**, not the `settings` table and not a custom
+  PIN-hash/token RPC.
+- The six-digit operator PIN is the Supabase Auth password for the confirmed account
+  `operator@milk.local`. Supabase owns password hashing, salting, refresh tokens, and
+  session persistence.
+- `useAuth.js` calls `signInWithPassword`, tracks the Supabase session, and exposes
+  `session?.access_token` only as a data-loading gate.
+- PIN rotation must reauthenticate the current PIN and call
+  `supabase.auth.updateUser`; never store or compare PINs in public tables.
+- Handle both `getSession()` rejection and `auth:expired` events. An auth failure must
+  terminate loading and sign out rather than leave a permanent spinner.
+- The anon key is public by design. Security comes from authenticated RLS and
+  correctly authorized RPCs, never from hiding frontend environment variables.
+- A six-digit PIN is a weak password. Do not weaken Supabase rate limiting or add
+  alternative bypass paths. Never log PINs, passwords, sessions, or access tokens.
 
 ### 10. Error layers (in order they trigger)
 
@@ -190,7 +224,7 @@ CustomEvent("auth:expired"))` → `useAuth` clears both storages and logs out.
 ### 11. Modal and page routing
 
 - `PAGE_RENDERERS` map in `AppPage.jsx`: `{ dashboard, customers, delivery, imports, billing, more }`.
-- `MODAL_RENDERERS` map in `AppModals.jsx`: `{ addCustomer, editCustomer, addImport, payment, billDetail, addAdj, addPause, addBrand, addAdHoc, addCreditNote, subscriptionHistory, subscriptionsList, addSubscription, editSubscription }`.
+- `MODAL_RENDERERS` map in `AppModals.jsx`: `{ addCustomer, editCustomer, addImport, payment, changePin, billDetail, addAdj, addPause, addBrand, addAdHoc, addCreditNote, subscriptionHistory, subscriptionsList, addSubscription, editSubscription }`.
 - To add a page: add to the tab list in `AppShell.jsx` (`TABS` array) AND
   add a `renderX(state, handlers)` + an entry in `PAGE_RENDERERS`.
 - To add a modal: create the component, import in `AppModals.jsx`, add a
@@ -211,44 +245,136 @@ CustomEvent("auth:expired"))` → `useAuth` clears both storages and logs out.
   class names aligned when adding new ones (`.field`, `.input`, `.btn-*`,
   `.card`, `.modal-overlay`, `.toast`, `.bottom-nav`, etc.).
 
+### 13. RLS is the security boundary
+
+The browser has the public anon key, so authorization must be correct in PostgreSQL.
+Treat every authenticated user other than the intended operator as potentially hostile.
+
+- PostgreSQL permissive RLS policies are combined with **OR**, not AND. Adding an
+  operator-only policy does not restrict an existing `USING (true)` authenticated
+  policy. Restrictive work must drop/replace broad policies in the same migration.
+- Review all policies for a table together and separately for `SELECT`, `INSERT`,
+  `UPDATE`, and `DELETE`. Check both `USING` and `WITH CHECK`.
+- Do not hardcode a production Auth UUID without documenting deployment coupling and
+  a safe account-replacement procedure. Prefer a verifiable role/claim model when
+  more than one environment or operator is possible.
+- Never grant financial or mutating RPCs to `anon`. Revoke default/public execute
+  privileges when appropriate and grant only the intended role.
+- A `SECURITY DEFINER` function must set a safe `search_path`, explicitly authorize
+  the caller, validate every identifier, and expose only the minimum required grants.
+  Do not use it merely to bypass broken RLS.
+- RLS and function grants are separate controls; review both. Test an authenticated
+  non-operator and an anonymous caller, not only the happy-path operator.
+
+### 14. Financial mutations must be atomic
+
+Payments, bill generation, adjustments, and credit-note application are ledger-grade
+operations. A client-side `select → calculate → update → insert` sequence is not
+atomic and can leave partial financial state.
+
+- Put multi-table money mutations in one PostgreSQL function/transaction and call it
+  through one `callApi` action.
+- Lock the affected rows (`FOR UPDATE`), validate ownership/customer relationships,
+  locked status, amount bounds, and current state inside the transaction.
+- Use a real UUID idempotency key for retryable writes and enforce uniqueness in the
+  database. Reusing the same key must return the original success without applying
+  money twice.
+- Update the bill and its ledger row together. Never update `amount_paid` without a
+  corresponding payment/credit record.
+- Define adjustment sign semantics once. Do not have one path add an amount while
+  another subtracts it.
+- Enforce invariants in SQL as well as UI validation: non-negative totals, paid not
+  above amount unless explicitly supported, valid status transitions, and matching
+  customers.
+- Financial tests must cover success, duplicate retry, overpayment, locked bill,
+  wrong customer, concurrent/stale update, and rollback after a forced failure.
+
+### 15. RPC and schema contracts
+
+- Before creating or calling an RPC, compare every argument and referenced column to
+  `database.types.ts` and `schema.sql`.
+- PostgreSQL functions are overloaded by argument signature. `CREATE OR REPLACE` with
+  new arguments creates another function; it does not replace the old signature.
+  Drop obsolete overloads in a new migration and confirm generated types show only
+  the intended signature.
+- Do not leave legacy write RPCs callable as alternate paths around current validation,
+  idempotency, ledger, OCC, or authorization rules.
+- RPC parameter names and JavaScript payload keys must match exactly. Date values use
+  `YYYY-MM-DD`; UUID parameters receive actual UUIDs.
+- Check the generated schema after `db:sync` for duplicate functions, stale grants,
+  invalid triggers, and policies that preserve older access.
+
+### 16. UI callback and form contracts
+
+- Pick one field-change contract per form: curried `onChange(key)(event)` or direct
+  `onChange(key, value)`. Do not pass one implementation to components expecting the
+  other contract.
+- Form field names must match mapper inputs (`qty` is not `quantity`). Defaults must
+  use canonical constants such as `"Full Cream"`, not ad-hoc enum spellings.
+- Editing must pass the full entity, including its ID and version, into modal/form
+  state. Opening a modal without data must not erase the edit target.
+- Context properties must exist. Do not pass `ctx.showToast`, `ctx.setForm`, or any
+  other callback unless it is actually exposed by state/handlers.
+- Add interaction tests for destructive buttons, modal save paths, and callback
+  argument shape. Static diagnostics cannot detect ID-vs-object mismatches.
+
+### 17. Validation is evidence, not proof
+
+- `npm run build` proves bundling, not runtime behavior. It will not catch many hook
+  ordering errors, broken callbacks, bad Supabase contracts, or RLS mistakes.
+- Mount `<App />` or the affected state hook in tests after changing composition,
+  authentication, or modal context.
+- Mocked API tests prove only the mocked contract. Database RPC/RLS changes require
+  integration checks against a disposable/local Supabase environment when available.
+- Never label a release production-ready solely because `check-all` passes. Report
+  exactly which commands ran, what they include, and any checks omitted or failing.
+
 ## Common workflows
 
 ### Add a new entity
 
-1. Add SQL to `supabase_sql_editor` (table + RLS policy).
-2. Add a `mapXFromApi` and (if writable) `mapXToApi` in `lib/api.js`.
-3. Add state + setter to `useEntityStore` (initial `[]`, add to `safeFetch`
+1. Create a new migration with `supabase migration new <descriptive_name>` and add
+   the table, constraints, indexes, RLS policies, grants, and any required RPCs.
+2. Push it with `supabase db push`, then run `npm run db:sync` to regenerate
+   `schema.sql` and `database.types.ts`.
+3. Verify the generated types and schema before writing frontend queries.
+4. Add `mapXFromApi` and, if writable, `mapXToApi` in `lib/api.js`.
+5. Add state + setter to `useEntityStore` (initial `[]`, add to `safeFetch`
    parallel calls).
-4. Add a `case` in the `callApi` switch (at minimum `getX`).
-5. Add a handler hook in `hooks/handlers/useXHandlers.js`.
-6. Spread it in `useAppHandlers.js`.
-7. Add a page or add a tab + a `renderX(state, handlers)` in `AppPage.jsx`.
-8. Add a modal in `components/forms.jsx` and register it in `AppModals.jsx`.
+6. Add a `case` in the `callApi` switch (at minimum `getX`).
+7. Add a handler hook in `hooks/handlers/useXHandlers.js` and spread it in
+   `useAppHandlers.js`.
+8. Add/register the page or modal and test the complete UI → handler → API contract.
 
 ### Debug a failing action
 
 - Check the `console.warn` breadcrumb trail — `useHelpers` logs every step.
 - Check `loadErrors` banner at top of `AppShell`.
-- Check `settings` table for the PIN if login is broken.
+- Check Supabase Auth for the confirmed `operator@milk.local` account if login is
+  broken; never inspect or store a PIN in `settings`.
 - Service worker cache: bump `CACHE` constant in `public/sw.js` to force
   eviction on next load (currently `"milk-v21"`).
 
 ### Run all checks
 
 ```bash
-npm run check-all   # lint + test + build + audit + circular + fallow + health + spellcheck + depcheck
+npm run check-all      # currently lint + unit tests + build only
+npm run test:coverage  # enforced thresholds; run and report separately
+npm run advisor-all    # coverage + fallow + spellcheck + depcheck
 ```
 
-Or pick any of: `lint`, `lint:fix`, `test`, `test:coverage`, `build`, `audit`,
-`circular` (madge), `prettier:check` / `prettier:write` (alias `cprettier`/`wprettier` — add to cspell), `spellcheck`, `check-deps` (depcheck),
-`fallow`, `health`, `dev`.
+Other available checks include `audit`, `circular`, `cprettier`, `spellcheck`,
+`check-deps`, and `fallow`. Inspect `package.json` before describing what an aggregate
+script runs. A check that is not in the script did not run. Do not weaken thresholds
+or remove checks merely to make a gate green.
 
 ## Environment
 
 `.env` (committed in this repo, treat as dev/test):
 
 - `VITE_SUPABASE_URL` = `https://qipvmrgieuvpygjytcpt.supabase.co`
-- `VITE_SUPABASE_ANON_KEY` = anon JWT, RLS is open so this works for any caller.
+- `VITE_SUPABASE_ANON_KEY` = public anon JWT; authenticated RLS and RPC authorization
+  must protect business data.
 
 Both are read once in `src/lib/supabaseClient.js`. No env-var type-checking;
 missing env = null client = silent failures. Don't add new env vars without
@@ -256,15 +382,15 @@ a guard in `supabaseClient.js`.
 
 ## Things to be careful about
 
-- **No tests for the bulk of the code.** Only `lib/filters.test.js`,
-  `lib/validation.test.js`, `pages/Delivery.test.jsx`, and
-  `hooks/useAppHandlers.test.js` exist. Add tests when changing anything
-  in `lib/` or any handler.
+- **Coverage is thin, especially in `lib/api.js` and application startup paths.**
+  Add tests when changing `lib/`, handlers, auth, state composition, or modal wiring.
+  Do not assume the current suite exercises a newly changed path.
 - **`useBusy` filters React SyntheticEvents from args** — if you write a
   custom async wrapper, follow that pattern or re-entry will pass DOM
   events to your API mapper.
-- **The `version` check is the only concurrency guard** — if you skip it on
-  an update path, two operators overwriting each other will silently lose data.
+- **The `version` check is the frontend OCC guard for versioned entities** — if you
+  skip it on an update path, concurrent tabs can silently overwrite each other.
+  Financial RPCs additionally require transactional row locks.
 - **Toast timer is tracked by id** — see `useAppState.js` `toast$`; don't
   replace it with a naive `setTimeout` or you'll leak timers and get stale
   toasts.
@@ -277,23 +403,40 @@ a guard in `supabaseClient.js`.
 ## 🗄️ Database Migrations & Schema Context
 
 ### AI Agent Context Rules (STRICT ENFORCEMENT)
-**DO NOT** read the `supabase/migrations/` folder to understand the database schema. Migrations represent *historical changes* and will confuse you with dropped columns, renamed tables, and superseded logic. 
 
-To understand the **PRESENT WORKING STATE** of the database, you must **ONLY** read these two files:
-1. **`supabase/schema.sql`**: The complete, compiled, current SQL blueprint of all tables, RLS policies, RPCs, and triggers.
-2. **`src/lib/database.types.ts`**: The auto-generated TypeScript definitions. Use this as your primary source of truth to verify column names, types, and relationships before writing any `callApi` switch cases or mappers.
+**DO NOT** read historical migrations to infer the current database. They contain
+superseded columns, policies, grants, and function definitions.
 
-**Ignored / Archived Files:**
-AI Agents MUST IGNORE THESE DIRECTORIES ENTIRELY:
-- `supabase/migrations/` (Historical ledger only, do not read for current schema)
-- `supabase/_archive/` (Legacy manual SQL scripts)
-- `supabase_sql_editor/` (Legacy directory)
+Use only these present-state artifacts for database discovery:
+
+1. **`supabase/schema.sql`** — compiled tables, constraints, policies, grants,
+   functions, and triggers.
+2. **`src/lib/database.types.ts`** — generated columns, relationships, and RPC
+   signatures. Use this as the primary contract when writing frontend code.
+
+AI agents must otherwise ignore:
+
+- `supabase/migrations/` — historical ledger
+- `supabase/_archive/` — legacy scripts
+- `supabase_sql_editor/` — legacy manual SQL
+
+The only migration-directory exception is a migration created during the current task:
+an agent may create and edit that new file, but must not inspect older migrations for
+context. Review the generated present-state artifacts after applying it.
 
 ### Migration Workflow Rules (For Humans & AI)
-1. **Never use the Supabase Table Editor UI.** All schema changes must be written as SQL migrations.
-2. **Never edit** `supabase/schema.sql` or `src/lib/database.types.ts` manually. They are auto-generated artifacts.
-3. **Never edit an existing migration file** in `supabase/migrations/` if it has already been committed to Git or pushed to production.
-4. **Always create a new migration** for any schema change using: `supabase migration new <descriptive_name>`
-5. **Applying Migrations:** Use `supabase db push` to apply pending migrations to the linked cloud database. Do not manually copy-paste SQL into the Supabase Dashboard unless explicitly instructed for a hotfix.
-6. **Reverting:** If a migration fails or is incorrect, do not delete the file. Create a *new* migration that undoes the change (e.g., `DROP COLUMN`).
-7. **Syncing Artifacts (CRITICAL):** After pushing a migration, **always** regenerate the present-state artifacts by running `npm run db:sync`. Commit the new migration file AND the updated `schema.sql` / `database.types.ts` to Git together.
+
+1. **Never use the Supabase Table Editor UI.** Write every schema change as SQL.
+2. Create a new migration with `supabase migration new <descriptive_name>`; never
+   modify a committed or deployed migration.
+3. Verify table columns, RPC signatures, policy names, and grants against the current
+   generated artifacts before writing the migration.
+4. Apply pending migrations with `supabase db push`. Do not paste SQL into the
+   dashboard unless the user explicitly requests an emergency hotfix.
+5. If a migration is wrong after application, create a new corrective migration;
+   never delete or rewrite migration history.
+6. Run `npm run db:sync` after pushing. Do not manually edit `schema.sql` or
+   `database.types.ts`.
+7. Review the regenerated artifacts for stale overloads, permissive policies, grants
+   to `anon`, invalid triggers, missing constraints, and type drift.
+8. Commit the new migration and both regenerated artifacts together.
