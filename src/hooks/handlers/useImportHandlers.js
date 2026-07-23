@@ -67,7 +67,6 @@ export function useImportHandlers(state) {
         // Refetch the updated list
         const res = await callApi("getMilkImports", {});
         setImports((res.imports || []).map(mapImportFromApi));
-
       } catch (err) {
         showToast(err.message || fallbackErrMsg, "error");
       }

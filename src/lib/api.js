@@ -10,9 +10,9 @@ const toArray = (val) => {
     } catch {
       return val.includes(",")
         ? val
-          .split(",")
-          .map((s) => s.trim())
-          .filter(Boolean)
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean)
         : [];
     }
   }
@@ -221,7 +221,6 @@ export async function callApi(action, payload = {}) {
   const result = { data: {} };
   try {
     switch (action) {
-
       case "getCustomers": {
         const { data, error } = await supabase
           .from("customers")
@@ -544,9 +543,10 @@ export async function callApi(action, payload = {}) {
 
       case "getBills": {
         let query = supabase.from("bills").select("*");
-        if (payload.month)
-          query = query.eq("month", payload.month);
-        const { data, error } = await query.order("created_at", { ascending: false });
+        if (payload.month) query = query.eq("month", payload.month);
+        const { data, error } = await query.order("created_at", {
+          ascending: false,
+        });
         must(error);
         result.data = { bills: data.map(mapBillFromApi) };
         break;
@@ -562,28 +562,24 @@ export async function callApi(action, payload = {}) {
         break;
       }
       case "recordPayment": {
-        const {
-          billId,
-          amount,
-          mode,
-          date,
-          note,
-          idempotencyKey,
-        } = payload;
+        const { billId, amount, mode, date, note, idempotencyKey } = payload;
 
         if (!billId || !(toNum(amount) > 0))
           throw new Error("A valid billId and amount are required");
 
         // Delegate entirely to the atomic RPC to prevent double-counting (C6)
         // The RPC enforces idempotency, locked status, and overpayment limits.
-        const { data: rpcResult, error: rpcError } = await supabase.rpc("record_payment_rpc", {
-          p_bill_id: billId,
-          p_amount: toNum(amount),
-          p_mode: mode || "Cash",
-          p_date: date || getToday(),
-          p_note: note || "",
-          p_idempotency_key: idempotencyKey
-        });
+        const { data: rpcResult, error: rpcError } = await supabase.rpc(
+          "record_payment_rpc",
+          {
+            p_bill_id: billId,
+            p_amount: toNum(amount),
+            p_mode: mode || "Cash",
+            p_date: date || getToday(),
+            p_note: note || "",
+            p_idempotency_key: idempotencyKey,
+          },
+        );
 
         if (rpcError) {
           // Map Postgres RAISE EXCEPTION messages back to UI error codes
@@ -614,7 +610,7 @@ export async function callApi(action, payload = {}) {
           amountPaid: updatedBill.amount_paid,
           status: updatedBill.status,
           bill: mapBillFromApi(updatedBill), // Include full bill for UI state update
-          idempotent: rpcResult?.idempotent || false
+          idempotent: rpcResult?.idempotent || false,
         };
         break;
       }
@@ -625,10 +621,13 @@ export async function callApi(action, payload = {}) {
           throw new Error("customerId and month are required");
 
         // Delegate to atomic RPC to calculate from daily_logs and prevent zero-value bugs (C5)
-        const { error: rpcError } = await supabase.rpc("generate_month_bill_rpc", {
-          p_customer_id: customerId,
-          p_month: month
-        });
+        const { error: rpcError } = await supabase.rpc(
+          "generate_month_bill_rpc",
+          {
+            p_customer_id: customerId,
+            p_month: month,
+          },
+        );
 
         if (rpcError) {
           // Map Postgres RAISE EXCEPTION messages back to UI error codes
@@ -652,7 +651,7 @@ export async function callApi(action, payload = {}) {
 
         result.data = {
           bill: mapBillFromApi(billData),
-          action: "generated"
+          action: "generated",
         };
         break;
       }
@@ -716,28 +715,31 @@ export async function callApi(action, payload = {}) {
 
         if (!adjustmentId) throw new Error("adjustmentId is required");
         if (!billId) throw new Error("billId is required");
-        if (version === undefined) throw new Error("adjustment version is required for OCC");
+        if (version === undefined)
+          throw new Error("adjustment version is required for OCC");
 
         // ✅ NEW ATOMIC RPC CALL
-        const { error } = await supabase.rpc('apply_adjustment_rpc', {
+        const { error } = await supabase.rpc("apply_adjustment_rpc", {
           p_adjustment_id: adjustmentId,
           p_bill_id: billId,
-          p_version: version
+          p_version: version,
         });
 
         if (error) {
           // Map RPC errors to standard app error codes for consistent UI handling
-          if (error.message.includes('CONFLICT')) {
-            const e = new Error("CONFLICT: This adjustment was modified elsewhere. Please refresh.");
+          if (error.message.includes("CONFLICT")) {
+            const e = new Error(
+              "CONFLICT: This adjustment was modified elsewhere. Please refresh.",
+            );
             e.code = "CONFLICT";
             throw e;
           }
-          if (error.message.includes('already been applied')) {
+          if (error.message.includes("already been applied")) {
             const e = new Error("This adjustment has already been applied.");
             e.code = "ALREADY_APPLIED";
             throw e;
           }
-          if (error.message.includes('locked')) {
+          if (error.message.includes("locked")) {
             const e = new Error("Cannot apply an adjustment to a locked bill.");
             e.code = "LOCKED";
             throw e;
@@ -1023,8 +1025,8 @@ export async function callApi(action, payload = {}) {
 
         // 1. Re-authenticate to verify the current PIN is correct
         const { error: authError } = await supabase.auth.signInWithPassword({
-          email: 'operator@milk.local',
-          password: currentPin
+          email: "operator@milk.local",
+          password: currentPin,
         });
 
         if (authError) {
@@ -1035,7 +1037,7 @@ export async function callApi(action, payload = {}) {
 
         // 2. Update the password securely via Supabase Auth
         const { error: updateError } = await supabase.auth.updateUser({
-          password: newPin
+          password: newPin,
         });
 
         if (updateError) {
@@ -1051,27 +1053,30 @@ export async function callApi(action, payload = {}) {
 
         if (!creditNoteId) throw new Error("creditNoteId is required");
         if (!billId) throw new Error("billId is required");
-        if (version === undefined) throw new Error("credit note version is required for OCC");
+        if (version === undefined)
+          throw new Error("credit note version is required for OCC");
 
         // ✅ NEW ATOMIC RPC CALL
-        const { data, error } = await supabase.rpc('apply_credit_note_rpc', {
+        const { data, error } = await supabase.rpc("apply_credit_note_rpc", {
           p_credit_note_id: creditNoteId,
           p_bill_id: billId,
-          p_version: version
+          p_version: version,
         });
 
         if (error) {
-          if (error.message.includes('CONFLICT')) {
-            const e = new Error("CONFLICT: This credit note was modified elsewhere. Please refresh.");
+          if (error.message.includes("CONFLICT")) {
+            const e = new Error(
+              "CONFLICT: This credit note was modified elsewhere. Please refresh.",
+            );
             e.code = "CONFLICT";
             throw e;
           }
-          if (error.message.includes('already been applied')) {
+          if (error.message.includes("already been applied")) {
             const e = new Error("This credit note has already been applied.");
             e.code = "ALREADY_APPLIED";
             throw e;
           }
-          if (error.message.includes('locked')) {
+          if (error.message.includes("locked")) {
             const e = new Error("Cannot apply a credit note to a locked bill.");
             e.code = "LOCKED";
             throw e;
@@ -1083,7 +1088,7 @@ export async function callApi(action, payload = {}) {
           creditNoteId,
           billId,
           newPaid: data?.newPaid,
-          status: data?.status
+          status: data?.status,
         };
         break;
       }
@@ -1091,7 +1096,11 @@ export async function callApi(action, payload = {}) {
       case "deactivateCustomer": {
         // FIX H6: Add proper OCC for deactivation
         const { id, version } = payload;
-        const patch = { status: "Inactive", version: toNum(version) + 1, updated_at: new Date().toISOString() };
+        const patch = {
+          status: "Inactive",
+          version: toNum(version) + 1,
+          updated_at: new Date().toISOString(),
+        };
         const { data, error } = await supabase
           .from("customers")
           .update(patch)
@@ -1102,7 +1111,8 @@ export async function callApi(action, payload = {}) {
         if (error) {
           if (error.code === "PGRST116") {
             const e = new Error("CONFLICT: Customer was modified elsewhere.");
-            e.code = "CONFLICT"; throw e;
+            e.code = "CONFLICT";
+            throw e;
           }
           throw error;
         }

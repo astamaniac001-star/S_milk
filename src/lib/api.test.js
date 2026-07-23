@@ -37,11 +37,18 @@ describe("api.js - Money Paths", () => {
       // Mock the RPC to return the exact error message the DB throws
       vi.mocked(supabase.rpc).mockResolvedValue({
         data: null,
-        error: { message: "Payment exceeds pending amount (50.00). Use a credit note for advance payment." }
+        error: {
+          message:
+            "Payment exceeds pending amount (50.00). Use a credit note for advance payment.",
+        },
       });
 
       await expect(
-        callApi("recordPayment", { billId: "1", amount: 60, idempotencyKey: "test-key" }),
+        callApi("recordPayment", {
+          billId: "1",
+          amount: 60,
+          idempotencyKey: "test-key",
+        }),
       ).rejects.toThrow("exceeds pending");
     });
 
@@ -49,11 +56,18 @@ describe("api.js - Money Paths", () => {
       // Mock the RPC to return a locked/conflict error
       vi.mocked(supabase.rpc).mockResolvedValue({
         data: null,
-        error: { message: "CONFLICT: This bill was modified by another tab. Please refresh." }
+        error: {
+          message:
+            "CONFLICT: This bill was modified by another tab. Please refresh.",
+        },
       });
 
       await expect(
-        callApi("recordPayment", { billId: "1", amount: 50, idempotencyKey: "test-key-2" }),
+        callApi("recordPayment", {
+          billId: "1",
+          amount: 50,
+          idempotencyKey: "test-key-2",
+        }),
       ).rejects.toThrow("CONFLICT");
     });
   });

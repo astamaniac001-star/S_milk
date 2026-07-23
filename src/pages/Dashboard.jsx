@@ -21,8 +21,18 @@ import {
 import { fmt } from "../lib/utils.js";
 
 const MONTH_NAMES = [
-  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
 ];
 
 const QUICK_ACTIONS = [
@@ -67,7 +77,14 @@ export default function Dashboard({
     // FIX M9: Replaced undefined Tailwind classes (space-y-6) with inline flex styles
     <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
       <Card>
-        <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 16, color: "var(--text-main)" }}>
+        <h2
+          style={{
+            fontSize: 18,
+            fontWeight: 600,
+            marginBottom: 16,
+            color: "var(--text-main)",
+          }}
+        >
           Today's Delivery ({today})
         </h2>
 
@@ -77,12 +94,19 @@ export default function Dashboard({
             {
               label: "Delivered",
               value: deliveredCount,
-              icon: <CheckCircle size={20} style={{ color: "var(--success-text)" }} />,
+              icon: (
+                <CheckCircle
+                  size={20}
+                  style={{ color: "var(--success-text)" }}
+                />
+              ),
             },
             {
               label: "Skipped",
               value: skippedCount,
-              icon: <XCircle size={20} style={{ color: "var(--danger-text)" }} />,
+              icon: (
+                <XCircle size={20} style={{ color: "var(--danger-text)" }} />
+              ),
             },
             {
               label: "Total (L)",
@@ -100,7 +124,13 @@ export default function Dashboard({
 
       <Section title="Quick Actions">
         {/* FIX M9: Replaced grid-cols-2 md:grid-cols-3 with responsive auto-fit grid */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: "12px" }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
+            gap: "12px",
+          }}
+        >
           {QUICK_ACTIONS.map((q) => {
             const Icon = q.icon;
             return (
@@ -110,7 +140,13 @@ export default function Dashboard({
                 onClick={() =>
                   q.type === "generate" ? onGenerateBill() : onOpenModal(q.type)
                 }
-                style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, padding: "16px 8px" }}
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "16px 8px",
+                }}
               >
                 <Icon size={20} />
                 <span style={{ fontSize: 13, fontWeight: 500 }}>{q.label}</span>
@@ -121,8 +157,19 @@ export default function Dashboard({
       </Section>
 
       <Card>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-          <h2 style={{ fontSize: 18, fontWeight: 600, color: "var(--text-main)" }}>Recent Bills</h2>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: 16,
+          }}
+        >
+          <h2
+            style={{ fontSize: 18, fontWeight: 600, color: "var(--text-main)" }}
+          >
+            Recent Bills
+          </h2>
           <Btn variant="ghost" small onClick={() => onSetTab("billing")}>
             View all <ArrowRight size={14} style={{ marginLeft: 4 }} />
           </Btn>
@@ -145,10 +192,22 @@ export default function Dashboard({
                 }}
               >
                 <div>
-                  <p style={{ fontWeight: 500, color: "var(--text-main)", margin: 0 }}>
+                  <p
+                    style={{
+                      fontWeight: 500,
+                      color: "var(--text-main)",
+                      margin: 0,
+                    }}
+                  >
                     {customerName(b.custId)}
                   </p>
-                  <p style={{ fontSize: 14, color: "var(--text-muted)", margin: "4px 0 0 0" }}>
+                  <p
+                    style={{
+                      fontSize: 14,
+                      color: "var(--text-muted)",
+                      margin: "4px 0 0 0",
+                    }}
+                  >
                     {monthLabel(b.month)}
                   </p>
                 </div>

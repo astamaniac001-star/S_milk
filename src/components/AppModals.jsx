@@ -114,10 +114,7 @@ const MODAL_RENDERERS = {
   addImport: renderImportModal,
   payment: renderPaymentModal,
   changePin: (ctx) => (
-    <ChangePinModal
-      onClose={ctx.closeModal}
-      showToast={ctx.toast$}
-    />
+    <ChangePinModal onClose={ctx.closeModal} showToast={ctx.toast$} />
   ),
   billDetail: (ctx) => (
     <BillDetailModal
@@ -178,7 +175,10 @@ const MODAL_RENDERERS = {
           milkType: "Full Cream",
         };
         if (ctx.openModal) {
-          ctx.openModal(sub ? "editSubscription" : "addSubscription", sub || defaultForm);
+          ctx.openModal(
+            sub ? "editSubscription" : "addSubscription",
+            sub || defaultForm,
+          );
         }
       }}
       onViewHistory={(sub) => ctx.openModal("subscriptionHistory", sub)}

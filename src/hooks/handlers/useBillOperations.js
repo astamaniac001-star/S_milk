@@ -42,7 +42,7 @@ export function useBillOperations(state) {
         }
 
         const res = await callApi("getBills", {});
-        setBills((res.bills || []));
+        setBills(res.bills || []);
       } catch (e) {
         showToast(e.message, "error");
       }
@@ -63,7 +63,7 @@ export function useBillOperations(state) {
         // 2. Call the API, explicitly passing the version
         await callApi("lockBill", {
           billId: billToLock.id,
-          version: billToLock.version
+          version: billToLock.version,
         });
 
         showToast("Bill locked", "success");
@@ -78,7 +78,6 @@ export function useBillOperations(state) {
     [state.bills, setBills, showToast],
   );
 
-
   const unlockBill = useCallback(
     async (billId) => {
       try {
@@ -92,7 +91,7 @@ export function useBillOperations(state) {
         // 2. Call the API, explicitly passing the version
         await callApi("unlockBill", {
           billId: billToUnlock.id,
-          version: billToUnlock.version
+          version: billToUnlock.version,
         });
 
         showToast("Bill unlocked", "success");

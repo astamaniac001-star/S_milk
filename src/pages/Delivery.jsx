@@ -18,7 +18,9 @@ function calculateDeliveryStats(logs) {
 function getToggleButtonStyle(delivered) {
   return {
     // FIX M8: Use CSS variables for dark mode support
-    background: delivered ? "var(--success-bg, #dcfce7)" : "var(--danger-bg, #fee2e2)",
+    background: delivered
+      ? "var(--success-bg, #dcfce7)"
+      : "var(--danger-bg, #fee2e2)",
     border: "none",
     borderRadius: 8,
     // FIX M11: Increased padding to ensure minimum 44x44 touch target for mobile
@@ -26,7 +28,9 @@ function getToggleButtonStyle(delivered) {
     fontSize: 14,
     fontWeight: 600,
     cursor: "pointer",
-    color: delivered ? "var(--success-text, #166534)" : "var(--danger-text, #991b1b)",
+    color: delivered
+      ? "var(--success-text, #166534)"
+      : "var(--danger-text, #991b1b)",
     minWidth: "90px",
     textAlign: "center",
     transition: "opacity 0.2s",
@@ -40,13 +44,15 @@ function getToggleButtonText(delivered) {
 function DeliveryLogItem({ id, name, product, qty, delivered, onToggle }) {
   return (
     // FIX M9: Replaced Tailwind classes with inline flex styles
-    <div style={{
-      display: "flex",
-      justifyContent: "space-between",
-      alignItems: "center",
-      padding: "12px 0",
-      borderBottom: "1px solid var(--border-color, #e5e7eb)"
-    }}>
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        padding: "12px 0",
+        borderBottom: "1px solid var(--border-color, #e5e7eb)",
+      }}
+    >
       <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
         {/* FIX M8: Use CSS variables for text colors to support Dark Mode */}
         <span style={{ fontWeight: 600, color: "var(--text-main, #111827)" }}>
@@ -59,7 +65,7 @@ function DeliveryLogItem({ id, name, product, qty, delivered, onToggle }) {
       <button
         onClick={() => onToggle(id, !delivered)}
         style={getToggleButtonStyle(delivered)}
-        aria-label={`Mark ${name} as ${delivered ? 'skipped' : 'delivered'}`}
+        aria-label={`Mark ${name} as ${delivered ? "skipped" : "delivered"}`}
       >
         {getToggleButtonText(delivered)}
       </button>
@@ -87,10 +93,7 @@ export default function Delivery({
   onOpenModal,
   customers = [],
 }) {
-  const safeLogs = useMemo(
-    () => (Array.isArray(logs) ? logs : []),
-    [logs],
-  );
+  const safeLogs = useMemo(() => (Array.isArray(logs) ? logs : []), [logs]);
 
   const customerMap = useMemo(() => {
     const map = {};
@@ -114,7 +117,7 @@ export default function Delivery({
     { label: "Total", value: stats.totalLiters, icon: "🥛" },
   ];
 
-  // FIX H5: Removed redundant fetchLogs useEffect. 
+  // FIX H5: Removed redundant fetchLogs useEffect.
   // The parent (AppPage/useEntityStore) now handles fetching when logDate changes, preventing race conditions.
 
   const [busy, handleGenerate] = useBusy(async () => {
@@ -127,12 +130,14 @@ export default function Delivery({
     // FIX M9: Replaced undefined Tailwind classes with inline flex styles
     <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
       <Card>
-        <div style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: "12px",
-          alignItems: "flex-end"
-        }}>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: "12px",
+            alignItems: "flex-end",
+          }}
+        >
           <Field label="Date" style={{ flex: 1, width: "100%" }}>
             <input
               type="date"
@@ -142,13 +147,15 @@ export default function Delivery({
             />
           </Field>
 
-          <div style={{
-            display: "flex",
-            gap: "8px",
-            flexWrap: "wrap",
-            width: "100%",
-            justifyContent: "flex-end"
-          }}>
+          <div
+            style={{
+              display: "flex",
+              gap: "8px",
+              flexWrap: "wrap",
+              width: "100%",
+              justifyContent: "flex-end",
+            }}
+          >
             <Btn
               onClick={handleGenerate}
               disabled={busy}

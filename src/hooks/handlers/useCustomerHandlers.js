@@ -5,8 +5,8 @@ import { useHelpers } from "./shared.js";
 
 export function useCustomerHandlers(state) {
   const { setCustomers } = state;
-  const { handleFormAction, saveWithValidation, executeApiAction } = useHelpers(state);
-
+  const { handleFormAction, saveWithValidation, executeApiAction } =
+    useHelpers(state);
 
   const customerHandlers = useMemo(
     () => ({
@@ -41,7 +41,7 @@ export function useCustomerHandlers(state) {
           "getCustomers",
           setCustomers,
           mapCustomerFromApi,
-          "customers"
+          "customers",
         );
       },
     }),

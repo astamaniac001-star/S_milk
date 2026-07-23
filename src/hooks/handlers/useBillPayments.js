@@ -25,7 +25,8 @@ export function useBillPayments(state) {
 
       // FIX H8: Resolve defaults exactly as the UI displays them
       const pending = (billData.amount || 0) - (billData.paid || 0);
-      const amount = amountArg !== undefined ? amountArg : (form.payAmt ?? pending);
+      const amount =
+        amountArg !== undefined ? amountArg : (form.payAmt ?? pending);
       const mode = form.payMode ?? "Cash";
       const date = form.payDate ?? getToday();
       const note = form.payNote ?? "";
@@ -47,7 +48,7 @@ export function useBillPayments(state) {
 
         if (closeModal) closeModal();
         const res = await callApi("getBills", {});
-        setBills((res.bills || []));
+        setBills(res.bills || []);
       } catch (e) {
         showToast(e.message, "error");
       }
@@ -93,7 +94,8 @@ export function useBillPayments(state) {
   );
 
   const applyAdjustment = useCallback(
-    async (adjustmentId, billId, version) => { // ✅ FIX 1: Add version to parameters
+    async (adjustmentId, billId, version) => {
+      // ✅ FIX 1: Add version to parameters
       try {
         // ✅ FIX 2: Pass version to the API call
         await callApi("applyAdjustment", { adjustmentId, billId, version });

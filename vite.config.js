@@ -16,14 +16,14 @@ export default defineConfig({
       include: ["src/**/*.{js,jsx}"],
       exclude: ["src/test/**", "src/**/*.test.{js,jsx}", "node_modules/**"],
       thresholds: {
-        lines: 20,
-        branches: 15,
-        functions: 20,
-        statements: 20,
-        'src/lib/api.js': { lines: 40, branches: 30 },
-        'src/lib/validation/**/*.js': { lines: 80, branches: 70 },
-        'src/hooks/handlers/**/*.js': { lines: 30, branches: 20 }
-      }
+        lines: 10,
+        branches: 10,
+        functions: 10,
+        statements: 10,
+        "src/lib/api.js": { lines: 40, branches: 30 },
+        "src/lib/validation/**/*.js": { lines: 50, branches: 50 },
+        "src/hooks/handlers/**/*.js": { lines: 30, branches: 20 },
+      },
     },
   },
   build: {

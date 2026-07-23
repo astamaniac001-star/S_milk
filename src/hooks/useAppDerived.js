@@ -69,6 +69,6 @@ export function useAppDerived(state) {
     impFilter,
     billFilter,
     dayTick,
-    logDate
+    logDate,
   ]);
 }

@@ -62,7 +62,12 @@ export default function Login({ onLogin, error, loading }) {
             />
           </div>
 
-          <Btn type="submit" full disabled={loading || pin.length < 6} style={{ marginTop: 8 }}>
+          <Btn
+            type="submit"
+            full
+            disabled={loading || pin.length < 6}
+            style={{ marginTop: 8 }}
+          >
             {loading ? "Verifying…" : "Login"}
           </Btn>
 
@@ -71,7 +76,8 @@ export default function Login({ onLogin, error, loading }) {
               id="pin-error"
               role="alert" /* FIX M7: Announce errors to screen readers */
               style={{
-                background: "var(--danger-bg, #fef2f2)", /* FIX M8: Dark mode support */
+                background:
+                  "var(--danger-bg, #fef2f2)" /* FIX M8: Dark mode support */,
                 color: "var(--danger-text, #dc2626)",
                 padding: 12,
                 borderRadius: 8,

@@ -44,7 +44,7 @@ export default function Imports({
   const handleDelete = async (imp) => {
     if (
       !window.confirm(
-        `Permanently delete import from ${imp.brand} on ${imp.date}?`
+        `Permanently delete import from ${imp.brand} on ${imp.date}?`,
       )
     )
       return;

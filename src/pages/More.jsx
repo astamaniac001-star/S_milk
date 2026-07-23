@@ -33,7 +33,8 @@ const HEALTH = [
 
 function AdjustmentAmount({ amount }) {
   // FIX M8: Use CSS variables for Dark Mode
-  const color = amount < 0 ? "var(--danger-text, #991b1b)" : "var(--success-text, #166534)";
+  const color =
+    amount < 0 ? "var(--danger-text, #991b1b)" : "var(--success-text, #166534)";
   return (
     <div style={{ fontSize: 13, color, fontWeight: 600 }}>
       {amount > 0 ? "+" : ""}
@@ -94,7 +95,10 @@ function AdjustmentItem({ a, onApplyAdj, resolveCustomer }) {
     <div
       // FIX H1: Use adjustmentId mapped from API, fallback to id
       key={a.adjustmentId || a.id}
-      style={{ padding: "8px 0", borderBottom: "1px solid var(--border-color, #f3f4f6)" }}
+      style={{
+        padding: "8px 0",
+        borderBottom: "1px solid var(--border-color, #f3f4f6)",
+      }}
     >
       <div
         style={{
@@ -104,7 +108,13 @@ function AdjustmentItem({ a, onApplyAdj, resolveCustomer }) {
         }}
       >
         <div>
-          <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text-main, #111)" }}>
+          <div
+            style={{
+              fontSize: 13,
+              fontWeight: 500,
+              color: "var(--text-main, #111)",
+            }}
+          >
             {resolveCustomer.customerNameForAdjustment(a)}
           </div>
           <div style={{ fontSize: 12, color: "var(--text-muted, #6b7280)" }}>
@@ -115,7 +125,9 @@ function AdjustmentItem({ a, onApplyAdj, resolveCustomer }) {
         <AdjustmentActions
           applied={!!a.applied}
           // FIX H1: Pass the correct ID to the handler
-          onApply={() => onApplyAdj(a.adjustmentId || a.id, a.billId, a.version)}
+          onApply={() =>
+            onApplyAdj(a.adjustmentId || a.id, a.billId, a.version)
+          }
         />
       </div>
     </div>
@@ -171,16 +183,33 @@ function PausePeriodsCard({ pauses, onOpenModal, resolveCustomer }) {
         pauses.map((p) => (
           <div
             key={p.id}
-            style={{ padding: "8px 0", borderBottom: "1px solid var(--border-color, #f3f4f6)" }}
+            style={{
+              padding: "8px 0",
+              borderBottom: "1px solid var(--border-color, #f3f4f6)",
+            }}
           >
-            <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text-main, #111)" }}>
+            <div
+              style={{
+                fontSize: 13,
+                fontWeight: 500,
+                color: "var(--text-main, #111)",
+              }}
+            >
               {resolveCustomer.customerNameById(p.custId)}
             </div>
             <div style={{ fontSize: 12, color: "var(--text-muted, #6b7280)" }}>
               {p.start} → {p.end || "open"}
             </div>
             {p.reason && (
-              <div style={{ fontSize: 12, color: "var(--text-muted, #9ca3af)", opacity: 0.8 }}>{p.reason}</div>
+              <div
+                style={{
+                  fontSize: 12,
+                  color: "var(--text-muted, #9ca3af)",
+                  opacity: 0.8,
+                }}
+              >
+                {p.reason}
+              </div>
             )}
           </div>
         ))
@@ -194,10 +223,26 @@ function SecurityCard({ onOpenModal }) {
   return (
     <Card>
       <CardHeader title="Security" />
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
-        <ShieldCheck size={24} style={{ color: "var(--success-text, #166534)" }} />
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+          marginBottom: 12,
+        }}
+      >
+        <ShieldCheck
+          size={24}
+          style={{ color: "var(--success-text, #166534)" }}
+        />
         <div>
-          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-main, #111)" }}>
+          <div
+            style={{
+              fontSize: 14,
+              fontWeight: 600,
+              color: "var(--text-main, #111)",
+            }}
+          >
             Operator PIN
           </div>
           <div style={{ fontSize: 12, color: "var(--text-muted, #6b7280)" }}>
@@ -300,7 +345,12 @@ function SystemHealthCard({ health, onHealthCheck }) {
         >
           <span style={{ color: "var(--text-muted, #6b7280)" }}>{x.label}</span>
           <span
-            style={{ color: x.ok ? "var(--success-text, #166534)" : "var(--danger-text, #991b1b)", fontWeight: 500 }}
+            style={{
+              color: x.ok
+                ? "var(--success-text, #166534)"
+                : "var(--danger-text, #991b1b)",
+              fontWeight: 500,
+            }}
           >
             {x.value}
           </span>

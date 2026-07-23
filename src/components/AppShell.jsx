@@ -164,15 +164,17 @@ export function AppShell({
         </div>
       </header>
       {!isOnline && (
-        <div style={{
-          background: "var(--warning-bg, #fef9c3)",
-          color: "var(--warning-text, #854d0e)",
-          padding: "8px 16px",
-          textAlign: "center",
-          fontSize: 13,
-          fontWeight: 600,
-          borderBottom: "1px solid var(--border-color)"
-        }}>
+        <div
+          style={{
+            background: "var(--warning-bg, #fef9c3)",
+            color: "var(--warning-text, #854d0e)",
+            padding: "8px 16px",
+            textAlign: "center",
+            fontSize: 13,
+            fontWeight: 600,
+            borderBottom: "1px solid var(--border-color)",
+          }}
+        >
           📡 You are offline. Data may be stale.
         </div>
       )}

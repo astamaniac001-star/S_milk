@@ -1,6 +1,6 @@
 // src/hooks/useAuth.js
-import { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabaseClient';
+import { useState, useEffect } from "react";
+import { supabase } from "../lib/supabaseClient";
 
 export function useAuth() {
   const [session, setSession] = useState(null);
@@ -19,7 +19,10 @@ export function useAuth() {
     const checkSession = async () => {
       try {
         // ✅ FIX: Wrapped in try/catch/finally to prevent infinite loading on rejection
-        const { data: { session: s }, error: sessionError } = await supabase.auth.getSession();
+        const {
+          data: { session: s },
+          error: sessionError,
+        } = await supabase.auth.getSession();
         if (sessionError) throw sessionError;
         setSession(s);
       } catch (err) {
@@ -33,9 +36,11 @@ export function useAuth() {
     checkSession();
 
     // 2. Listen for Supabase auth state changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, s) => {
       setSession(s);
-      if (_event === 'SIGNED_OUT') {
+      if (_event === "SIGNED_OUT") {
         window.dispatchEvent(new CustomEvent("auth:expired"));
       }
     });
@@ -53,10 +58,10 @@ export function useAuth() {
       logout(); // ✅ FIX: Actually call the logout function to clear state and redirect
     };
 
-    window.addEventListener('auth:expired', handleAuthExpired);
+    window.addEventListener("auth:expired", handleAuthExpired);
 
     return () => {
-      window.removeEventListener('auth:expired', handleAuthExpired);
+      window.removeEventListener("auth:expired", handleAuthExpired);
     };
   }, []);
 
@@ -70,10 +75,10 @@ export function useAuth() {
       }
 
       const { error: authError } = await supabase.auth.signInWithPassword({
-        email: 'operator@milk.local',
+        email: "operator@milk.local",
         password: cleanPin,
       });
-      if (authError) throw new Error(authError.message || 'Invalid PIN');
+      if (authError) throw new Error(authError.message || "Invalid PIN");
       // Session will be set by onAuthStateChange listener above
     } catch (err) {
       setError(err.message || "Login failed");

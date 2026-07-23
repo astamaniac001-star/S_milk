@@ -1,4 +1,3 @@
-
 import { ErrorBoundary } from "./components/ErrorBoundary.jsx";
 import { AppShell } from "./components/AppShell.jsx";
 import { AppPage } from "./components/AppPage.jsx";
