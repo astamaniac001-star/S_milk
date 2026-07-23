@@ -77,7 +77,11 @@ export function useAuth() {
       // Session will be set by onAuthStateChange listener above
     } catch (err) {
       setError(err.message || "Login failed");
-      setLoading(false); // ✅ FIX: Ensure loading is false on login error
+    } finally {
+      // Must run on success too — onAuthStateChange sets the session but
+      // never touches `loading`, so without this the app hangs on a spinner
+      // after a correct PIN.
+      setLoading(false);
     }
   };
 

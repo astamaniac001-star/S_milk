@@ -23,27 +23,6 @@ COMMENT ON SCHEMA "public" IS 'standard public schema';
 
 
 
-CREATE OR REPLACE FUNCTION "public"."apply_adjustment_rpc"("p_adjustment_id" "uuid", "p_bill_id" "uuid") RETURNS "jsonb"
-    LANGUAGE "plpgsql"
-    AS $$
-DECLARE v_adj record; v_bill record;
-BEGIN
-  SELECT * INTO v_adj FROM adjustments WHERE id = p_adjustment_id FOR UPDATE;
-  IF v_adj IS NULL OR v_adj.status = 'Applied' THEN RETURN jsonb_build_object('success', true, 'idempotent', true); END IF;
-
-  SELECT * INTO v_bill FROM bills WHERE id = p_bill_id FOR UPDATE;
-  IF v_bill.customer_id != v_adj.customer_id THEN RAISE EXCEPTION 'Customer mismatch'; END IF;
-
-  UPDATE bills SET amount = amount + v_adj.amount, version = version + 1 WHERE id = p_bill_id;
-  UPDATE adjustments SET status = 'Applied', bill_id = p_bill_id WHERE id = p_adjustment_id;
-
-  RETURN jsonb_build_object('success', true);
-END; $$;
-
-
-ALTER FUNCTION "public"."apply_adjustment_rpc"("p_adjustment_id" "uuid", "p_bill_id" "uuid") OWNER TO "postgres";
-
-
 CREATE OR REPLACE FUNCTION "public"."apply_adjustment_rpc"("p_adjustment_id" "uuid", "p_bill_id" "uuid", "p_version" integer) RETURNS "jsonb"
     LANGUAGE "plpgsql"
     AS $$
@@ -58,7 +37,7 @@ BEGIN
   -- 2. Check version for Optimistic Concurrency Control (OCC)
   IF v_adj.version != p_version THEN RAISE EXCEPTION 'CONFLICT: Adjustment was modified by another process.'; END IF;
   
-  -- 3. Check if already applied (using the correct boolean column)
+  -- 3. Check if already applied
   IF v_adj.applied = true THEN RAISE EXCEPTION 'Adjustment has already been applied.'; END IF;
 
   -- 4. Fetch and lock the bill
@@ -88,6 +67,62 @@ $$;
 ALTER FUNCTION "public"."apply_adjustment_rpc"("p_adjustment_id" "uuid", "p_bill_id" "uuid", "p_version" integer) OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."apply_credit_note_rpc"("p_credit_note_id" "uuid", "p_bill_id" "uuid", "p_version" integer) RETURNS "jsonb"
+    LANGUAGE "plpgsql"
+    AS $$
+DECLARE
+  v_cn record;
+  v_bill record;
+  v_new_paid numeric;
+  v_status text;
+BEGIN
+  -- 1. Fetch and lock the credit note
+  SELECT * INTO v_cn FROM credit_notes WHERE id = p_credit_note_id FOR UPDATE;
+  IF v_cn IS NULL THEN RAISE EXCEPTION 'Credit note not found'; END IF;
+  
+  -- 2. Check version for Optimistic Concurrency Control (OCC)
+  IF v_cn.version != p_version THEN RAISE EXCEPTION 'CONFLICT: Credit note was modified by another process.'; END IF;
+  
+  -- 3. Check if already applied
+  IF v_cn.applied = true THEN RAISE EXCEPTION 'Credit note has already been applied.'; END IF;
+
+  -- 4. Fetch and lock the bill
+  SELECT * INTO v_bill FROM bills WHERE id = p_bill_id FOR UPDATE;
+  IF v_bill IS NULL THEN RAISE EXCEPTION 'Bill not found'; END IF;
+  IF v_bill.locked = true THEN RAISE EXCEPTION 'Cannot apply a credit note to a locked bill.'; END IF;
+
+  -- 5. Calculate new paid amount and status
+  v_new_paid := v_bill.amount_paid + v_cn.amount;
+  v_status := CASE 
+    WHEN v_new_paid >= v_bill.amount THEN 'Paid'
+    WHEN v_new_paid > 0 THEN 'Partial'
+    ELSE 'Unpaid'
+  END;
+
+  -- 6. Update the bill atomically
+  UPDATE bills
+  SET amount_paid = v_new_paid,
+      status = v_status,
+      version = version + 1,
+      updated_at = now()
+  WHERE id = p_bill_id;
+
+  -- 7. Mark credit note as applied and update its version
+  UPDATE credit_notes
+  SET applied = true,
+      applied_to_bill_id = p_bill_id,
+      version = version + 1,
+      updated_at = now()
+  WHERE id = p_credit_note_id;
+
+  RETURN jsonb_build_object('success', true, 'newPaid', v_new_paid, 'status', v_status);
+END;
+$$;
+
+
+ALTER FUNCTION "public"."apply_credit_note_rpc"("p_credit_note_id" "uuid", "p_bill_id" "uuid", "p_version" integer) OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."generate_month_bill_rpc"("p_customer_id" "uuid", "p_month" "text") RETURNS "jsonb"
     LANGUAGE "plpgsql"
     AS $$
@@ -101,15 +136,19 @@ BEGIN
   -- Get customer's product to find the correct rate
   SELECT product INTO v_product FROM customers WHERE id = p_customer_id;
   
-  -- Fetch rate from milk_brands based on the product (default_milk_type)
-  SELECT rate_per_liter INTO v_rate FROM milk_brands WHERE default_milk_type = v_product AND is_active = true ORDER BY created_at DESC LIMIT 1;
+  -- Fetch rate strictly: must be Active, ordered by newest, limit 1
+  SELECT rate_per_liter INTO v_rate 
+  FROM milk_brands 
+  WHERE default_milk_type = v_product AND status = 'Active' 
+  ORDER BY created_at DESC LIMIT 1;
 
+  -- FAIL LOUDLY if no rate is found (prevents silent ₹0 bills)
   IF v_rate IS NULL THEN
         RAISE EXCEPTION 'No active rate found for milk type %', v_product;
-    END IF;
+  END IF;
 
   SELECT COALESCE(SUM(qty), 0) INTO v_total_qty FROM daily_logs
-  WHERE customer_id = p_customer_id AND to_char(date, 'YYYY-MM') = p_month A    ND delivered = true;
+  WHERE customer_id = p_customer_id AND to_char(date, 'YYYY-MM') = p_month AND delivered = true;
 
   v_amount := v_total_qty * v_rate;
 
@@ -126,7 +165,8 @@ BEGIN
   END IF;
 
   RETURN jsonb_build_object('success', true, 'amount', v_amount);
-END; $$;
+END; 
+$$;
 
 
 ALTER FUNCTION "public"."generate_month_bill_rpc"("p_customer_id" "uuid", "p_month" "text") OWNER TO "postgres";
@@ -140,74 +180,6 @@ $$;
 
 
 ALTER FUNCTION "public"."is_operator"() OWNER TO "postgres";
-
-
-CREATE OR REPLACE FUNCTION "public"."record_payment"("p_bill_id" "uuid", "p_amount" numeric, "p_mode" "text" DEFAULT 'Cash'::"text", "p_date" "date" DEFAULT CURRENT_DATE, "p_note" "text" DEFAULT NULL::"text") RETURNS json
-    LANGUAGE "plpgsql" SECURITY DEFINER
-    SET "search_path" TO 'public'
-    AS $$
-DECLARE
-  v_bill bills%ROWTYPE;
-  v_new_paid numeric;
-  v_status text;
-BEGIN
-  SELECT * INTO v_bill FROM bills WHERE id = p_bill_id FOR UPDATE;
-  IF NOT FOUND THEN RAISE EXCEPTION 'Bill not found' USING ERRCODE = 'P0002'; END IF;
-  IF v_bill.locked THEN RAISE EXCEPTION 'Bill is locked' USING ERRCODE = 'P0001'; END IF;
-  IF p_amount > (v_bill.amount - v_bill.amount_paid) + 0.01 THEN
-    RAISE EXCEPTION 'Payment exceeds pending amount' USING ERRCODE = 'P0001';
-  END IF;
-
-  v_new_paid := v_bill.amount_paid + p_amount;
-  v_status := CASE WHEN v_new_paid >= v_bill.amount THEN 'Paid' WHEN v_new_paid > 0 THEN 'Partial' ELSE 'Unpaid' END;
-
-  UPDATE bills SET amount_paid = v_new_paid, status = v_status WHERE id = p_bill_id;
-  RETURN json_build_object('billId', p_bill_id, 'amountPaid', v_new_paid, 'status', v_status);
-END;
-$$;
-
-
-ALTER FUNCTION "public"."record_payment"("p_bill_id" "uuid", "p_amount" numeric, "p_mode" "text", "p_date" "date", "p_note" "text") OWNER TO "postgres";
-
-
-CREATE OR REPLACE FUNCTION "public"."record_payment_rpc"("p_bill_id" "uuid", "p_amount" numeric, "p_mode" "text", "p_note" "text", "p_idempotency_key" "uuid") RETURNS "jsonb"
-    LANGUAGE "plpgsql"
-    AS $$
-DECLARE v_bill record; v_existing_payment record; v_pending numeric;
-BEGIN
-  -- 1. Idempotency check
-  SELECT id INTO v_existing_payment FROM payments WHERE idempotency_key = p_idempotency_key;
-  IF v_existing_payment IS NOT NULL THEN 
-    RETURN jsonb_build_object('success', true, 'idempotent', true); 
-  END IF;
-
-  -- 2. Lock and validate bill
-  SELECT * INTO v_bill FROM bills WHERE id = p_bill_id FOR UPDATE;
-  IF v_bill IS NULL THEN RAISE EXCEPTION 'Bill not found'; END IF;
-  IF v_bill.locked = true THEN RAISE EXCEPTION 'This bill is locked.'; END IF;
-  IF p_amount <= 0 THEN RAISE EXCEPTION 'Amount must be positive'; END IF;
-  
-  v_pending := v_bill.amount - v_bill.amount_paid;
-  IF p_amount > v_pending + 0.01 THEN 
-    RAISE EXCEPTION 'Payment exceeds pending amount (%). Use a credit note for advance payment.', v_pending; 
-  END IF;
-
-  -- 3. Insert payment and update bill atomically
-  INSERT INTO payments (id, bill_id, amount, mode, note, idempotency_key, created_at)
-  VALUES (gen_random_uuid(), p_bill_id, p_amount, p_mode, p_note, p_idempotency_key, now());
-
-  UPDATE bills 
-  SET amount_paid = amount_paid + p_amount,
-      status = CASE WHEN (amount_paid + p_amount) >= amount THEN 'Paid' ELSE 'Partial' END,
-      version = version + 1,
-      updated_at = now()
-  WHERE id = p_bill_id;
-
-  RETURN jsonb_build_object('success', true);
-END; $$;
-
-
-ALTER FUNCTION "public"."record_payment_rpc"("p_bill_id" "uuid", "p_amount" numeric, "p_mode" "text", "p_note" "text", "p_idempotency_key" "uuid") OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."record_payment_rpc"("p_bill_id" "uuid", "p_amount" numeric, "p_mode" "text", "p_date" "date", "p_note" "text", "p_idempotency_key" "uuid") RETURNS "jsonb"
@@ -284,6 +256,7 @@ CREATE TABLE IF NOT EXISTS "public"."adjustments" (
     "date" "date",
     "created_at" timestamp with time zone DEFAULT "now"(),
     "updated_at" timestamp with time zone DEFAULT "now"(),
+    "version" integer DEFAULT 1,
     CONSTRAINT "chk_adjustments_amount_nonzero" CHECK (("amount" <> (0)::numeric))
 );
 
@@ -325,7 +298,8 @@ CREATE TABLE IF NOT EXISTS "public"."credit_notes" (
     "applied" boolean DEFAULT false,
     "date" "date",
     "created_at" timestamp with time zone DEFAULT "now"(),
-    "updated_at" timestamp with time zone DEFAULT "now"()
+    "updated_at" timestamp with time zone DEFAULT "now"(),
+    "version" integer DEFAULT 1
 );
 
 ALTER TABLE ONLY "public"."credit_notes" FORCE ROW LEVEL SECURITY;
@@ -680,26 +654,6 @@ ALTER TABLE "public"."payments" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "public"."settings" ENABLE ROW LEVEL SECURITY;
 
 
-CREATE POLICY "strict_auth_only_adjustments" ON "public"."adjustments" TO "authenticated" USING (true) WITH CHECK (true);
-
-
-
-CREATE POLICY "strict_auth_only_bills" ON "public"."bills" TO "authenticated" USING (true) WITH CHECK (true);
-
-
-
-CREATE POLICY "strict_auth_only_credit_notes" ON "public"."credit_notes" TO "authenticated" USING (true) WITH CHECK (true);
-
-
-
-CREATE POLICY "strict_auth_only_customers" ON "public"."customers" TO "authenticated" USING (true) WITH CHECK (true);
-
-
-
-CREATE POLICY "strict_auth_only_daily_logs" ON "public"."daily_logs" TO "authenticated" USING (true) WITH CHECK (true);
-
-
-
 CREATE POLICY "strict_auth_only_delete" ON "public"."adjustments" FOR DELETE USING ("public"."is_operator"());
 
 
@@ -788,22 +742,6 @@ CREATE POLICY "strict_auth_only_insert" ON "public"."subscriptions" FOR INSERT W
 
 
 
-CREATE POLICY "strict_auth_only_milk_brands" ON "public"."milk_brands" TO "authenticated" USING (true) WITH CHECK (true);
-
-
-
-CREATE POLICY "strict_auth_only_milk_imports" ON "public"."milk_imports" TO "authenticated" USING (true) WITH CHECK (true);
-
-
-
-CREATE POLICY "strict_auth_only_pause_periods" ON "public"."pause_periods" TO "authenticated" USING (true) WITH CHECK (true);
-
-
-
-CREATE POLICY "strict_auth_only_payments" ON "public"."payments" TO "authenticated" USING (true) WITH CHECK (true);
-
-
-
 CREATE POLICY "strict_auth_only_select" ON "public"."adjustments" FOR SELECT USING ("public"."is_operator"());
 
 
@@ -845,14 +783,6 @@ CREATE POLICY "strict_auth_only_select" ON "public"."settings" FOR SELECT USING 
 
 
 CREATE POLICY "strict_auth_only_select" ON "public"."subscriptions" FOR SELECT USING ("public"."is_operator"());
-
-
-
-CREATE POLICY "strict_auth_only_settings" ON "public"."settings" TO "authenticated" USING (true) WITH CHECK (true);
-
-
-
-CREATE POLICY "strict_auth_only_subscriptions" ON "public"."subscriptions" TO "authenticated" USING (true) WITH CHECK (true);
 
 
 
@@ -910,14 +840,13 @@ GRANT USAGE ON SCHEMA "public" TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."apply_adjustment_rpc"("p_adjustment_id" "uuid", "p_bill_id" "uuid") TO "authenticated";
-GRANT ALL ON FUNCTION "public"."apply_adjustment_rpc"("p_adjustment_id" "uuid", "p_bill_id" "uuid") TO "service_role";
-
-
-
-GRANT ALL ON FUNCTION "public"."apply_adjustment_rpc"("p_adjustment_id" "uuid", "p_bill_id" "uuid", "p_version" integer) TO "anon";
 GRANT ALL ON FUNCTION "public"."apply_adjustment_rpc"("p_adjustment_id" "uuid", "p_bill_id" "uuid", "p_version" integer) TO "authenticated";
 GRANT ALL ON FUNCTION "public"."apply_adjustment_rpc"("p_adjustment_id" "uuid", "p_bill_id" "uuid", "p_version" integer) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."apply_credit_note_rpc"("p_credit_note_id" "uuid", "p_bill_id" "uuid", "p_version" integer) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."apply_credit_note_rpc"("p_credit_note_id" "uuid", "p_bill_id" "uuid", "p_version" integer) TO "service_role";
 
 
 
@@ -932,17 +861,6 @@ GRANT ALL ON FUNCTION "public"."is_operator"() TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."record_payment"("p_bill_id" "uuid", "p_amount" numeric, "p_mode" "text", "p_date" "date", "p_note" "text") TO "authenticated";
-GRANT ALL ON FUNCTION "public"."record_payment"("p_bill_id" "uuid", "p_amount" numeric, "p_mode" "text", "p_date" "date", "p_note" "text") TO "service_role";
-
-
-
-GRANT ALL ON FUNCTION "public"."record_payment_rpc"("p_bill_id" "uuid", "p_amount" numeric, "p_mode" "text", "p_note" "text", "p_idempotency_key" "uuid") TO "authenticated";
-GRANT ALL ON FUNCTION "public"."record_payment_rpc"("p_bill_id" "uuid", "p_amount" numeric, "p_mode" "text", "p_note" "text", "p_idempotency_key" "uuid") TO "service_role";
-
-
-
-GRANT ALL ON FUNCTION "public"."record_payment_rpc"("p_bill_id" "uuid", "p_amount" numeric, "p_mode" "text", "p_date" "date", "p_note" "text", "p_idempotency_key" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."record_payment_rpc"("p_bill_id" "uuid", "p_amount" numeric, "p_mode" "text", "p_date" "date", "p_note" "text", "p_idempotency_key" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."record_payment_rpc"("p_bill_id" "uuid", "p_amount" numeric, "p_mode" "text", "p_date" "date", "p_note" "text", "p_idempotency_key" "uuid") TO "service_role";
 

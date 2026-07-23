@@ -28,8 +28,9 @@ function useAutoMonthRollover(isAuthenticated) {
 
       callApi("rolloverMonth", { targetMonth: currentMonth })
         .then((res) => {
+          // NOTE: callApi returns result.data directly — do not read res.data
           console.warn(
-            `[Auto-Rollover] Success: ${res.data.billsGenerated} bills generated, ${res.data.renewed} subscriptions extended.`,
+            `[Auto-Rollover] Success: ${res.billsGenerated} bills generated.`,
           );
           // Mark as done so it doesn't run again this month
           localStorage.setItem("last_rollover_month", currentMonth);

@@ -20,7 +20,7 @@
     "check-deps": "npx depcheck",
     "spellcheck": "npx cspell \"src/**/*.{js,jsx}\" \"*.md\" \"index.html\" ",
     "check-all": "npm run lint && npm run test && npm run build ",
-    "advisor-all": "npm run test:coverage && npm run fallow && npm run test:coverage && npm run spellcheck  && npm run check-deps ",
+    "advisor-all": " npm run fallow && npm run test:coverage && npm run spellcheck  && npm run check-deps ",
     "db:baseline": "node scripts/db-baseline.js",
     "db:new": "supabase migration new",
     "db:push": "supabase db push",

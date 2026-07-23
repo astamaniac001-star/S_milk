@@ -31,13 +31,6 @@ function dayOfWeekKolkata(date) {
   return KOLKATA_DOW[name] ?? 0;
 }
 
-function nextMonthStart(month) {
-  const [y, m] = String(month).split("-").map(Number);
-  const ny = m === 12 ? y + 1 : y;
-  const nm = m === 12 ? 1 : m + 1;
-  return `${ny}-${String(nm).padStart(2, "0")}-01`;
-}
-
 const AUTH_ERROR_CODES = new Set(["42501", "PGRST301", "PGRST302"]);
 function isAuthError(err) {
   return (
@@ -134,6 +127,7 @@ export function mapAdjustmentFromApi(a) {
     reason: a.reason,
     applied: !!a.applied,
     date: a.date,
+    version: a.version ?? 1,
   };
 }
 export function mapPauseFromApi(p) {
@@ -176,6 +170,7 @@ export function mapCreditNoteFromApi(c) {
     reason: c.reason,
     applied: !!c.applied,
     date: c.date,
+    version: c.version ?? 1,
   };
 }
 
@@ -288,26 +283,12 @@ export async function callApi(action, payload = {}) {
         must(subErr);
 
         const results = { renewed: 0, billsGenerated: 0, errors: [] };
-        const [y, m] = targetMonth.split("-").map(Number);
-
-        // Calculate the last day of the target month (e.g., "2024-08-31")
-        const lastDayOfMonth = new Date(y, m, 0).toISOString().split("T")[0];
-        const nextMonthBoundary = nextMonthStart(targetMonth);
-        console.warn(`[Rollover] Processing ${targetMonth}. Next month starts: ${nextMonthBoundary}`);
 
         for (const sub of subs) {
           try {
-            // 2. Extend subscription end_date if it's in the past or ends before the new month
-            const currentEnd = sub.end_date;
-            if (!currentEnd || currentEnd < lastDayOfMonth) {
-              await supabase
-                .from("subscriptions")
-                .update({ end_date: lastDayOfMonth })
-                .eq("id", sub.id);
-              results.renewed++;
-            }
-
-            // 3. Check if a bill already exists for this customer & target month
+            // 2. Check if a bill already exists for this customer & target month
+            // (subscriptions have no end_date column — active subs simply roll
+            // forward, so there is nothing to "extend")
             const { data: existingBill } = await supabase
               .from("bills")
               .select("id")

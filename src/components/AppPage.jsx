@@ -105,7 +105,9 @@ function renderMore(state, handlers, _derived) {
       diagRan={state.diagRan}
       activeBrandsCount={state.activeBrandsCount || 0}
       onOpenModal={state.openModal}
-      onApplyAdj={(adjId, billId) => handlers.applyAdjustment(adjId, billId)}
+      onApplyAdj={(adjId, billId, version) =>
+        handlers.applyAdjustment(adjId, billId, version)
+      }
       onRunDiag={async () => {
         try {
           await callApi("runDiagnostics");

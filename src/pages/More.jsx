@@ -115,7 +115,7 @@ function AdjustmentItem({ a, onApplyAdj, resolveCustomer }) {
         <AdjustmentActions
           applied={!!a.applied}
           // FIX H1: Pass the correct ID to the handler
-          onApply={() => onApplyAdj(a.adjustmentId || a.id, a.billId)}
+          onApply={() => onApplyAdj(a.adjustmentId || a.id, a.billId, a.version)}
         />
       </div>
     </div>
