@@ -25,41 +25,56 @@ COMMENT ON SCHEMA "public" IS 'standard public schema';
 
 CREATE OR REPLACE FUNCTION "public"."apply_adjustment_rpc"("p_adjustment_id" "uuid", "p_bill_id" "uuid", "p_version" integer) RETURNS "jsonb"
     LANGUAGE "plpgsql"
+    SET "search_path" TO 'public'
     AS $$
 DECLARE
   v_adj record;
   v_bill record;
+  v_new_amount numeric;
 BEGIN
-  -- 1. Fetch and lock the adjustment
+  -- Fetch and lock the adjustment
   SELECT * INTO v_adj FROM adjustments WHERE id = p_adjustment_id FOR UPDATE;
   IF v_adj IS NULL THEN RAISE EXCEPTION 'Adjustment not found'; END IF;
   
-  -- 2. Check version for Optimistic Concurrency Control (OCC)
+  -- Check version for Optimistic Concurrency Control (OCC)
   IF v_adj.version != p_version THEN RAISE EXCEPTION 'CONFLICT: Adjustment was modified by another process.'; END IF;
   
-  -- 3. Check if already applied
+  -- Check if already applied
   IF v_adj.applied = true THEN RAISE EXCEPTION 'Adjustment has already been applied.'; END IF;
 
-  -- 4. Fetch and lock the bill
+  -- Fetch and lock the bill
   SELECT * INTO v_bill FROM bills WHERE id = p_bill_id FOR UPDATE;
   IF v_bill IS NULL THEN RAISE EXCEPTION 'Bill not found'; END IF;
   IF v_bill.locked = true THEN RAISE EXCEPTION 'Cannot apply adjustment to a locked bill.'; END IF;
 
-  -- 5. Apply the adjustment (reduce bill amount)
+  -- Calculate new amount (Assumes v_adj.amount is a positive discount. Change to '+' if it's a surcharge)
+  v_new_amount := v_bill.amount - v_adj.amount;
+
+  -- CRITICAL: Prevent violating the chk_bills_paid_lte_amount constraint
+  IF v_new_amount < v_bill.amount_paid THEN
+    RAISE EXCEPTION 'Adjustment would make total bill amount (%) less than amount already paid (%). Please issue a credit note instead.', v_new_amount, v_bill.amount_paid;
+  END IF;
+
+  -- Apply the adjustment and recompute status atomically
   UPDATE bills
-  SET amount = v_bill.amount - v_adj.amount,
+  SET amount = v_new_amount,
+      status = CASE 
+        WHEN v_new_amount <= v_bill.amount_paid THEN 'Paid'
+        WHEN v_bill.amount_paid > 0 THEN 'Partial'
+        ELSE 'Unpaid'
+      END,
       version = v_bill.version + 1,
       updated_at = now()
   WHERE id = p_bill_id;
 
-  -- 6. Mark adjustment as applied and update its version/timestamp
+  -- Mark adjustment as applied and update its version/timestamp
   UPDATE adjustments
   SET applied = true,
       version = version + 1,
       updated_at = now()
   WHERE id = p_adjustment_id;
 
-  RETURN jsonb_build_object('success', true);
+  RETURN jsonb_build_object('success', true, 'new_amount', v_new_amount);
 END;
 $$;
 
@@ -69,6 +84,7 @@ ALTER FUNCTION "public"."apply_adjustment_rpc"("p_adjustment_id" "uuid", "p_bill
 
 CREATE OR REPLACE FUNCTION "public"."apply_credit_note_rpc"("p_credit_note_id" "uuid", "p_bill_id" "uuid", "p_version" integer) RETURNS "jsonb"
     LANGUAGE "plpgsql"
+    SET "search_path" TO 'public'
     AS $$
 DECLARE
   v_cn record;
@@ -125,6 +141,7 @@ ALTER FUNCTION "public"."apply_credit_note_rpc"("p_credit_note_id" "uuid", "p_bi
 
 CREATE OR REPLACE FUNCTION "public"."generate_month_bill_rpc"("p_customer_id" "uuid", "p_month" "text") RETURNS "jsonb"
     LANGUAGE "plpgsql"
+    SET "search_path" TO 'public'
     AS $$
 DECLARE 
   v_rate numeric; 
@@ -174,6 +191,7 @@ ALTER FUNCTION "public"."generate_month_bill_rpc"("p_customer_id" "uuid", "p_mon
 
 CREATE OR REPLACE FUNCTION "public"."is_operator"() RETURNS boolean
     LANGUAGE "sql" STABLE
+    SET "search_path" TO 'public'
     AS $$
   SELECT auth.uid() = '3947f8aa-c545-41e0-b773-b263749d99ae'::uuid;
 $$;
@@ -184,6 +202,7 @@ ALTER FUNCTION "public"."is_operator"() OWNER TO "postgres";
 
 CREATE OR REPLACE FUNCTION "public"."record_payment_rpc"("p_bill_id" "uuid", "p_amount" numeric, "p_mode" "text", "p_date" "date", "p_note" "text", "p_idempotency_key" "uuid") RETURNS "jsonb"
     LANGUAGE "plpgsql"
+    SET "search_path" TO 'public'
     AS $$
 DECLARE 
   v_bill record; 
@@ -231,6 +250,7 @@ ALTER FUNCTION "public"."record_payment_rpc"("p_bill_id" "uuid", "p_amount" nume
 
 CREATE OR REPLACE FUNCTION "public"."update_updated_at_column"() RETURNS "trigger"
     LANGUAGE "plpgsql"
+    SET "search_path" TO 'public'
     AS $$
 BEGIN
     NEW.updated_at = NOW();
@@ -520,7 +540,27 @@ ALTER TABLE ONLY "public"."bills"
 
 
 
+CREATE INDEX "idx_adjustments_bill_id" ON "public"."adjustments" USING "btree" ("bill_id");
+
+
+
+CREATE INDEX "idx_adjustments_customer_id" ON "public"."adjustments" USING "btree" ("customer_id");
+
+
+
 CREATE INDEX "idx_bills_customer_month" ON "public"."bills" USING "btree" ("customer_id", "month");
+
+
+
+CREATE INDEX "idx_credit_notes_applied_to_bill_id" ON "public"."credit_notes" USING "btree" ("applied_to_bill_id");
+
+
+
+CREATE INDEX "idx_credit_notes_bill_id" ON "public"."credit_notes" USING "btree" ("bill_id");
+
+
+
+CREATE INDEX "idx_credit_notes_customer_id" ON "public"."credit_notes" USING "btree" ("customer_id");
 
 
 
@@ -528,7 +568,19 @@ CREATE INDEX "idx_daily_logs_customer_date" ON "public"."daily_logs" USING "btre
 
 
 
+CREATE INDEX "idx_milk_imports_brand_id" ON "public"."milk_imports" USING "btree" ("brand_id");
+
+
+
+CREATE INDEX "idx_pause_periods_customer_id" ON "public"."pause_periods" USING "btree" ("customer_id");
+
+
+
 CREATE INDEX "idx_payments_bill_id" ON "public"."payments" USING "btree" ("bill_id");
+
+
+
+CREATE INDEX "idx_payments_customer_id" ON "public"."payments" USING "btree" ("customer_id");
 
 
 
