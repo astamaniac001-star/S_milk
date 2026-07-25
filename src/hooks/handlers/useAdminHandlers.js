@@ -1,9 +1,16 @@
-import { useMemo, useCallback } from "react";
+import { useMemo, useCallback, useRef } from "react";
 import { mapPauseFromApi, mapBrandFromApi, callApi } from "../../lib/api.js";
 import { useHelpers } from "./shared.js";
 
 export function useAdminHandlers(state) {
-  const { setPauses, setBrands, form = {}, modal = {}, closeModal } = state;
+  const {
+    setPauses,
+    setBrands,
+    form = {},
+    modal = {},
+    closeModal,
+    setDiagRan,
+  } = state;
   const { showToast, executeApiAction } = useHelpers(state);
 
   const adminHandlers = useMemo(
@@ -75,7 +82,9 @@ export function useAdminHandlers(state) {
           brandName: brandName.trim(),
           supplierName: f.supplier,
           supplierPhone: f.phone,
-          defaultMilkType: f.defaultType,
+          // FIX (audit 2026-07-24, rule §16): canonical default "Full Cream" —
+          // matches the modal's UI default and the customer default column.
+          defaultMilkType: f.defaultType || "Full Cream",
           ratePerLiter:
             f.rate !== undefined && f.rate !== "" ? Number(f.rate) : undefined,
           idempotencyKey: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
@@ -91,5 +100,72 @@ export function useAdminHandlers(state) {
     [setBrands, showToast, closeModal, form, modal],
   );
 
-  return { ...adminHandlers, savePause, saveBrand };
+  // FIX (audit 2026-07-24): moved here from AppPage.jsx so the re-entrancy
+  // guard (busyRef) actually fires. The inline version in AppPage bypassed
+  // useBusy and could double-fire on rapid taps. Each handler tracks its own
+  // busy flag so toggling diagnostics does not disable health-check (or vice versa).
+  const diagBusyRef = useRef(false);
+  const runDiagnostics = useCallback(async () => {
+    if (diagBusyRef.current) return;
+    diagBusyRef.current = true;
+    try {
+      await callApi("runDiagnostics");
+      if (typeof setDiagRan === "function") setDiagRan(true);
+      showToast("Diagnostics executed successfully", "success");
+    } catch (err) {
+      showToast(err?.message || "Diagnostics failed", "error");
+    } finally {
+      diagBusyRef.current = false;
+    }
+  }, [showToast, setDiagRan]);
+
+  const healthBusyRef = useRef(false);
+  const healthCheck = useCallback(async () => {
+    if (healthBusyRef.current) return;
+    healthBusyRef.current = true;
+    try {
+      await callApi("healthCheck");
+      showToast("Health check passed — V17", "success");
+    } catch (err) {
+      showToast(err?.message || "Health check failed", "error");
+    } finally {
+      healthBusyRef.current = false;
+    }
+  }, [showToast]);
+
+  // FIX (audit 2026-07-24): move PIN rotation out of ChangePinModal so the
+  // component does not import callApi directly (rule §1 — components go through
+  // handlers). The modal will call this handler instead. busyRef guards
+  // re-entrant rapid taps on the "Update PIN" button.
+  const pinBusyRef = useRef(false);
+  const rotatePin = useCallback(
+    async ({ currentPin, newPin }) => {
+      if (pinBusyRef.current) return false;
+      pinBusyRef.current = true;
+      try {
+        await callApi("rotatePIN", { currentPin, newPin });
+        showToast(
+          "PIN updated successfully! Use it next time you log in.",
+          "success",
+        );
+        if (closeModal) closeModal();
+        return true;
+      } catch (err) {
+        showToast(err?.message || "Failed to update PIN", "error");
+        return false;
+      } finally {
+        pinBusyRef.current = false;
+      }
+    },
+    [showToast, closeModal],
+  );
+
+  return {
+    ...adminHandlers,
+    savePause,
+    saveBrand,
+    runDiagnostics,
+    healthCheck,
+    rotatePin,
+  };
 }

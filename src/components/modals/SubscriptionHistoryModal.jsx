@@ -29,13 +29,29 @@ export function SubscriptionHistoryModal({
     const id = data?.id;
     if (!id) return;
     const fn = handlersRef.current?.fetchSubscriptionHistory;
-    if (!fn) return;
-    let cancelled = false;
-    fn(id).then((res) => {
-      if (cancelled) return;
-      setHistory(res);
+    if (!fn) {
+      // FIX (audit 2026-07-24): if the handler is missing, surface the error
+      // rather than hanging on "Loading timeline..." forever.
       setLoading(false);
-    });
+      return;
+    }
+    let cancelled = false;
+    fn(id)
+      .then((res) => {
+        if (cancelled) return;
+        setHistory(res);
+        setLoading(false);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        // FIX (audit 2026-07-24): the previous version omitted .catch entirely,
+        // so a reject from the handler left the modal stuck on Loading... forever.
+        // Error layer §3 (handler try/catch) makes rejection rare, but we still
+        // must not strand the user. Clear loading and show an inline error.
+        console.error("Failed to load subscription history:", err);
+        setHistory([]);
+        setLoading(false);
+      });
     return () => {
       cancelled = true;
     };

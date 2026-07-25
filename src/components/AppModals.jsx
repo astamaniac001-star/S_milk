@@ -114,7 +114,11 @@ const MODAL_RENDERERS = {
   addImport: renderImportModal,
   payment: renderPaymentModal,
   changePin: (ctx) => (
-    <ChangePinModal onClose={ctx.closeModal} showToast={ctx.toast$} />
+    <ChangePinModal
+      onClose={ctx.closeModal}
+      showToast={ctx.toast$}
+      onRotatePin={ctx.rotatePin}
+    />
   ),
   billDetail: (ctx) => (
     <BillDetailModal

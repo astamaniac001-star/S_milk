@@ -33,7 +33,7 @@ export function BrandModal({ form, onChange, onSave, onClose, milkTypes }) {
       <Field label="Default Milk Type">
         <select
           style={IS()}
-          value={form?.defaultType ?? ""}
+          value={form?.defaultType ?? "Full Cream"}
           onChange={onChange("defaultType")}
         >
           <option value="">Select Type</option>

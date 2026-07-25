@@ -19,7 +19,11 @@ export function SubscriptionModal({
     const next = currentDays.includes(day)
       ? currentDays.filter((d) => d !== day)
       : [...currentDays, day];
-    onChange("deliveryDays", next);
+    // FIX (audit 2026-07-24, rule §16): use the curried-event contract that
+    // `setF` expects — `setF(k)(e)` reads `e.target.value`. Manufacturing a
+    // synthetic event keeps this form on a single onChange contract instead
+    // of mixing curried-event (for text/select) with direct-value (here).
+    onChange("deliveryDays")({ target: { value: next } });
   };
 
   // ✅ Extracted to a named function so fallow can read the ignore comment
@@ -108,7 +112,12 @@ export function SubscriptionModal({
                   ? data.isActive
                   : true
             }
-            onChange={(e) => onChange("isActive", e.target.checked)}
+            // FIX (audit 2026-07-24): wrap the event so onChange("isActive")
+            // reads e.target.value (curried-event contract). The value is the
+            // boolean — setF stores it, mirroring how PaymentModal auto-fills.
+            onChange={(e) =>
+              onChange("isActive")({ target: { value: e.target.checked } })
+            }
           />
           <span style={{ fontSize: 13, color: "#111" }}>Active</span>
         </label>

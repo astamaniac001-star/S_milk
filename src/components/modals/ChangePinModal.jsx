@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { Modal, Btn, Field, IS } from "../ui.jsx";
 import { useBusy } from "../../hooks/useBusy.js";
-import { callApi } from "../../lib/api.js";
 
-export function ChangePinModal({ onClose, showToast }) {
+// FIX (audit 2026-07-24): no longer imports `callApi` directly (rule §1).
+// The rotatePin handler in useAdminHandlers wraps the API call + toast +
+// close + re-entrancy guard; this component just feeds it the typed PINs.
+export function ChangePinModal({ onClose, showToast, onRotatePin }) {
   const [currentPin, setCurrentPin] = useState("");
   const [newPin, setNewPin] = useState("");
   const [confirmPin, setConfirmPin] = useState("");
@@ -15,15 +17,14 @@ export function ChangePinModal({ onClose, showToast }) {
     if (currentPin === newPin)
       return showToast("New PIN must be different from current PIN", "error");
 
-    try {
-      await callApi("rotatePIN", { currentPin, newPin });
-      showToast(
-        "PIN updated successfully! Use it next time you log in.",
-        "success",
-      );
-      onClose();
-    } catch (e) {
-      showToast(e.message, "error");
+    // onRotatePin returns true on success; the handler closes the modal and
+    // toasts. We only call it — no direct callApi, no direct toast here on
+    // success (handler owns the success UX).
+    const ok = await (onRotatePin
+      ? onRotatePin({ currentPin, newPin })
+      : Promise.resolve(false));
+    if (!ok && !onRotatePin) {
+      showToast("PIN rotation is not available", "error");
     }
   });
 
@@ -65,7 +66,7 @@ export function ChangePinModal({ onClose, showToast }) {
             value={confirmPin}
             onChange={handleChange(setConfirmPin)}
             style={IS()}
-            placeholder="Re-enter new PIN"
+            placeholder="Re-enter new 6-digit PIN"
           />
         </Field>
 

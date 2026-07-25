@@ -139,6 +139,105 @@ $$;
 ALTER FUNCTION "public"."apply_credit_note_rpc"("p_credit_note_id" "uuid", "p_bill_id" "uuid", "p_version" integer) OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."confirm_milk_import_rpc"("p_import_id" "uuid", "p_expected_version" integer) RETURNS "jsonb"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+DECLARE
+  v_imp record;
+  v_rows int;
+  v_status text;
+BEGIN
+  IF NOT public.is_operator() THEN
+    RAISE EXCEPTION 'Unauthorized: only the operator may confirm imports';
+  END IF;
+
+  -- Lock + version check in one step.
+  SELECT * INTO v_imp
+    FROM milk_imports
+    WHERE id = p_import_id
+    FOR UPDATE;
+
+  IF v_imp IS NULL THEN
+    RAISE EXCEPTION 'NOT_FOUND: import % does not exist', p_import_id;
+  END IF;
+
+  IF v_imp.version <> p_expected_version THEN
+    RAISE EXCEPTION 'CONFLICT: import was modified by another process';
+  END IF;
+
+  IF v_imp.status = 'Confirmed' THEN
+    -- Idempotent success — no work to do but signal the caller.
+    RETURN jsonb_build_object(
+      'success', true,
+      'idempotent', true,
+      'status', 'Confirmed',
+      'newVersion', v_imp.version
+    );
+  END IF;
+
+  -- OCC update + verify exactly one row was affected (rule 5).
+  UPDATE milk_imports
+    SET status = 'Confirmed',
+        version = version + 1,
+        updated_at = now()
+    WHERE id = p_import_id AND version = p_expected_version;
+
+  GET DIAGNOSTICS v_rows = ROW_COUNT;
+  IF v_rows <> 1 THEN
+    RAISE EXCEPTION 'CONFLICT: import was modified by another process';
+  END IF;
+
+  SELECT status, version INTO v_status, v_rows
+    FROM milk_imports WHERE id = p_import_id;
+
+  RETURN jsonb_build_object(
+    'success', true,
+    'idempotent', false,
+    'status', v_status,
+    'newVersion', v_rows
+  );
+END;
+$$;
+
+
+ALTER FUNCTION "public"."confirm_milk_import_rpc"("p_import_id" "uuid", "p_expected_version" integer) OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."delete_milk_import_rpc"("p_import_id" "uuid", "p_expected_version" integer) RETURNS "jsonb"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+DECLARE
+  v_rows int;
+BEGIN
+  IF NOT public.is_operator() THEN
+    RAISE EXCEPTION 'Unauthorized: only the operator may delete imports';
+  END IF;
+
+  DELETE FROM milk_imports
+    WHERE id = p_import_id AND version = p_expected_version;
+
+  GET DIAGNOSTICS v_rows = ROW_COUNT;
+  IF v_rows = 0 THEN
+    -- Either the row doesn't exist at all, or the version was stale.
+    -- Distinguish them by existence so the UI can give the right message.
+    PERFORM 1 FROM milk_imports WHERE id = p_import_id;
+    IF FOUND THEN
+      RAISE EXCEPTION 'CONFLICT: import was modified by another process';
+    ELSE
+      RAISE EXCEPTION 'NOT_FOUND: import % does not exist', p_import_id;
+    END IF;
+  END IF;
+
+  RETURN jsonb_build_object('success', true, 'deleted', v_rows);
+END;
+$$;
+
+
+ALTER FUNCTION "public"."delete_milk_import_rpc"("p_import_id" "uuid", "p_expected_version" integer) OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."generate_month_bill_rpc"("p_customer_id" "uuid", "p_month" "text") RETURNS "jsonb"
     LANGUAGE "plpgsql"
     SET "search_path" TO 'public'
@@ -200,6 +299,94 @@ $$;
 ALTER FUNCTION "public"."is_operator"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."record_ad_hoc_log_rpc"("p_customer_id" "uuid", "p_date" "date", "p_qty" numeric, "p_product" "text", "p_reason" "text") RETURNS "jsonb"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+DECLARE
+  v_existing record;
+  v_note text := COALESCE(p_reason, '');
+  v_display_note text;
+  v_qty numeric := COALESCE(p_qty, 0);
+BEGIN
+  IF p_customer_id IS NULL THEN
+    RAISE EXCEPTION 'BAD_REQUEST: customer_id is required';
+  END IF;
+  IF p_date IS NULL THEN
+    RAISE EXCEPTION 'BAD_REQUEST: date is required';
+  END IF;
+  IF v_qty <= 0 THEN
+    RAISE EXCEPTION 'BAD_REQUEST: qty must be > 0';
+  END IF;
+
+  IF NOT public.is_operator() THEN
+    RAISE EXCEPTION 'Unauthorized: only the operator may record ad-hoc logs';
+  END IF;
+
+  -- Human-readable note. Existing tests/UX expect "Extra: <reason>" or
+  -- "Extra delivery" — keep that contract here so the UI shows identical text
+  -- whether the log is created or accumulated.
+  v_display_note := CASE
+    WHEN v_note = '' THEN 'Extra delivery'
+    ELSE 'Extra: ' || v_note
+  END;
+
+  -- Lock the existing row (if any). FOR UPDATE makes the row unavailable to
+  -- a concurrent record_ad_hoc_log_rpc call, so the accumulation is serial.
+  SELECT * INTO v_existing
+    FROM daily_logs
+    WHERE customer_id = p_customer_id AND date = p_date
+    FOR UPDATE;
+
+  IF v_existing IS NOT NULL THEN
+    -- Atomic accumulation under row lock. Note appendage uses " | " separator
+    -- to match the previous client-side behavior exactly.
+    UPDATE daily_logs
+      SET qty = COALESCE(v_existing.qty, 0) + v_qty,
+          delivered = true,
+          note = CASE
+            WHEN v_existing.note IS NULL OR v_existing.note = '' THEN v_display_note
+            ELSE v_existing.note || ' | ' || v_display_note
+          END,
+          updated_at = now()
+      WHERE id = v_existing.id
+      RETURNING id, qty INTO v_existing.id, v_existing.qty;
+
+    RETURN jsonb_build_object(
+      'logId', v_existing.id,
+      'qty', v_existing.qty,
+      'created', false
+    );
+  END IF;
+
+  -- No existing row. INSERT; the unique (customer_id, date) constraint may
+  -- raise unique_violation on a concurrent insert — let that propagate so the
+  -- caller (the API wrapper) can signal a retry.
+  BEGIN
+    INSERT INTO daily_logs (id, customer_id, date, product, qty, delivered, note)
+      VALUES (gen_random_uuid(), p_customer_id, p_date,
+              COALESCE(NULLIF(p_product, ''), 'Full Cream'),
+              v_qty, true, v_display_note)
+      RETURNING id, qty INTO v_existing.id, v_existing.qty;
+  EXCEPTION WHEN unique_violation THEN
+    -- A concurrent insert won. Surface a typed error so the client can
+    -- re-call this RPC — which will then take the UPDATE branch under the
+    -- row lock and accumulate the qty on the winner.
+    RAISE EXCEPTION 'CONFLICT: ad-hoc log race, please retry';
+  END;
+
+  RETURN jsonb_build_object(
+    'logId', v_existing.id,
+    'qty', v_existing.qty,
+    'created', true
+  );
+END;
+$$;
+
+
+ALTER FUNCTION "public"."record_ad_hoc_log_rpc"("p_customer_id" "uuid", "p_date" "date", "p_qty" numeric, "p_product" "text", "p_reason" "text") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."record_payment_rpc"("p_bill_id" "uuid", "p_amount" numeric, "p_mode" "text", "p_date" "date", "p_note" "text", "p_idempotency_key" "uuid") RETURNS "jsonb"
     LANGUAGE "plpgsql"
     SET "search_path" TO 'public'
@@ -246,6 +433,63 @@ END; $$;
 
 
 ALTER FUNCTION "public"."record_payment_rpc"("p_bill_id" "uuid", "p_amount" numeric, "p_mode" "text", "p_date" "date", "p_note" "text", "p_idempotency_key" "uuid") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."rollover_month_rpc"("p_month" "text") RETURNS "jsonb"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $_$
+DECLARE
+  v_generated int := 0;
+  v_skipped_existing int := 0;
+  v_active_subs int := 0;
+  v_sub record;
+BEGIN
+  IF p_month IS NULL OR p_month !~ '^\d{4}-\d{2}$' THEN
+    RAISE EXCEPTION 'Invalid month format (expected YYYY-MM): %', p_month;
+  END IF;
+
+  -- Authorize the caller. Supabase exposes auth.uid(); is_operator() is the
+  -- existing authoritative check against the documented operator UUID.
+  IF NOT public.is_operator() THEN
+    RAISE EXCEPTION 'Unauthorized: only the operator may trigger rollover';
+  END IF;
+
+  -- Lock the active subscription set so concurrent calls cannot both insert.
+  FOR v_sub IN
+    SELECT s.customer_id
+    FROM subscriptions s
+    WHERE s.is_active = true
+    ORDER BY s.customer_id
+    FOR UPDATE OF s
+  LOOP
+    v_active_subs := v_active_subs + 1;
+
+    -- INSERT ... ON CONFLICT is the atomic equivalent of the old
+    -- "select-then-insert" client loop. The unique (customer_id, month) index
+    -- on bills backs the DO NOTHING; partial-failure retries are safe.
+    INSERT INTO bills (id, customer_id, month, amount, amount_paid, status, locked, version)
+    VALUES (gen_random_uuid(), v_sub.customer_id, p_month, 0, 0, 'Unpaid', false, 1)
+    ON CONFLICT (customer_id, month) DO NOTHING
+    RETURNING 1 INTO v_generated;
+
+    -- If RETURNING yielded nothing the row already existed — count as skipped.
+    IF NOT FOUND THEN
+      v_skipped_existing := v_skipped_existing + 1;
+    END IF;
+  END LOOP;
+
+  RETURN jsonb_build_object(
+    'success', true,
+    'billsGenerated', v_generated,
+    'skippedExisting', v_skipped_existing,
+    'activeSubscriptions', v_active_subs
+  );
+END;
+$_$;
+
+
+ALTER FUNCTION "public"."rollover_month_rpc"("p_month" "text") OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."update_updated_at_column"() RETURNS "trigger"
@@ -892,16 +1136,31 @@ GRANT USAGE ON SCHEMA "public" TO "service_role";
 
 
 
+REVOKE ALL ON FUNCTION "public"."apply_adjustment_rpc"("p_adjustment_id" "uuid", "p_bill_id" "uuid", "p_version" integer) FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."apply_adjustment_rpc"("p_adjustment_id" "uuid", "p_bill_id" "uuid", "p_version" integer) TO "authenticated";
 GRANT ALL ON FUNCTION "public"."apply_adjustment_rpc"("p_adjustment_id" "uuid", "p_bill_id" "uuid", "p_version" integer) TO "service_role";
 
 
 
+REVOKE ALL ON FUNCTION "public"."apply_credit_note_rpc"("p_credit_note_id" "uuid", "p_bill_id" "uuid", "p_version" integer) FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."apply_credit_note_rpc"("p_credit_note_id" "uuid", "p_bill_id" "uuid", "p_version" integer) TO "authenticated";
 GRANT ALL ON FUNCTION "public"."apply_credit_note_rpc"("p_credit_note_id" "uuid", "p_bill_id" "uuid", "p_version" integer) TO "service_role";
 
 
 
+REVOKE ALL ON FUNCTION "public"."confirm_milk_import_rpc"("p_import_id" "uuid", "p_expected_version" integer) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."confirm_milk_import_rpc"("p_import_id" "uuid", "p_expected_version" integer) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."confirm_milk_import_rpc"("p_import_id" "uuid", "p_expected_version" integer) TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."delete_milk_import_rpc"("p_import_id" "uuid", "p_expected_version" integer) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."delete_milk_import_rpc"("p_import_id" "uuid", "p_expected_version" integer) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."delete_milk_import_rpc"("p_import_id" "uuid", "p_expected_version" integer) TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."generate_month_bill_rpc"("p_customer_id" "uuid", "p_month" "text") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."generate_month_bill_rpc"("p_customer_id" "uuid", "p_month" "text") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."generate_month_bill_rpc"("p_customer_id" "uuid", "p_month" "text") TO "service_role";
 
@@ -913,8 +1172,21 @@ GRANT ALL ON FUNCTION "public"."is_operator"() TO "service_role";
 
 
 
+REVOKE ALL ON FUNCTION "public"."record_ad_hoc_log_rpc"("p_customer_id" "uuid", "p_date" "date", "p_qty" numeric, "p_product" "text", "p_reason" "text") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."record_ad_hoc_log_rpc"("p_customer_id" "uuid", "p_date" "date", "p_qty" numeric, "p_product" "text", "p_reason" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."record_ad_hoc_log_rpc"("p_customer_id" "uuid", "p_date" "date", "p_qty" numeric, "p_product" "text", "p_reason" "text") TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."record_payment_rpc"("p_bill_id" "uuid", "p_amount" numeric, "p_mode" "text", "p_date" "date", "p_note" "text", "p_idempotency_key" "uuid") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."record_payment_rpc"("p_bill_id" "uuid", "p_amount" numeric, "p_mode" "text", "p_date" "date", "p_note" "text", "p_idempotency_key" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."record_payment_rpc"("p_bill_id" "uuid", "p_amount" numeric, "p_mode" "text", "p_date" "date", "p_note" "text", "p_idempotency_key" "uuid") TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."rollover_month_rpc"("p_month" "text") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."rollover_month_rpc"("p_month" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."rollover_month_rpc"("p_month" "text") TO "service_role";
 
 
 

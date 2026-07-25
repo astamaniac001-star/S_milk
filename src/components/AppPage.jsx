@@ -1,11 +1,9 @@
-import { useAppDerived } from "../hooks/useAppDerived.js";
 import Dashboard from "../pages/Dashboard.jsx";
 import Customers from "../pages/Customers.jsx";
 import Delivery from "../pages/Delivery.jsx";
 import Imports from "../pages/Imports.jsx";
 import Billing from "../pages/Billing.jsx";
 import More from "../pages/More.jsx";
-import { callApi } from "../lib/api.js";
 
 function renderDashboard(state, handlers, derived) {
   return (
@@ -51,7 +49,7 @@ function renderDelivery(state, handlers, derived) {
     <Delivery
       logDate={state.logDate}
       onLogDateChange={state.setLogDate}
-      logs={derived?.selectedDateLogs || []}
+      logs={derived?.selectedDateLogs || state.selectedDateLogs || []}
       onToggleLog={handlers.toggleDeliveryLog}
       generateDailyLogs={handlers.generateDailyLogs}
       onOpenModal={state.openModal}
@@ -112,23 +110,8 @@ function renderMore(state, handlers, _derived) {
       onApplyAdj={(adjId, billId, version) =>
         handlers.applyAdjustment(adjId, billId, version)
       }
-      onRunDiag={async () => {
-        try {
-          await callApi("runDiagnostics");
-          state.setDiagRan(true);
-          state.toast$("Diagnostics executed successfully", "success");
-        } catch (err) {
-          state.toast$(err?.message || "Diagnostics failed", "error");
-        }
-      }}
-      onHealthCheck={async () => {
-        try {
-          await callApi("healthCheck");
-          state.toast$("Health check passed — V17", "success");
-        } catch (err) {
-          state.toast$(err?.message || "Health check failed", "error");
-        }
-      }}
+      onRunDiag={handlers.runDiagnostics}
+      onHealthCheck={handlers.healthCheck}
     />
   );
 }
@@ -142,8 +125,12 @@ const PAGE_RENDERERS = {
   more: renderMore,
 };
 
+// FIX (audit 2026-07-24): `derived` is already computed once in `useAppState`
+// and spread into `state` (rule §2). The previous implementation called
+// `useAppDerived(state)` again here, recomputing derived state per render and
+// violating "Derived state should be computed once in useAppState, not
+// recomputed by page components".
 export function AppPage({ tab, state, handlers }) {
-  const derived = useAppDerived(state);
   const render = PAGE_RENDERERS[tab] || PAGE_RENDERERS.dashboard;
-  return render(state, handlers, derived);
+  return render(state, handlers, state);
 }
