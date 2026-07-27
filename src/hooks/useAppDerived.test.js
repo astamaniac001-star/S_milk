@@ -31,8 +31,12 @@ function setup(partial = {}) {
     custFilter: "All",
     impFilter: { month: "", brand: "", status: "" },
     billFilter: "All",
-    dayTick: 0,
     logDate: undefined,
+    // FIX (audit 2026-07-25): useAppDerived now takes `today` from upstream
+    // (useAppState's clampedToday memo) rather than recomputing getToday()
+    // inside and keying on `dayTick`. Tests must drive midnight rollover by
+    // bumping `today`, not `dayTick`.
+    today: "2026-07-25",
   };
   const makeState = (override = {}) => ({ ...DEFAULTS, ...override });
   const result = renderHook(({ state: s }) => useAppDerived(s), {
@@ -195,12 +199,16 @@ describe("useAppDerived — memoization stability (audit rule §2 'derive once')
     expect(result.current.selectedDateLogs.map((l) => l.id)).toEqual(["Y1"]);
   });
 
-  it("returns a NEW derived object when dayTick bumps even if inputs are static (drives getToday recompute)", () => {
+  it("returns a NEW derived object when `today` changes (midnight rollover drives recompute)", () => {
     const logs = [{ id: "T1", date: "2026-07-25", delivered: true, qty: 9 }];
-    const { result, rerender } = setup({ logs, dayTick: 0 });
+    const { result, rerender } = setup({ logs, today: "2026-07-25" });
     const first = result.current;
-    // Same inputs except dayTick bumped — simulate midnight crossing.
-    rerender({ logs, dayTick: 1 });
+    // Same inputs except today bumped — simulate midnight crossing.
+    rerender({ logs, today: "2026-07-26" });
     expect(result.current).not.toBe(first);
+    // The new derived object must reflect the new "today" — `todayLogs`
+    // recomputed against the new today date is now empty (no logs match
+    // 2026-07-26), preventing stale yesterday-from-today's-lens reads.
+    expect(result.current.todayLogs).toEqual([]);
   });
 });

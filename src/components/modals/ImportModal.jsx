@@ -88,14 +88,6 @@ function ImportQtyRateField({ data, form, onChange }) {
 function ImportMetaFields({ data, form, onChange }) {
   return (
     <>
-      <Field label="Invoice No.">
-        <input
-          style={IS()}
-          value={form?.invoice ?? data?.invoice ?? ""}
-          onChange={onChange("invoice")}
-          placeholder="INV-2025-001"
-        />
-      </Field>
       <Field label="Supplier">
         <input
           style={IS()}

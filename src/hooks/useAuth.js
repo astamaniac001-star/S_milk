@@ -75,7 +75,7 @@ export function useAuth() {
       }
 
       const { error: authError } = await supabase.auth.signInWithPassword({
-        email: "operator@milk.local",
+        email: "astamaniac001@gmail.com",
         password: cleanPin,
       });
       if (authError) throw new Error(authError.message || "Invalid PIN");

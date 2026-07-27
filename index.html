@@ -23,11 +23,10 @@
       content="
    default-src 'self';
     script-src 'self';
-   style-src 'self' 'unsafe-inline';
+   style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
    img-src 'self' data:;
-   font-src 'self';
+   font-src 'self' https://fonts.gstatic.com;
    connect-src 'self' https://*.supabase.co wss://*.supabase.co;
-   frame-ancestors 'none';
    base-uri 'self';
    form-action 'self';
   "
@@ -35,6 +34,18 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="referrer" content="strict-origin-when-cross-origin" />
     <title>Milk Admin</title>
+
+    <!--
+      FIX (audit 2026-07-25, FOUC): apply the dark-mode class BEFORE React
+      paints. AppShell.jsx previously only added `.dark` inside useEffect,
+      causing a light-mode flash before React hydrated. This classic (non-
+      module) script is served from Vite's `public/` dir, so it qualifies
+      under `script-src 'self'` in the CSP. It must NOT be a module script,
+      because module scripts are deferred and the class would apply too
+      late. This script is read-only — never writes back to localStorage;
+      AppShell remains the source of truth for toggles.
+    -->
+    <script src="/apply-dark-mode.js"></script>
 
     <link rel="manifest" href="/manifest.json" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />

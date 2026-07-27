@@ -113,9 +113,7 @@ function BillCard({
           <div style={{ fontWeight: 600, fontSize: 14, color: "#111" }}>
             {customerName}
           </div>
-          <div style={{ fontSize: 12, color: "#6b7280" }}>
-            {bill.month} · Due {bill.due}
-          </div>
+          <div style={{ fontSize: 12, color: "#6b7280" }}>{bill.month}</div>
           <div style={{ fontSize: 13, color: "#374151", marginTop: 4 }}>
             {fmt(bill.paid)} / {fmt(bill.amount)}
           </div>

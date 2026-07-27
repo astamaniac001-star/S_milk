@@ -34,14 +34,18 @@ export const MILK_TYPES = [
   "Toned",
   "Double Toned",
   "Skimmed",
-  "Standardised",
+  "Standard",
+  "Small",
+  "A2",
 ];
 export const PRODUCTS = [
   "Full Cream",
   "Toned",
   "Double Toned",
   "Skimmed",
-  "Standardised",
+  "Standard",
+  "Small",
+  "A2",
 ];
 export const PAY_MODES = [
   "Cash",

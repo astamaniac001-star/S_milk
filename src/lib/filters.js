@@ -25,7 +25,11 @@ export function filterImports(imports, { month, brand, status }) {
     (i) =>
       (!brand || i.brand === brand) &&
       (!status || i.status === status) &&
-      (!month || i.date.startsWith(month)),
+      // FIX (audit 2026-07-25, defensive): the `date` column is NOT NULL in
+      // DB, but `i.date` could still be undefined on malformed UI rows or
+      // staged updates. Guard the `.startsWith()` so the filter returns false
+      // instead of throwing on null/undefined.
+      (!month || (i.date && typeof i.date === "string" && i.date.startsWith(month))),
   );
 }
 

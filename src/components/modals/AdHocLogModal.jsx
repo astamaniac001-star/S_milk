@@ -1,5 +1,6 @@
 import { Field, Modal, Btn, IS } from "../ui.jsx";
 import { useBusy } from "../../hooks/useBusy.js";
+import { MILK_TYPES } from "../../lib/constants.js";
 import { CustomerDateFields } from "./shared";
 
 // fallow-ignore-next-line complexity
@@ -22,6 +23,19 @@ export function AdHocLogModal({
         customers={customers}
         onChange={onChange}
       />
+      <Field label="Product">
+        <select
+          style={IS()}
+          value={form?.product ?? data?.product ?? "Full Cream"}
+          onChange={onChange("product")}
+        >
+          {MILK_TYPES.map((t) => (
+            <option key={t} value={t}>
+              {t}
+            </option>
+          ))}
+        </select>
+      </Field>
       <Field label="Quantity (L) *">
         <input
           type="number"

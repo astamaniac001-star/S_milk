@@ -357,6 +357,21 @@ export type Database = {
           },
         ]
       }
+      operators: {
+        Row: {
+          created_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       pause_periods: {
         Row: {
           created_at: string | null

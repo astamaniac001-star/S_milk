@@ -44,15 +44,21 @@ export function useEntityStore(token, logDate, billMonth) {
     }
   }, []);
 
+  // FIX (audit 2026-07-25, perf): the previous single effect ran on every
+  // `logDate` and `billMonth` change, refetching ALL entities including
+  // customers/brands/subscriptions/pauses/credit_notes/adjustments/imports
+  // which do NOT depend on either. Split into two effects:
+  //   1. Date-independent entities — fetched once on login + on refresh().
+  //   2. Date-dependent entities   — `getDailyLogs` (logDate) + `getBills`
+  //      (billMonth) — refetched on each date/month change.
+  // This drops 7 redundant network calls per date pick.
   useEffect(() => {
     if (!token) return;
     const fetchData = async () => {
-      const [custs, bils, imps, lgs, adjs, paus, brnds, subs, cns] =
+      const [custs, imps, adjs, paus, brnds, subs, cns] =
         await Promise.all([
           safeFetch("getCustomers", {}, "customers"),
-          safeFetch("getBills", { month: billMonth }, "bills"),
           safeFetch("getMilkImports", {}, "imports"),
-          safeFetch("getDailyLogs", { date: logDate || getToday() }, "logs"),
           safeFetch("getAdjustments", {}, "adjustments"),
           safeFetch("getPauses", {}, "pauses"),
           safeFetch("getBrands", {}, "brands"),
@@ -60,14 +66,28 @@ export function useEntityStore(token, logDate, billMonth) {
           safeFetch("getCreditNotes", {}, "creditNotes"),
         ]);
       if (custs !== null) setCustomers(custs.map(mapCustomerFromApi));
-      if (bils !== null) setBills(bils);
       if (imps !== null) setImports(imps.map(mapImportFromApi));
-      if (lgs !== null) setLogs(lgs.map(mapLogFromApi));
       if (adjs !== null) setAdjustments(adjs.map(mapAdjustmentFromApi));
       if (paus !== null) setPauses(paus.map(mapPauseFromApi));
       if (brnds !== null) setBrands(brnds.map(mapBrandFromApi));
       if (subs !== null) setSubscriptions(subs.map(mapSubscriptionFromApi));
       if (cns !== null) setCreditNotes(cns.map(mapCreditNoteFromApi));
+    };
+    fetchData();
+  }, [token, safeFetch, refreshKey]);
+
+  // Separate effect for date-dependent entities — fires only on logDate /
+  // billMonth change (and on first sign-in via the `token` dep). `getDailyLogs`
+  // and `getBills` are the ONLY expensive-per-date reads.
+  useEffect(() => {
+    if (!token) return;
+    const fetchData = async () => {
+      const [bils, lgs] = await Promise.all([
+        safeFetch("getBills", { month: billMonth }, "bills"),
+        safeFetch("getDailyLogs", { date: logDate || getToday() }, "logs"),
+      ]);
+      if (bils !== null) setBills(bils);
+      if (lgs !== null) setLogs(lgs.map(mapLogFromApi));
     };
     fetchData();
   }, [token, safeFetch, refreshKey, logDate, billMonth]);

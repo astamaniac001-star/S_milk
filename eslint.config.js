@@ -17,7 +17,10 @@ export default [
         document: "readonly",
         window: "readonly",
         console: "readonly",
-        location: true,
+        // FIX (audit 2026-07-25): `true` is an alias for "writeable" — `location`
+        // should be read-only in the browser. Treating it as writable would mask
+        // accidental `location = ...` assignments that don't actually navigate.
+        location: "readonly",
         localStorage: "readonly",
         sessionStorage: "readonly",
         fetch: "readonly",
@@ -27,13 +30,13 @@ export default [
         clearTimeout: "readonly",
         setInterval: "readonly",
         clearInterval: "readonly",
-        TextEncoder: true,
-        AbortController: true,
-        crypto: true,
-        URL: true,
-        Request: true,
-        Response: true,
-        Headers: true,
+        TextEncoder: "readonly",
+        AbortController: "readonly",
+        crypto: "readonly",
+        URL: "readonly",
+        Request: "readonly",
+        Response: "readonly",
+        Headers: "readonly",
       },
     },
     plugins: {

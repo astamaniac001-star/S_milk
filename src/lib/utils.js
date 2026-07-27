@@ -22,10 +22,28 @@ export const fmt = (n) => {
 export const getToday = () =>
   new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
 
+// FIX (audit 2026-07-27): the previous version did `setDate(getDate()-n)` in
+// the system timezone then formatted the result in Asia/Kolkata. When the
+// device TZ is west of IST, the two TZs land on different calendar dates
+// around the IST midnight boundary, so the resulting "n days ago" was
+// frequently one day off. The new formulation is TZ-invariant:
+//   1. Resolve today's IST date string (YYYY-MM-DD).
+//   2. Build a UTC Date anchored on that calendar date at noon UTC (noon is
+//      safe from any ±12h device-TZ skew when this code later interprets
+//      the Date for arithmetic or formatting).
+//   3. Subtract n*86400000 ms — full days, no DST jumps (Asia/Kolkata has
+//      no DST and neither does UTC).
+//   4. Format the resulting UTC Date as an IST date string.
+// Step 4 must run in Asia/Kolkata so that the calendar boundary (not the
+// UTC boundary) determines the displayed day.
 export const getDaysAgoIST = (days) => {
-  const date = new Date();
-  date.setDate(date.getDate() - days);
-  return date.toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+  // IST anchor: noon UTC on today's IST date. `getToday()` already returns
+  // the IST date string, so constructing `YYYY-MM-DDT12:00:00Z` lands in the
+  // middle of the IST day for every device timezone.
+  const istToday = getToday();
+  const anchor = new Date(`${istToday}T12:00:00Z`);
+  const shifted = new Date(anchor.getTime() - days * 86_400_000);
+  return shifted.toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
 };
 
 export const cleanPhone = (p) => String(p || "").replace(/\D/g, "");

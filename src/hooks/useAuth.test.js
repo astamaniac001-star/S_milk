@@ -157,7 +157,7 @@ describe("useAuth — login()(pin) — 6-digit PIN contract (audit rule §9)", (
     });
     expect(signInWithPasswordMock).toHaveBeenCalledTimes(1);
     expect(signInWithPasswordMock).toHaveBeenCalledWith({
-      email: "operator@milk.local",
+      email: "astamaniac001@gmail.com",
       password: "123456",
     });
     // Per documented contract: never log PINs to console or persist them.

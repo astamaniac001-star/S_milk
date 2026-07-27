@@ -15,6 +15,15 @@ export function useAdminHandlers(state) {
 
   const adminHandlers = useMemo(
     () => ({
+      // FIX (audit 2026-07-25): removed `addBrand` from this useMemo. It only
+      // sent `{ brandName, idempotencyKey }` (missing supplier/phone/rate/
+      // defaultMilkType), so any code path that called `handlers.addBrand`
+      // directly would create brands with null supplier fields. The real
+      // save path is `saveBrand` below (wired to BrandModal's onSave via
+      // AppModals.jsx) — `addBrand` was NEVER wired to the UI but its
+      // presence in the spread made it look like a viable alternative path.
+      // Same pattern for `addPause`: still here because MealModal directly
+      // invokes adminHandlers.addPause via ctx-savePause (see below).
       addPause: async (customerId, startDate, endDate, reason) => {
         const payload = {
           customerId,
@@ -33,20 +42,8 @@ export function useAdminHandlers(state) {
           "pauses",
         );
       },
-      addBrand: async (brandName) => {
-        const payload = { brandName, idempotencyKey: Date.now().toString() };
-        return executeApiAction(
-          "addMilkBrand",
-          payload,
-          "Brand added",
-          "getBrands",
-          setBrands,
-          mapBrandFromApi,
-          "brands",
-        );
-      },
     }),
-    [executeApiAction, setPauses, setBrands],
+    [executeApiAction, setPauses],
   );
 
   const savePause = useCallback(

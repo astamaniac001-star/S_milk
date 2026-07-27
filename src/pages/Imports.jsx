@@ -154,11 +154,6 @@ export default function Imports({
                   {imp.qty} L @ {fmt(imp.rate)}/L ={" "}
                   <strong>{fmt(imp.total)}</strong>
                 </div>
-                {imp.invoice && (
-                  <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 2 }}>
-                    {imp.invoice}
-                  </div>
-                )}
                 <div style={{ fontSize: 11, color: "#9ca3af" }}>
                   v{imp.version}
                 </div>

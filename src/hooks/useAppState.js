@@ -114,20 +114,20 @@ export function useAppState(auth) {
   const entity = useEntityStore(auth?.token, ui.logDate, ui.billMonth);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const today = useMemo(() => clampedToday(), [dayTick]);
-  useEffect(() => {
-    if (ui.logDate && ui.logDate < today) ui.setLogDate(today);
-    if (ui.billMonth && ui.billMonth < today.substring(0, 7)) {
-      ui.setBillMonth(today.substring(0, 7));
-    }
-    // We intentionally depend on `today` only — not on the setters.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [today]);
+
+  // FIX (audit 2026-07-25, UX): the previous effect reset `ui.logDate` /
+  // `ui.billMonth` forward to today every minute when dayTick bumped the
+  // `today` memo. This silently clobbered an operator's deliberately-selected
+  // historical date (e.g. adding yesterday's skips) within 60s of picking it.
+  // There is no business rule that requires this — the date pickers already
+  // default to today on initial mount, and navigation backwards is an
+  // intentional operator action. The clamp has been removed entirely.
 
   const derived = useAppDerived({
     ...entity,
     ...filters,
     logDate: ui.logDate,
-    dayTick,
+    today,
   });
 
   return { today, ...entity, ...filters, ...ui, ...derived };

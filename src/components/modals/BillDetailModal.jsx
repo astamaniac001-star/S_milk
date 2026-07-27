@@ -15,7 +15,6 @@ export function BillDetailModal({ data, onClose, customers = [] }) {
         ["Paid", fmt(data.paid)],
         ["Pending", fmt(data.amount - data.paid)],
         ["Status", data.status],
-        ["Due Date", data.due],
         ["Locked", data.locked ? "Yes" : "No"],
       ].map(([k, v]) => (
         <div

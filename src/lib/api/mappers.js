@@ -2,7 +2,11 @@
 //
 // Every DB→UI conversion happens here (rule §4). Each mapXFromApi is defensive
 // against null/undefined via `toNum`; boolean coercion via `!!`; array via
-// `toArray`. Version fields default to 1 when the column is null/0.
+// `toArray`. Version fields default to 1 only when the column is nullish
+// (`?? 1`) — a legitimate `version = 0` is now preserved so OCC compare-and-set
+// sees the real value instead of being silently bumped to 1. Numeric
+// columns that genuinely default to 0 (e.g. balance) keep `|| 0` since 0 is
+// a no-op fallback for the empty/null case anyway.
 
 import { toArray, toNum, getToday, generateKey } from "./shared.js";
 
@@ -17,11 +21,17 @@ export function mapCustomerFromApi(c) {
     qty: toNum(c.daily_qty),
     deliveryDays: toArray(c.delivery_days),
     balance: toNum(c.balance || 0),
-    version: toNum(c.version || 1),
+    version: toNum(c.version ?? 1),
   };
 }
 
 export function mapBillFromApi(b) {
+  // The `bills` table has no `due_date` column (verified against
+  // database.types.ts + supabase/schema.sql). The previous mapper read
+  // `b.due_date` → always undefined, which surfaced as "Due undefined" text
+  // in Billing.jsx and BillDetailModal.jsx. The field is dropped here and in
+  // both UI sites. If a due-date column is added later, reintroduce it here
+  // AND in the same places — do not silently reconnect.
   return {
     id: b.id,
     custId: b.customer_id,
@@ -30,8 +40,7 @@ export function mapBillFromApi(b) {
     paid: toNum(b.amount_paid),
     status: b.status,
     locked: !!b.locked,
-    due: b.due_date,
-    version: toNum(b.version || 1),
+    version: toNum(b.version ?? 1),
   };
 }
 
@@ -43,11 +52,10 @@ export function mapImportFromApi(i) {
     qty: toNum(i.quantity),
     rate: toNum(i.rate_per_liter),
     total: toNum(i.total_cost),
-    invoice: i.invoice_number,
     supplier: i.supplier_name,
     date: i.date,
     status: i.status,
-    version: toNum(i.version || 1),
+    version: toNum(i.version ?? 1),
   };
 }
 
@@ -106,7 +114,7 @@ export function mapSubscriptionFromApi(s) {
     qty: toNum(s.qty),
     deliveryDays: toArray(s.delivery_days),
     isActive: !!s.is_active,
-    version: toNum(s.version || 1),
+    version: toNum(s.version ?? 1),
   };
 }
 
@@ -145,7 +153,6 @@ export function mapImportToApi(form) {
     milkType: form.type,
     quantity: Number(form.qty),
     ratePerLiter: Number(form.rate),
-    invoiceNumber: form.invoice,
     supplierName: form.supplier,
     date: form.date,
   };
@@ -169,4 +176,3 @@ export function mapPaymentToApi(billId, amount, opts = {}) {
     idempotencyKey: generateKey(),
   };
 }
-

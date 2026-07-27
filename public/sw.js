@@ -10,11 +10,16 @@
  *   Everything else → Network-first with cache fallback
  * ============================================================================ */
 
-const CACHE = "milk-v21"; // Bumped from v20 to force cache eviction on client devices
+// FIX (audit 2026-07-25): bumped v21→v22 to force clients to re-install
+// the SW and precache the new `/apply-dark-mode.js` shell asset (added to
+// eliminate the dark-mode FOUC). Without the bump, returning operators on
+// v21 would serve the old shell and miss the dark-mode early-strip script.
+const CACHE = "milk-v22"; // Bumped from v21 to force cache eviction on client devices
 const SHELL = [
   "/",
   "/index.html",
   "/app.css",
+  "/apply-dark-mode.js",
   "/favicon.svg",
   "/icons.svg",
   "/apple-touch-icon.png",

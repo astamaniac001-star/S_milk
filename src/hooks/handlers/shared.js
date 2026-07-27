@@ -32,6 +32,9 @@ export function useHelpers(state) {
         if (import.meta.env.DEV) console.warn("✅ ACTION RESULT:", actionRes);
 
         showToast(successMsg, "success");
+        // Guard: some callers (e.g. deactivateCustomer from the Customers
+        // page) are not invoked from a modal. Closing is a no-op there but
+        // must not throw if `closeModal` is ever undefined on `state`.
         if (closeModal) closeModal();
 
         // 2. Fetch the updated list

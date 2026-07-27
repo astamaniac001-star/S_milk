@@ -12,10 +12,16 @@ export function useSubscriptionHandlers(state) {
         const payload = { ...data };
         if (data.id) {
           payload.expectedVersion = data.version;
-        } else {
-          payload.idempotencyKey = `sub-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
         }
-
+        // FIX (audit 2026-07-25, dead code): drop the idempotencyKey generation.
+        // `saveSubscription` in lib/api/subscriptions.js has no idempotency-key
+        // field on writes, and the `subscriptions` table has no such column,
+        // so a generated key was being silently discarded by both the API
+        // wrapper and the database. Rule §14 idempotency requirements apply to
+        // financial mutations (payments, bill generation); subscription writes
+        // are not in that category today. If idempotency is added later, the
+        // column and mapper must agree FIRST, and the key must come from
+        // generateKey() (UUIDv4) — not from `Math.random()`.
         await callApi("saveSubscription", payload);
         showToast("Subscription saved", "success");
         if (closeModal) closeModal();

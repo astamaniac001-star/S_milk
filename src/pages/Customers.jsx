@@ -128,12 +128,17 @@ export default function Customers({
                   const b = bills.find(
                     (x) => x.custId === c.id && x.status !== "Paid",
                   );
-                  if (b) onWhatsapp(c.phone, b.id);
+                  onWhatsapp(c.phone, b?.id);
                 }}
               >
                 WhatsApp
               </Btn>
-              <Btn small variant="danger" onClick={() => onDeactivate(c.id)}>
+              <Btn
+                small
+                variant="danger"
+                onClick={() => onDeactivate(c)}
+                title={c.version ? `v${c.version}` : undefined}
+              >
                 Deactivate
               </Btn>
             </div>

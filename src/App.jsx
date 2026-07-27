@@ -8,55 +8,30 @@ import { useAppState } from "./hooks/useAppState.js";
 import { useAppHandlers } from "./hooks/useAppHandlers.js";
 import { Toast } from "./components/ui.jsx";
 
-/* NEW: Custom hook to handle automatic monthly rollover
-import { callApi } from "./lib/api.js";
-import { getToday } from "./lib/utils.js";
-
-function useAutoMonthRollover(isAuthenticated) {
-  useEffect(() => {
-    if (!isAuthenticated) return;
-
-    const currentMonth = getToday().substring(0, 7); // "YYYY-MM"
-    const lastRollover = localStorage.getItem("last_rollover_month");
-
-    // Only run if we haven't rolled over for this month yet
-    if (lastRollover !== currentMonth) {
-      console.warn(
-        `[Auto-Rollover] Detected new month: ${currentMonth}. Triggering...`,
-      );
-
-      callApi("rolloverMonth", { targetMonth: currentMonth })
-        .then((res) => {
-          // NOTE: callApi returns result.data directly — do not read res.data
-          console.warn(
-            `[Auto-Rollover] Success: ${res.billsGenerated} bills generated.`,
-          );
-          // Mark as done so it doesn't run again this month
-          localStorage.setItem("last_rollover_month", currentMonth);
-        })
-        .catch((err) => {
-          console.error("[Auto-Rollover] Failed:", err);
-          // Intentionally DO NOT update localStorage on failure.
-          // This ensures it will safely retry the next time the app is opened.
-        });
-    }
-  }, [isAuthenticated]);
-}
-*/
+// FIX (audit 2026-07-25, hygiene): removed the commented-out `useAutoMonthRollover`
+// block. It was disabled pending `rolloverMonth` being made atomic (delivered
+// in the 20260724120000 migration). When the operator is ready to enable
+// automatic month rollover on login, add a NEW hook — the previous block
+// referenced `useEffect`/`callApi`/`getToday` imports that were not actually
+// present. Keeping the dead code only confused future readers; safe to drop
+// because it was inside a comment block.
 
 export default function App() {
   const auth = useAuth();
-
-  /* NEW: Trigger the auto-rollover check as soon as auth is established
-  useAutoMonthRollover(auth.isAuthenticated);
-  */
   const state = useAppState(auth);
   const handlers = useAppHandlers(state);
   const ctx = { ...state, ...handlers, auth };
 
   if (!auth.isAuthenticated) {
+    // FIX (audit 2026-07-27): the previous layout returned <Login /> outside
+    // the ErrorBoundary, so a render-time error on the login screen would
+    // crash to a white page instead of recovering. AGENTS.md §10 says the
+    // ErrorBoundary catches any render error below <App/>. <Login/> is below
+    // <App/>, so it must be wrapped too. No other behaviour changes.
     return (
-      <Login onLogin={auth.login} error={auth.error} loading={auth.loading} />
+      <ErrorBoundary>
+        <Login onLogin={auth.login} error={auth.error} loading={auth.loading} />
+      </ErrorBoundary>
     );
   }
 

@@ -48,7 +48,7 @@ export async function rotatePIN(payload) {
 
   // 1. Re-authenticate to verify the current PIN is correct
   const { error: authError } = await supabase.auth.signInWithPassword({
-    email: "operator@milk.local",
+    email: "astamaniac001@gmail.com",
     password: currentPin,
   });
 
