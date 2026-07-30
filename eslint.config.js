@@ -70,4 +70,51 @@ export default [
       "no-console": ["warn", { allow: ["warn", "error"] }],
     },
   },
+  // E2E test layer (Playwright + Vitest integration). Kept fully isolated
+  // from app source under src/. Node globals are required here for fs/path/
+  // process access; Playwright/Vitest inject their own test-scoped globals.
+  // Includes playwright.config.js at repo root since it shares the same
+  // Playwright-world globals as the test files.
+  {
+    files: ["e2e/**/*.{js,jsx}", "playwright.config.js"],
+    languageOptions: {
+      globals: {
+        // Browser globals still apply because Playwright tests interact with
+        // the live DOM via `page` (Playwright-supplied). Add Node-only ones.
+        document: "readonly",
+        window: "readonly",
+        console: "readonly",
+        location: "readonly",
+        localStorage: "readonly",
+        sessionStorage: "readonly",
+        fetch: "readonly",
+        navigator: "readonly",
+        CustomEvent: "readonly",
+        setTimeout: "readonly",
+        clearTimeout: "readonly",
+        setInterval: "readonly",
+        clearInterval: "readonly",
+        crypto: "readonly",
+        URL: "readonly",
+        // Node-only.
+        process: "readonly",
+        Buffer: "readonly",
+        // Vitest + Playwright asserted globals (vitest globals:true).
+        test: "readonly",
+        describe: "readonly",
+        it: "readonly",
+        expect: "readonly",
+        beforeAll: "readonly",
+        beforeEach: "readonly",
+        afterAll: "readonly",
+        afterEach: "readonly",
+        vi: "readonly",
+      },
+    },
+    rules: {
+      "no-console": "off", // e2e log output is intentional for diagnostics
+      "react-refresh/only-export-components": "off",
+      "no-unused-vars": ["warn", { argsIgnorePattern: "^_" }],
+    },
+  },
 ];

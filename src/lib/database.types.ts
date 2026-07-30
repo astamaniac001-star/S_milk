@@ -315,6 +315,7 @@ export type Database = {
           status: string | null
           supplier_name: string | null
           total_cost: number | null
+          updated_at: string | null
           version: number | null
         }
         Insert: {
@@ -330,6 +331,7 @@ export type Database = {
           status?: string | null
           supplier_name?: string | null
           total_cost?: number | null
+          updated_at?: string | null
           version?: number | null
         }
         Update: {
@@ -345,6 +347,7 @@ export type Database = {
           status?: string | null
           supplier_name?: string | null
           total_cost?: number | null
+          updated_at?: string | null
           version?: number | null
         }
         Relationships: [

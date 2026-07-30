@@ -1,5 +1,6 @@
 import { useMemo, useCallback, useRef } from "react";
 import { mapPauseFromApi, mapBrandFromApi, callApi } from "../../lib/api.js";
+import { getToday } from "../../lib/utils.js";
 import { useHelpers } from "./shared.js";
 
 export function useAdminHandlers(state) {
@@ -52,7 +53,7 @@ export function useAdminHandlers(state) {
       if (!f) return;
       return adminHandlers.addPause(
         f.custId || modal.data?.custId,
-        f.startDate,
+        f.startDate || getToday(),
         f.endDate,
         f.reason,
       );

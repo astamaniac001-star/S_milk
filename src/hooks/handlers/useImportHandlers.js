@@ -1,10 +1,11 @@
 import { useMemo, useCallback } from "react";
 import { mapImportToApi, mapImportFromApi, callApi } from "../../lib/api.js";
 import { validateImportForm } from "../../lib/validation.js";
+import { getToday } from "../../lib/utils.js";
 import { useHelpers } from "./shared.js";
 
 export function useImportHandlers(state) {
-  const { setImports } = state;
+  const { setImports, form = {} } = state;
   const { handleFormAction, saveWithValidation, showToast } = useHelpers(state);
 
   const importHandlers = useMemo(
@@ -36,14 +37,24 @@ export function useImportHandlers(state) {
   );
 
   const saveImport = useCallback(
-    (formArg) =>
-      saveWithValidation(
-        formArg,
+    (formArg) => {
+      const f = formArg || form;
+      if (!f.date) {
+        return saveWithValidation(
+          { ...f, date: getToday() },
+          validateImportForm,
+          importHandlers,
+          "MilkImport",
+        );
+      }
+      return saveWithValidation(
+        f,
         validateImportForm,
         importHandlers,
         "MilkImport",
-      ),
-    [saveWithValidation, importHandlers],
+      );
+    },
+    [saveWithValidation, importHandlers, form],
   );
 
   // src/hooks/handlers/useImportHandlers.js
@@ -51,7 +62,19 @@ export function useImportHandlers(state) {
   const handleImportAction = useCallback(
     async (action, importId, successMsg, fallbackErrMsg) => {
       try {
-        const imp = state.imports?.find((i) => i.id === importId);
+        let imp = state.imports?.find((i) => i.id === importId);
+
+        // If the import isn't in the in-memory list (race: list refresh
+        // hasn't landed yet), try one refetch before bailing. Without the
+        // version, confirm/delete RPCs throw "version is required for OCC"
+        // and the row silently stays in its prior state.
+        if (!imp) {
+          const res = await callApi("getMilkImports", {});
+          const fresh = (res.imports || []).map(mapImportFromApi);
+          setImports(fresh);
+          imp = fresh.find((i) => i.id === importId);
+        }
+
         const payload = { importId };
 
         // Attach version if it exists (crucial for OCC)

@@ -53,7 +53,7 @@ export function useDeliveryHandlers(state) {
         // 🗺️ MAP 'custId' from the form to 'customerId' expected by the API
         const payload = {
           customerId: data.custId || data.customerId,
-          date: data.date,
+          date: data.date || getToday(),
           qty: data.qty,
           reason: data.reason,
           product: data.product,

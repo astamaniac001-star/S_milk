@@ -261,20 +261,23 @@ export function Empty({ msg, message }) {
   );
 }
 
-export function Section({ title, action }) {
+export function Section({ title, action, children }) {
   return (
-    <div
-      style={{
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-        marginBottom: 12,
-      }}
-    >
-      <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--text-main)" }}>
-        {title}
-      </h3>
-      {action}
+    <div>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: 12,
+        }}
+      >
+        <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--text-main)" }}>
+          {title}
+        </h3>
+        {action}
+      </div>
+      {children}
     </div>
   );
 }

@@ -26,7 +26,14 @@
     "db:push": "supabase db push",
     "db:dump": "supabase db dump -f supabase/schema.sql --schema public",
     "db:types": "supabase gen types typescript --linked > src/lib/database.types.ts",
-    "db:sync": "npm run db:dump && npm run db:types"
+    "db:sync": "npm run db:dump && npm run db:types",
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:debug": "playwright test --debug",
+    "test:db": "vitest run --config e2e/vitest.config.js",
+    "test:db:watch": "vitest --config e2e/vitest.config.js",
+    "test:all": "npm run lint && npm run test && npm run test:db && npm run build"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.3",
@@ -36,6 +43,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.62.0",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",

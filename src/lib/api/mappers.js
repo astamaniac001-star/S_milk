@@ -134,14 +134,26 @@ export function mapCreditNoteFromApi(c) {
 // ── UI → DB ──────────────────────────────────────────────────────────────
 
 export function mapCustomerToApi(form) {
+  // Default `product` / `dailyQty` to the same canonical constants the modal
+  // uses for its visible default (`CustomerModal.jsx:50,63` → "Full Cream"
+  // and 1). Without this, an operator who opens Add Customer and clicks
+  // Save without touching the Product/Qty dropdowns leaves them as
+  // `undefined` in form state — the mapper passes `undefined` through, and
+  // `customers.product` gets written NULL. The downstream `generate_month_
+  // bill_rpc` then errors with "No active rate found for milk type <NULL>"
+  // because it derives milk type from `customers.product`, not from the
+  // `daily_logs.product` rows the daily-log generator writes. Defaulting
+  // here is the single-source-of-truth fix per rule §4 — the mapper owns
+  // the UI↔DB shape contract, so the default belongs here, not scattered
+  // across every caller of `openModal`.
   return {
     customerId: form.id || undefined,
     expectedVersion: form.version,
     name: form.name,
     deliveryAddress: form.address,
     phone: form.phone,
-    product: form.product,
-    dailyQty: form.qty,
+    product: form.product || "Full Cream",
+    dailyQty: form.qty ?? 1,
     deliveryDays: form.deliveryDays,
     status: form.status,
   };

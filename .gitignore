@@ -14,7 +14,7 @@ coverage
 *.local
 .fallowignore
 
-# Environment secrets — NEVER commit these
+# Environment secrets â€” NEVER commit these
 .env
 .env.local
 .env.*.local
@@ -38,3 +38,6 @@ supabase/.temp/
 /.last-run.json
 .vite/
 .DS_Store
+# Playwright E2E artifacts (per playwright.config.js)
+/e2e-test-results/
+/playwright/.cache/
