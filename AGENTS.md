@@ -27,7 +27,7 @@ from the operator's phone, installable as a PWA, designed to work offline.
 | UI          | React 19.2 + Vite 8.1                     | JSX, no TypeScript                            |
 | Icons       | lucide-react 1.24                         |                                               |
 | Backend     | **Supabase directly** (no Node server)    | `@supabase/supabase-js` v2.110                |
-| Service Wk  | Vanilla `public/sw.js` (V21)              | Cache-first shell, network-only for /api      |
+| Service Wk  | Vanilla `public/sw.js` (V22)              | Cache-first shell, network-only for /api      |
 | State       | React hooks (no Redux/Zustand)            | Composable custom hooks                       |
 | Routing     | Tab-based (no react-router)               | State field `tab` in `useAppState`            |
 | Tests       | Vitest 4 + jsdom + Testing Library        | Coverage is intentionally enforced separately |
@@ -42,11 +42,21 @@ src/
 ├── App.jsx                # Auth gate → ErrorBoundary → Shell + Page + Modals
 ├── index.css
 ├── lib/
-│   ├── supabaseClient.js  # Single `supabase` instance from env
-│   ├── api.js             # 🔑 callApi(action, payload) — all data ops live here
-│   ├── constants.js       # SC (status colors), DAYS, MILK_TYPES, PRODUCTS, PAY_MODES
+│   ├── supabaseClient.js  # Single `supabase` instance from env (lazy + configError)
+│   ├── api.js             # 🔑 callApi(action, payload) — barrel + DISPATCH table to api/*
+│   ├── api/               # Per-action implementations split by domain
+│   │   ├── mappers.js     # mapXFromApi / mapXToApi (DB snake_case ↔ UI camelCase)
+│   │   ├── shared.js      # toArray, updateWithVersion, isAuthError, AuthzError, dayOfWeekKolkata
+│   │   ├── customers.js
+│   │   ├── billing.js
+│   │   ├── delivery.js
+│   │   ├── imports.js
+│   │   ├── adjustments.js
+│   │   ├── subscriptions.js
+│   │   └── admin.js
+│   ├── constants.js       # SC (status colors), DAYS, MILK_TYPES, PRODUCTS, PAY_MODES, OPERATOR_EMAIL
 │   ├── filters.js         # Pure filter helpers (filterCustomers/Imports/Bills)
-│   ├── utils.js           # fmt(), getToday() [Asia/Kolkata], cleanPhone(), UUID helpers
+│   ├── utils.js           # fmt(), getToday() [Asia/Kolkata], getDaysAgoIST(), cleanPhone, generateKey, uuid
 │   ├── database.types.ts  # Generated current Supabase types; never edit manually
 │   └── validation/        # validateCustomerForm, validateImportForm
 ├── hooks/
@@ -99,14 +109,18 @@ supabase/
 
 ### 1. All data ops go through `callApi(action, payload)` in `src/lib/api.js`
 
-There is **no** REST backend. The `callApi` function is a giant `switch` that
-dispatches to a Supabase query. New endpoints = new `case` in the switch.
-**Never** call `supabase.from(...)` or `supabase.rpc(...)` directly from a component,
-page, or handler. Supabase Auth calls in `useAuth.js` are the narrow exception.
+There is **no** REST backend. `callApi` is a thin barrel that looks the action up
+in a `DISPATCH` table and delegates to a per-domain function under `src/lib/api/`
+(e.g. `api/customers.js`, `api/billing.js`). New endpoints = a new exported
+function in the right domain file **and** a new entry in the `DISPATCH` table.
+**Never** call `supabase.from(...)` or `supabase.rpc(...)` directly from a
+component, page, or handler. Supabase Auth calls in `useAuth.js` are the narrow
+exception (and `api/admin.js#rotatePIN` re-authenticates before `updateUser`).
 
 Action names are CamelCase strings: `getCustomers`, `addCustomer`, `recordPayment`,
-`generateDailyLogsForDate`, etc. Read the existing switch before adding. Unknown
-actions must throw; do not silently report success.
+`generateDailyLogsForDate`, etc. Read the existing `DISPATCH` table before adding.
+Unknown actions must throw (`Unknown action: <name>`); do not silently report
+success.
 
 ### 2. State composition pattern (don't break it)
 
@@ -133,7 +147,7 @@ All handler hooks share `useHelpers(state)` from `handlers/shared.js` for:
 - `showToast(msg, type)`
 - `executeApiAction(action, payload, successMsg, getList, setList, mapFromApi, resKey)`
 - `handleFormAction(action, formArg, successMsg, mapToApi, getList, setList, mapFromApi, resKey)`
-- `handleIdAction(action, idKey, id, successMsg, getList, setList, mapFromApi, resKey)`
+- `handleIdAction(action, idKey, id, successMsg, getList, setList, mapFromApi, resKey, fallbackErrMsg)`
 - `saveWithValidation(formArg, validateFn, handlers, entityName)`
 
 `saveWithValidation` expects the handler object to have
@@ -151,7 +165,7 @@ toast. Copy/paste leftovers that invoke the same action twice are release blocke
 
 DB uses `snake_case` (e.g. `delivery_address`, `daily_qty`, `amount_paid`,
 `delivery_days` as JSONB). UI uses `camelCase` (e.g. `address`, `qty`, `paid`,
-`deliveryDays` as JS array). All conversion happens in `lib/api.js`
+`deliveryDays` as JS array). All conversion happens in `lib/api/mappers.js`
 via `mapXFromApi` (DB→UI) and `mapXToApi` (UI→DB). **Do not** sprinkle
 snake_case reads in pages or camelCase writes in the switch.
 
@@ -177,8 +191,8 @@ alone is not proof that the mutation happened.
 
 `customers.delivery_days` and `subscriptions.delivery_days` are `JSONB` arrays
 of integers `[0..6]` where `0 = Sun, 6 = Sat` (matches `DAYS` in constants.js).
-The `toArray()` helper in `lib/api.js` accepts either an array, a JSON string,
-or a comma-separated string. Always JSON.stringify() on write.
+The `toArray()` helper in `lib/api/shared.js` accepts either an array, a JSON
+string, or a comma-separated string. Always JSON.stringify() on write.
 
 ### 7. Status strings (PascalCase — match DB)
 
@@ -192,15 +206,21 @@ compare literally and silently fail filtering.
 - `fmt(n)` from `lib/utils.js` → `₹1,234.56` (en-IN locale, 2 decimals, safe on null)
 - `getToday()` → `YYYY-MM-DD` in `Asia/Kolkata`. Use this, not `new Date().toISOString().slice(0,10)`.
 - `cleanPhone(p)` strips non-digits; WhatsApp share prepends `91` if 10 digits.
-- All month strings are `YYYY-MM` (e.g. `"2026-07"`). `nextMonthStart(month)` in `api.js`.
+- All month strings are `YYYY-MM` (e.g. `"2026-07"`). Validate the `1..12` range
+  in domain code (see `rolloverMonth` in `api/subscriptions.js`).
 
 ### 9. Auth model
 
 - Authentication uses **Supabase Auth**, not the `settings` table and not a custom
   PIN-hash/token RPC.
-- The six-digit operator PIN is the Supabase Auth password for the confirmed account
-  `operator@milk.local`. Supabase owns password hashing, salting, refresh tokens, and
-  session persistence.
+- The six-digit operator PIN is the Supabase Auth password for the confirmed operator
+  account. The email is centralized in `src/lib/constants.js` as `OPERATOR_EMAIL`
+  (env-overridable via `VITE_OPERATOR_EMAIL`; production default
+  `astamaniac001@gmail.com`). The corresponding `auth.uid()` must be seeded into the
+  `operators` table for `is_operator()` RLS and SECURITY DEFINER RPC authorization to
+  grant access. Supabase owns password hashing, salting, refresh tokens, and session
+  persistence. Never hardcode the email in a second location — read it from
+  `OPERATOR_EMAIL`.
 - `useAuth.js` calls `signInWithPassword`, tracks the Supabase session, and exposes
   `session?.access_token` only as a data-loading gate.
 - PIN rotation must reauthenticate the current PIN and call
@@ -338,12 +358,15 @@ atomic and can leave partial financial state.
 2. Push it with `supabase db push`, then run `npm run db:sync` to regenerate
    `schema.sql` and `database.types.ts`.
 3. Verify the generated types and schema before writing frontend queries.
-4. Add `mapXFromApi` and, if writable, `mapXToApi` in `lib/api.js`.
+4. Add `mapXFromApi` and, if writable, `mapXToApi` in `lib/api/mappers.js`
+   (and re-export from `lib/api.js` if a caller imports from the barrel).
 5. Add state + setter to `useEntityStore` (initial `[]`, add to `safeFetch`
    parallel calls).
-6. Add a `case` in the `callApi` switch (at minimum `getX`).
+6. Add an entry in the `DISPATCH` table in `lib/api.js` (at minimum `getX`).
+
 7. Add a handler hook in `hooks/handlers/useXHandlers.js` and spread it in
    `useAppHandlers.js`.
+
 8. Add/register the page or modal and test the complete UI → handler → API contract.
 
 ### Debug a failing action
@@ -353,7 +376,7 @@ atomic and can leave partial financial state.
 - Check Supabase Auth for the confirmed `operator@milk.local` account if login is
   broken; never inspect or store a PIN in `settings`.
 - Service worker cache: bump `CACHE` constant in `public/sw.js` to force
-  eviction on next load (currently `"milk-v21"`).
+  eviction on next load (currently `"milk-v22"`).
 
 ### Run all checks
 
@@ -382,7 +405,7 @@ a guard in `supabaseClient.js`.
 
 ## Things to be careful about
 
-- **Coverage is thin, especially in `lib/api.js` and application startup paths.**
+- **Coverage is thin, especially in `lib/api/` and application startup paths.**
   Add tests when changing `lib/`, handlers, auth, state composition, or modal wiring.
   Do not assume the current suite exercises a newly changed path.
 - **`useBusy` filters React SyntheticEvents from args** — if you write a
@@ -398,7 +421,7 @@ a guard in `supabaseClient.js`.
   subscriptions, pauses, and existing logs, then batches inserts. Don't
   refactor to a sequential loop or you'll kill the "Generate" button perf.
 - **Service worker: never cache `/api` or `/functions`** — security fix
-  baked into the V21 `sw.js`.
+  baked into the V22 `sw.js`.
 
 ## 🗄️ Database Migrations & Schema Context
 

@@ -56,3 +56,14 @@ export const PAY_MODES = [
   "Bank Transfer",
   "Cheque",
 ];
+
+// Email used for Supabase Auth operator sign-in (rule §9 of AGENTS.md). The
+// six-digit operator PIN is the Supabase Auth password of this confirmed
+// account. Its auth.uid() must be seeded into the `operators` table for RLS
+// (`is_operator()`) and the SECURITY DEFINER RPC authorizations to grant
+// access. Kept here in a single location so login, PIN rotation, and any
+// deployment replacement all reference the same value. Allow an env override
+// so e2e integration runs (e2e/helpers/supabase.js#OPERATOR_EMAIL) can target
+// a different operator email without a code change.
+export const OPERATOR_EMAIL =
+  import.meta.env?.VITE_OPERATOR_EMAIL || "astamaniac001@gmail.com";

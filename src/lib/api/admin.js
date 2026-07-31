@@ -2,7 +2,7 @@
 // rotation. PIN rotation re-authenticates the operator with Supabase Auth
 // before `updateUser` (rule §9 — no PIN stored in any public table).
 
-import { MILK_TYPES } from "../constants.js";
+import { MILK_TYPES, OPERATOR_EMAIL } from "../constants.js";
 import { supabase, must } from "./shared.js";
 
 export async function getPauses(/* payload */) {
@@ -149,7 +149,7 @@ export async function rotatePIN(payload) {
 
   // 1. Re-authenticate to verify the current PIN is correct
   const { error: authError } = await supabase.auth.signInWithPassword({
-    email: "astamaniac001@gmail.com",
+    email: OPERATOR_EMAIL,
     password: currentPin,
   });
 

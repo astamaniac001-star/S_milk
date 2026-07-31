@@ -1,6 +1,7 @@
 // src/hooks/useAuth.js
 import { useState, useEffect } from "react";
 import { supabase, configError } from "../lib/supabaseClient";
+import { OPERATOR_EMAIL } from "../lib/constants.js";
 
 export function useAuth() {
   const [session, setSession] = useState(null);
@@ -100,7 +101,7 @@ export function useAuth() {
       }
 
       const { error: authError } = await supabase.auth.signInWithPassword({
-        email: "astamaniac001@gmail.com",
+        email: OPERATOR_EMAIL,
         password: cleanPin,
       });
       if (authError) throw new Error(authError.message || "Invalid PIN");

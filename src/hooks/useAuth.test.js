@@ -169,7 +169,7 @@ describe("useAuth — login()(pin) — 6-digit PIN contract (audit rule §9)", (
     });
     expect(signInWithPasswordMock).toHaveBeenCalledTimes(1);
     expect(signInWithPasswordMock).toHaveBeenCalledWith({
-      email: "astamaniac001@gmail.com",
+      email: import.meta.env.VITE_OPERATOR_EMAIL || "astamaniac001@gmail.com",
       password: "123456",
     });
     // Per documented contract: never log PINs to console or persist them.
