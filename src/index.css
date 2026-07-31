@@ -109,6 +109,15 @@ select,
 textarea {
   font-size: 16px !important;
   /* 16px is the magic number to prevent iOS auto-zoom */
+  color: var(--text-muted, #94a3b8);
+  font-weight: 400;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  color: var(--text-primary, #0f172a);
+  font-weight: 600;
 }
 
 /* =========================================
@@ -206,6 +215,8 @@ textarea {
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   font-size: 14px;
+  color: var(--text-muted);
+  font-weight: 400;
   transition: all 0.2s ease;
 }
 
@@ -213,6 +224,8 @@ textarea {
   outline: none;
   border-color: var(--brand-500);
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+  color: var(--text-primary);
+  font-weight: 600;
 }
 
 .input::placeholder {

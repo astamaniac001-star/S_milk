@@ -1,3 +1,4 @@
+// fallow-ignore-file unused-file
 // Throwaway: list current rows in each entity so I know what test data the
 // untested-button Playwright tests will see when they drive the UI.
 import { createClient } from "@supabase/supabase-js";

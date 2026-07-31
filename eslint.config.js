@@ -4,7 +4,17 @@ import reactRefresh from "eslint-plugin-react-refresh";
 
 export default [
   {
-    ignores: ["dist/**", "node_modules/**", "public/sw.js", ".tmp/**"],
+    ignores: [
+      "dist/**",
+      "node_modules/**",
+      "public/sw.js",
+      ".tmp/**",
+      // Throwaway node helper scripts (top-level await + node:fs). They are not
+      // part of the app or test suite; linting them as browser/jsx source pulls
+      // in node globals (`process`) that conflict with the .mjs ecmaVersion.
+      "e2e/vitest/_cleanup.mjs",
+      "e2e/vitest/_state.mjs",
+    ],
   },
   js.configs.recommended,
   {
@@ -90,6 +100,10 @@ export default [
         fetch: "readonly",
         navigator: "readonly",
         CustomEvent: "readonly",
+        // Playwright page.evaluate dispatches DOM events via the browser global
+        // `Event` — required for `new Event("input")` patterns in e2e specs.
+        Event: "readonly",
+        HTMLElement: "readonly",
         setTimeout: "readonly",
         clearTimeout: "readonly",
         setInterval: "readonly",

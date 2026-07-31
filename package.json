@@ -19,8 +19,6 @@
     "wprettier": "npx prettier --write .",
     "check-deps": "npx depcheck",
     "spellcheck": "npx cspell \"src/**/*.{js,jsx}\" \"*.md\" \"index.html\" ",
-    "check-all": "npm run lint && npm run test && npm run build ",
-    "advisor-all": " npm run fallow && npm run test:coverage && npm run spellcheck  && npm run check-deps ",
     "db:baseline": "node scripts/db-baseline.js",
     "db:new": "supabase migration new",
     "db:push": "supabase db push",
@@ -33,7 +31,8 @@
     "test:e2e:debug": "playwright test --debug",
     "test:db": "vitest run --config e2e/vitest.config.js",
     "test:db:watch": "vitest --config e2e/vitest.config.js",
-    "test:all": "npm run lint && npm run test && npm run test:db && npm run build"
+    "check-all": "npm run lint && npm run test:db && npm run test && npm run build ",
+    "advisor-all": " npm run spellcheck  && npm run check-deps && npm run fallow && npm run test:coverage  "
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.3",

@@ -3,9 +3,16 @@ import { renderHook } from "@testing-library/react";
 import { useAppDerived } from "./useAppDerived";
 
 // Stub utils.getToday so the "today filters" are deterministic in tests.
-vi.mock("../lib/utils", () => ({
-  getToday: () => "2026-07-25",
-}));
+// `toNum` is a pure coercion helper used by useAppDerived for financial
+// math; keep the real implementation via importOriginal so NaN-guard
+// behaviour is exercised end-to-end (audit rule §4 regression trap).
+vi.mock("../lib/utils", async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    getToday: () => "2026-07-25",
+  };
+});
 
 // We exercise the real filters by importing the real filters module — no mock
 // needed. The filters are pure and already have their own coverage in

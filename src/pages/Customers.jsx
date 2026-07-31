@@ -41,12 +41,16 @@ export default function Customers({
       />
       <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
         <input
+          id="customer-search"
+          name="customer-search"
           value={search}
           onChange={(e) => onSearchChange(e.target.value)}
           placeholder="Search…"
           style={{ ...IS(), flex: 1 }}
         />
         <select
+          id="customer-filter"
+          name="customer-filter"
           value={filter}
           onChange={(e) => onFilterChange(e.target.value)}
           style={{ ...IS(), width: 90 }}

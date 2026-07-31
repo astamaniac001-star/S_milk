@@ -186,6 +186,7 @@ const MODAL_RENDERERS = {
         }
       }}
       onViewHistory={(sub) => ctx.openModal("subscriptionHistory", sub)}
+      onDelete={ctx.deleteSubscription ? (sub) => ctx.deleteSubscription(sub) : undefined}
       onClose={ctx.closeModal}
     />
   ),

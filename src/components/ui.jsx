@@ -169,24 +169,40 @@ export function Btn({
   );
 }
 
+const LABELABLE_TAGS = new Set(["input", "select", "textarea", "button"]);
+
 // FIX M6: Automatic label-to-input association and error ARIA injection
 export function Field({ label, children, className, error, required }) {
   const id = useId();
 
+  const isSingleElement = React.isValidElement(children);
+  const targetId = (isSingleElement && children.props.id) || id;
+  const isLabelable =
+    isSingleElement &&
+    (typeof children.type === "string"
+      ? LABELABLE_TAGS.has(children.type)
+      : !!children.props.id);
+
   let enhancedChildren = children;
-  if (React.isValidElement(children)) {
-    enhancedChildren = React.cloneElement(children, {
-      id: children.props.id || id,
+  if (isSingleElement) {
+    const patchProps = {
       "aria-invalid": !!error,
-      "aria-describedby": error ? `${id}-error` : undefined,
+      "aria-describedby": error ? `${targetId}-error` : undefined,
       "aria-required": required,
-    });
+    };
+    if (isLabelable) {
+      patchProps.id = targetId;
+    }
+    enhancedChildren = React.cloneElement(children, patchProps);
   }
 
   return (
     <div className={`field ${className || ""}`}>
       {label && (
-        <label htmlFor={id} className="field-label">
+        <label
+          htmlFor={isLabelable ? targetId : undefined}
+          className="field-label"
+        >
           {label}{" "}
           {required && (
             <span
@@ -201,7 +217,7 @@ export function Field({ label, children, className, error, required }) {
       {enhancedChildren}
       {error && (
         <div
-          id={`${id}-error`}
+          id={`${targetId}-error`}
           role="alert"
           style={{
             color: "var(--danger-text, #dc2626)",
@@ -350,7 +366,7 @@ export const IS = (extra = {}) => ({
   border: "1px solid var(--border-color, #e2e8f0)",
   borderRadius: 8,
   fontSize: 14,
-  color: "var(--text-main, #0f172a)",
+  color: "var(--text-muted, #94a3b8)",
   transition: "all 0.2s ease",
   outline: "none",
   ...extra,

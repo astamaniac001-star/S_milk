@@ -1,3 +1,4 @@
+// fallow-ignore-file unused-file
 // Throwaway: delete leftover e2e test rows so the next full-lifecycle run
 // starts clean. Mirrors cleanupAll() in integration-full-flow.test.js.
 import { createClient } from "@supabase/supabase-js";

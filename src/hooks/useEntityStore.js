@@ -136,6 +136,7 @@ export function useFilterState() {
   });
   const [billFilter, setBillFilter] = useState("All");
   const [diagRan, setDiagRan] = useState(false);
+  const [diagResults, setDiagResults] = useState(null);
 
   return {
     custSearch,
@@ -148,5 +149,7 @@ export function useFilterState() {
     setBillFilter,
     diagRan,
     setDiagRan,
+    diagResults,
+    setDiagResults,
   };
 }

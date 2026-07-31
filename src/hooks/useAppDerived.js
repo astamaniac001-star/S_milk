@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { filterCustomers, filterImports, filterBills } from "../lib/filters.js";
-import { getToday } from "../lib/utils.js";
+import { getToday, toNum } from "../lib/utils.js";
 
 export function useAppDerived(state) {
   const {
@@ -37,7 +37,7 @@ export function useAppDerived(state) {
 
     const totalRevenue = bills
       .filter((b) => b.status === "Paid" || b.status === "Partial")
-      .reduce((sum, b) => sum + (b.paid || 0), 0);
+      .reduce((sum, b) => sum + toNum(b.paid), 0);
 
     // pendingDues = bills that are NOT settled and that represent real
     // outstanding money. The `bills.status` constraint permits
@@ -47,7 +47,7 @@ export function useAppDerived(state) {
     // See schema constraint `chk_bills_status_valid` on the bills table.
     const pendingDues = bills
       .filter((b) => b.status !== "Paid" && b.status !== "Draft")
-      .reduce((sum, b) => sum + (b.amount - (b.paid || 0)), 0);
+      .reduce((sum, b) => sum + (toNum(b.amount) - toNum(b.paid)), 0);
 
     const filteredC = filterCustomers(customers, custSearch, custFilter);
 

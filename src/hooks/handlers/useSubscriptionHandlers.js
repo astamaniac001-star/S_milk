@@ -48,5 +48,36 @@ export function useSubscriptionHandlers(state) {
     [showToast],
   );
 
-  return { saveSubscription, fetchSubscriptionHistory };
+  const deleteSubscription = useCallback(
+    async (subscription) => {
+      if (!subscription?.id) {
+        showToast("Subscription id is required", "error");
+        return;
+      }
+      if (subscription.version === undefined) {
+        showToast("Subscription version is required", "error");
+        return;
+      }
+      try {
+        await callApi("deleteSubscription", {
+          subscriptionId: subscription.id,
+          version: subscription.version,
+        });
+        showToast("Subscription deleted", "success");
+        const res = await callApi("getSubscriptions", {});
+        setSubscriptions(
+          (res.subscriptions || []).map(mapSubscriptionFromApi),
+        );
+      } catch (err) {
+        showToast(err.message || "Failed to delete subscription", "error");
+      }
+    },
+    [setSubscriptions, showToast],
+  );
+
+  return {
+    saveSubscription,
+    fetchSubscriptionHistory,
+    deleteSubscription,
+  };
 }

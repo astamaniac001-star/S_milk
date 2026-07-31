@@ -2,7 +2,6 @@
 // "More" tab: Security / Adjustments / Pause Periods / Diagnostics / System Health.
 
 import { fmt } from "../lib/utils.js";
-import { MILK_TYPES } from "../lib/constants.js";
 import {
   Card,
   Btn,
@@ -14,16 +13,6 @@ import {
 import { ShieldCheck } from "lucide-react";
 
 // FIX (audit 2026-07-15 & Phase 6): Updated to reflect actual production stack
-const DIAGNOSTICS = [
-  ["✅", "Schema version", "V17"],
-  ["✅", "API version", "17"],
-  ["✅", "Migration", "Supabase CLI"],
-  ["✅", "Mode", "Production"],
-  ["✅", "MilkTypes seeded", ""], // resolved at render time
-  ["✅", "MilkBrands seeded", ""], // resolved at render time
-  ["ℹ️", "Detailed checks", "Not yet implemented (see audit)"],
-];
-
 const HEALTH = [
   { label: "Schema Version", value: "V17", ok: true },
   { label: "API Version", value: "17", ok: true },
@@ -257,7 +246,7 @@ function SecurityCard({ onOpenModal }) {
   );
 }
 
-function DiagnosticsCard({ diagRan, diagnostics, onRunDiag }) {
+function DiagnosticsCard({ diagRan, diagResults, onRunDiag }) {
   return (
     <Card>
       <CardHeader
@@ -268,7 +257,7 @@ function DiagnosticsCard({ diagRan, diagnostics, onRunDiag }) {
           </Btn>
         }
       />
-      {!diagRan ? (
+      {!diagRan || !diagResults ? (
         <div
           style={{
             fontSize: 12,
@@ -281,7 +270,7 @@ function DiagnosticsCard({ diagRan, diagnostics, onRunDiag }) {
         </div>
       ) : (
         <>
-          {diagnostics.map(([icon, label, val]) => (
+          {Object.entries(diagResults.probes || {}).map(([label, p]) => (
             <div
               key={label}
               style={{
@@ -294,34 +283,33 @@ function DiagnosticsCard({ diagRan, diagnostics, onRunDiag }) {
               }}
             >
               <span style={{ color: "var(--text-main, #111)" }}>
-                {icon} {label}
+                {p?.ok ? "✅" : "❌"} {label}
               </span>
               <span
                 style={{
-                  color:
-                    icon === "✅"
-                      ? "var(--success-text, #166534)"
-                      : icon === "ℹ️"
-                        ? "var(--info-text, #1e40af)"
-                        : "var(--warning-text, #854d0e)",
+                  color: p?.ok
+                    ? "var(--success-text, #166534)"
+                    : "var(--danger-text, #991b1b)",
                   fontWeight: 500,
                 }}
               >
-                {val}
+                {p?.value}
+                {p?.detail ? ` — ${p.detail}` : ""}
               </span>
             </div>
           ))}
-          <div
-            style={{
-              fontSize: 11,
-              color: "var(--text-muted, #9ca3af)",
-              marginTop: 10,
-              fontStyle: "italic",
-            }}
-          >
-            Static reference list. Per-item live checks are not yet wired (see
-            audit AUDIT-2026-07-15.md §3.9).
-          </div>
+          {!diagResults.ok && diagResults.error && (
+            <div
+              style={{
+                fontSize: 11,
+                color: "var(--danger-text, #991b1b)",
+                marginTop: 10,
+                fontStyle: "italic",
+              }}
+            >
+              {diagResults.error}
+            </div>
+          )}
         </>
       )}
     </Card>
@@ -368,35 +356,18 @@ function SystemHealthCard({ health, onHealthCheck }) {
   );
 }
 
-function resolveDiagnosticValue(label, val, activeBrandsCount, brands) {
-  if (label === "MilkTypes seeded") return MILK_TYPES.length + " total";
-  if (label === "MilkBrands seeded")
-    return activeBrandsCount + " active / " + brands.length + " total";
-  return val;
-}
-
-function resolveDiagnostics(activeBrandsCount, brands) {
-  return DIAGNOSTICS.map(([icon, label, val]) => [
-    icon,
-    label,
-    resolveDiagnosticValue(label, val, activeBrandsCount, brands),
-  ]);
-}
-
 export default function More({
   adjustments = [],
   pauses = [],
-  brands = [],
   customers = [],
   bills = [],
   diagRan,
-  activeBrandsCount,
+  diagResults,
   onOpenModal,
   onApplyAdj,
   onRunDiag,
   onHealthCheck,
 }) {
-  const diagnostics = resolveDiagnostics(activeBrandsCount, brands);
   const resolveCustomer = buildAdjusterResolver(customers, bills);
 
   return (
@@ -418,10 +389,11 @@ export default function More({
       />
       <DiagnosticsCard
         diagRan={diagRan}
-        diagnostics={diagnostics}
+        diagResults={diagResults}
         onRunDiag={onRunDiag}
       />
       <SystemHealthCard health={HEALTH} onHealthCheck={onHealthCheck} />
     </div>
   );
 }
+

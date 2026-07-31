@@ -46,10 +46,12 @@ export function dayOfWeekKolkata(date) {
 }
 
 const AUTH_ERROR_CODES = new Set(["42501", "PGRST301", "PGRST302"]);
+const JWT_EXPIRED_RE = /jwt expired|jwt has expired/i;
 export function isAuthError(err) {
-  return (
-    !!err && (AUTH_ERROR_CODES.has(err.code) || /jwt/i.test(err.message || ""))
-  );
+  if (!err) return false;
+  if (AUTH_ERROR_CODES.has(err.code)) return true;
+  const msg = err.message || "";
+  return JWT_EXPIRED_RE.test(msg);
 }
 
 // OCC update: compare-and-set on `version`. Throws code=CONFLICT when

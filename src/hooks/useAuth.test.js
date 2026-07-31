@@ -6,13 +6,19 @@ import { useAuth } from "./useAuth";
 // declare an in-test factory that exposes the auth methods we exercise.
 let sessionState;
 let getSessionMock;
+let getUserMock;
 let signInWithPasswordMock;
 let signOutMock;
 let onAuthStateChangeMock;
 
 vi.mock("../lib/supabaseClient", () => ({
+  // Production client throws at module-eval if env is missing; tests assume the
+  // happy path, so configError is null here. (A dedicated missing-env test
+  // would stub supabase: null + configError: <Error>.)
+  configError: null,
   supabase: {
     auth: {
+      getUser: (...args) => getUserMock(...args),
       getSession: (...args) => getSessionMock(...args),
       signInWithPassword: (...args) => signInWithPasswordMock(...args),
       signOut: (...args) => signOutMock(...args),
@@ -39,6 +45,13 @@ beforeEach(() => {
 
   getSessionMock = vi.fn(async () => ({
     data: { session: sessionState },
+    error: null,
+  }));
+  // `getUser()` is the server-side validity gate added in the audit fix.
+  // Default it to a successful "user present" so the hook proceeds to the
+  // getSession() step. Tests needing a rejected/invalid token override this.
+  getUserMock = vi.fn(async () => ({
+    data: { user: { id: "user-1" } },
     error: null,
   }));
   signInWithPasswordMock = vi.fn(async () => ({ data: {}, error: null }));
@@ -104,15 +117,14 @@ describe("useAuth — initial getSession + lifecycle (audit 2026-07-25)", () => 
     expect(sub.unsubscribe).toHaveBeenCalledTimes(1);
   });
 
-  it("SIGNED_OUT event dispatches the custom auth:expired window event (api.js listens for it)", async () => {
-    const spy = vi.fn();
-    window.addEventListener("auth:expired", spy);
-    renderHook(() => useAuth());
+  it("SIGNED_OUT event updates session to null and sets isAuthenticated to false", async () => {
+    sessionState = TOKEN_EXPIRED_SESSION;
+    const { result } = renderHook(() => useAuth());
     await waitFor(() => expect(onAuthStateChangeMock).toHaveBeenCalled());
     const sub = onAuthStateChangeMock._lastSub;
     act(() => sub._emit("SIGNED_OUT", null));
-    expect(spy).toHaveBeenCalledTimes(1);
-    window.removeEventListener("auth:expired", spy);
+    expect(result.current.session).toBeNull();
+    expect(result.current.isAuthenticated).toBe(false);
   });
 });
 

@@ -54,6 +54,8 @@ function renderDelivery(state, handlers, derived) {
       generateDailyLogs={handlers.generateDailyLogs}
       onOpenModal={state.openModal}
       customers={state.customers || []}
+      imports={state.imports || []}
+      brands={state.brands || []}
     />
   );
 }
@@ -62,12 +64,17 @@ function renderImports(state, handlers, _derived) {
   return (
     <Imports
       filtered={state.filteredImports || []}
+      allImports={state.imports || []}
       brands={state.brands || []}
+      logs={state.logs || []}
+      logDate={state.logDate}
       impFilter={state.impFilter || {}}
       onImpFilterChange={state.setImpFilter}
       onOpenModal={state.openModal}
       onConfirm={handlers.confirmMilkImport}
       onDelete={handlers.deleteMilkImport}
+      onSaveImport={handlers.saveImport}
+      today={state.today}
     />
   );
 }
@@ -101,11 +108,10 @@ function renderMore(state, handlers, _derived) {
     <More
       adjustments={state.adjustments || []}
       pauses={state.pauses || []}
-      brands={state.brands || []}
       customers={state.customers || []}
       bills={state.bills || []}
       diagRan={state.diagRan}
-      activeBrandsCount={state.activeBrandsCount || 0}
+      diagResults={state.diagResults}
       onOpenModal={state.openModal}
       onApplyAdj={(adjId, billId, version) =>
         handlers.applyAdjustment(adjId, billId, version)

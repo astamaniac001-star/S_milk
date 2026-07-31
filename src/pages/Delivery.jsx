@@ -1,7 +1,7 @@
 // ── Delivery.jsx ──────────────────────────────────────────────────────────────
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useBusy } from "../hooks/useBusy.js";
-import { Card, Field, IS, StatGrid, Empty, Btn } from "../components/ui.jsx";
+import { Card, Field, IS, Empty, Btn } from "../components/ui.jsx";
 
 function calculateDeliveryStats(logs) {
   const safeLogs = Array.isArray(logs) ? logs : [];
@@ -17,13 +17,11 @@ function calculateDeliveryStats(logs) {
 
 function getToggleButtonStyle(delivered) {
   return {
-    // FIX M8: Use CSS variables for dark mode support
     background: delivered
       ? "var(--success-bg, #dcfce7)"
       : "var(--danger-bg, #fee2e2)",
     border: "none",
     borderRadius: 8,
-    // FIX M11: Increased padding to ensure minimum 44x44 touch target for mobile
     padding: "12px 16px",
     fontSize: 14,
     fontWeight: 600,
@@ -41,9 +39,8 @@ function getToggleButtonText(delivered) {
   return delivered ? "✓ Done" : "✗ Skip";
 }
 
-function DeliveryLogItem({ id, name, product, qty, delivered, onToggle }) {
+function DeliveryLogItem({ id, name, product, qty, delivered, onToggle, readOnly }) {
   return (
-    // FIX M9: Replaced Tailwind classes with inline flex styles
     <div
       style={{
         display: "flex",
@@ -54,7 +51,6 @@ function DeliveryLogItem({ id, name, product, qty, delivered, onToggle }) {
       }}
     >
       <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-        {/* FIX M8: Use CSS variables for text colors to support Dark Mode */}
         <span style={{ fontWeight: 600, color: "var(--text-main, #111827)" }}>
           {name}
         </span>
@@ -62,13 +58,25 @@ function DeliveryLogItem({ id, name, product, qty, delivered, onToggle }) {
           {product} · {qty}L
         </span>
       </div>
-      <button
-        onClick={() => onToggle(id, !delivered)}
-        style={getToggleButtonStyle(delivered)}
-        aria-label={`Mark ${name} as ${delivered ? "skipped" : "delivered"}`}
-      >
-        {getToggleButtonText(delivered)}
-      </button>
+      {readOnly ? (
+        <div
+          style={{
+            ...getToggleButtonStyle(delivered),
+            cursor: "default",
+            opacity: 0.85,
+          }}
+        >
+          {getToggleButtonText(delivered)}
+        </div>
+      ) : (
+        <button
+          onClick={() => onToggle(id, !delivered)}
+          style={getToggleButtonStyle(delivered)}
+          aria-label={`Mark ${name} as ${delivered ? "skipped" : "delivered"}`}
+        >
+          {getToggleButtonText(delivered)}
+        </button>
+      )}
     </div>
   );
 }
@@ -81,19 +89,106 @@ function resolveLog(l, customerMap) {
     product: l.product ?? c?.product ?? "Milk",
     qty: Number(l.qty || 0),
     delivered: Boolean(l.delivered),
+    custId: l.custId,
   };
 }
 
+// Aggregates the Total view: group imports and delivered logs by brand x milk
+// type so the operator sees how much of each brand/type was bought vs delivered
+// on the selected date. `imports` are deliveries from milk_brands (UI shape:
+// {brand, type, qty, date}); `logs` are customer deliveries for the day.
+function buildTotalBreakdown(imports, logs, brands, logDate) {
+  const dayImports = (imports || []).filter(
+    (i) => i.status === "Confirmed" && i.date === logDate,
+  );
+
+  // Build brand → { milkType → { imported, delivered } }
+  const brandMap = new Map();
+
+  const ensureBrand = (brandName) => {
+    if (!brandMap.has(brandName)) brandMap.set(brandName, new Map());
+    return brandMap.get(brandName);
+  };
+
+  const ensureMilk = (brandMapEntry, milkType) => {
+    if (!brandMapEntry.has(milkType)) {
+      brandMapEntry.set(milkType, { imported: 0, delivered: 0 });
+    }
+    return brandMapEntry.get(milkType);
+  };
+
+  // 1. Imports per brand/type
+  dayImports.forEach((imp) => {
+    if (!imp.brand) return;
+    const milkType = imp.type || "Mixed";
+    const m = ensureMilk(ensureBrand(imp.brand), milkType);
+    m.imported += Number(imp.qty || 0);
+  });
+
+  // 2. Delivered logs — milk_type comes from log.product; we don't know the
+  // brand directly, so we look up the customer's product via the brand's
+  // defaultMilkType when possible. If we can't find a brand for the product,
+  // we aggregate under "Unknown brand".
+  const deliveredLogs = (logs || []).filter((l) => l.delivered);
+  deliveredLogs.forEach((l) => {
+    const milkType = l.product || "Milk";
+    // Try to find a brand whose defaultMilkType matches this product.
+    const matchedBrand = (brands || []).find(
+      (b) => b.defaultMilkType && b.defaultMilkType === milkType,
+    );
+    const brandName = matchedBrand?.name || "Unknown brand";
+    const m = ensureMilk(ensureBrand(brandName), milkType);
+    m.delivered += Number(l.qty || 0);
+  });
+
+  // Flatten to a sorted list of rows
+  const rows = [];
+  for (const [brandName, milkEntries] of brandMap.entries()) {
+    for (const [milkType, agg] of milkEntries.entries()) {
+      rows.push({
+        brand: brandName,
+        milkType,
+        imported: agg.imported,
+        delivered: agg.delivered,
+        balance: agg.imported - agg.delivered,
+      });
+    }
+  }
+  // Stable sort: brand name, then milk type
+  rows.sort((a, b) =>
+    a.brand === b.brand
+      ? a.milkType.localeCompare(b.milkType)
+      : a.brand.localeCompare(b.brand),
+  );
+
+  const totals = rows.reduce(
+    (acc, r) => {
+      acc.imported += r.imported;
+      acc.delivered += r.delivered;
+      return acc;
+    },
+    { imported: 0, delivered: 0 },
+  );
+
+  return { rows, totals };
+}
+
+// fallow-ignore-next-line complexity
 export default function Delivery({
   logDate,
   onLogDateChange,
-  logs = [], // FIX H5: Renamed from todayLogs to logs to reflect it holds the selected date's data
+  logs = [],
   onToggleLog,
   generateDailyLogs,
   onOpenModal,
   customers = [],
+  imports = [],
+  brands = [],
 }) {
   const safeLogs = useMemo(() => (Array.isArray(logs) ? logs : []), [logs]);
+  const [search, setSearch] = useState("");
+  const [activeView, setActiveView] = useState("scheduled"); // scheduled|delivered|skipped|total
+  const q = search.trim().toLowerCase();
 
   const customerMap = useMemo(() => {
     const map = {};
@@ -110,15 +205,59 @@ export default function Delivery({
 
   const stats = calculateDeliveryStats(safeLogs);
 
-  const statItems = [
-    { label: "Scheduled", value: stats.scheduled, icon: "📅" },
-    { label: "Delivered", value: stats.deliveredCount, icon: "✅" },
-    { label: "Skipped", value: stats.skippedCount, icon: "❌" },
-    { label: "Total", value: stats.totalLiters, icon: "🥛" },
-  ];
+  // Apply search across the active view. For "scheduled" we show all (with
+  // toggle). For "delivered" / "skipped" we filter the underlying list, but
+  // keep the read-only indicator so the operator can see the current state.
+  const visibleLogs = useMemo(() => {
+    let list = resolvedLogs;
+    if (activeView === "delivered") {
+      list = list.filter((l) => l.delivered);
+    } else if (activeView === "skipped") {
+      list = list.filter((l) => !l.delivered);
+    }
+    if (!q) return list;
+    return list.filter(
+      (l) =>
+        l.name.toLowerCase().includes(q) ||
+        (l.product || "").toLowerCase().includes(q),
+    );
+  }, [resolvedLogs, activeView, q]);
 
-  // FIX H5: Removed redundant fetchLogs useEffect.
-  // The parent (AppPage/useEntityStore) now handles fetching when logDate changes, preventing race conditions.
+  const totalBreakdown = useMemo(
+    () => buildTotalBreakdown(imports, safeLogs, brands, logDate),
+    [imports, safeLogs, brands, logDate],
+  );
+
+  const statTiles = [
+    {
+      key: "scheduled",
+      label: "Scheduled",
+      value: stats.scheduled,
+      icon: "📅",
+      bg: "var(--bg-surface)",
+    },
+    {
+      key: "delivered",
+      label: "Delivered",
+      value: stats.deliveredCount,
+      icon: "✅",
+      bg: "#dcfce7",
+    },
+    {
+      key: "skipped",
+      label: "Skipped",
+      value: stats.skippedCount,
+      icon: "❌",
+      bg: "#fee2e2",
+    },
+    {
+      key: "total",
+      label: "Total",
+      value: stats.totalLiters,
+      icon: "🥛",
+      bg: "#dbeafe",
+    },
+  ];
 
   const [busy, handleGenerate] = useBusy(async () => {
     if (generateDailyLogs) {
@@ -127,7 +266,6 @@ export default function Delivery({
   });
 
   return (
-    // FIX M9: Replaced undefined Tailwind classes with inline flex styles
     <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
       <Card>
         <div
@@ -173,14 +311,172 @@ export default function Delivery({
         </div>
       </Card>
 
-      <StatGrid items={statItems} />
+      {/* Stat tiles — clickable to drive the content below */}
+      <div className="stat-grid">
+        {statTiles.map((tile) => {
+          const isActive = activeView === tile.key;
+          return (
+            <button
+              key={tile.key}
+              type="button"
+              onClick={() => setActiveView(tile.key)}
+              className="stat-tile"
+              aria-pressed={isActive}
+              aria-label={`${tile.label}: ${tile.value}`}
+              style={{
+                background: tile.bg || "var(--bg-surface)",
+                border: isActive
+                  ? "2px solid #1e40af"
+                  : "1px solid var(--border-color)",
+                cursor: "pointer",
+                boxShadow: isActive ? "0 0 0 2px rgba(30,64,175,0.25)" : "none",
+                textAlign: "left",
+              }}
+            >
+              <div className="stat-label">
+                {tile.icon} {tile.label}
+              </div>
+              <div className="stat-value">{tile.value}</div>
+            </button>
+          );
+        })}
+      </div>
 
-      {safeLogs.length === 0 ? (
-        <Empty message="No deliveries scheduled for this date." />
+      {/* Search bar — hidden on the "total" view since it's aggregated */}
+      {activeView !== "total" && (
+        <input
+          id="delivery-search"
+          name="delivery-search"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search by customer or product…"
+          style={{ ...IS() }}
+        />
+      )}
+
+      {/* Content area driven by the active stat tile */}
+      {activeView === "total" ? (
+        totalBreakdown.rows.length === 0 ? (
+          <Empty message="No confirmed imports or delivered logs for this date." />
+        ) : (
+          <Card>
+            <div
+              style={{
+                fontWeight: 600,
+                fontSize: 14,
+                marginBottom: 8,
+                color: "var(--text-main)",
+              }}
+            >
+              Brand × Milk Type — {logDate}
+            </div>
+            <div style={{ overflowX: "auto" }}>
+              <table
+                style={{
+                  width: "100%",
+                  borderCollapse: "collapse",
+                  fontSize: 13,
+                  color: "var(--text-main)",
+                }}
+              >
+                <thead>
+                  <tr
+                    style={{
+                      borderBottom: "2px solid var(--border-color)",
+                      textAlign: "left",
+                    }}
+                  >
+                    <th style={{ padding: "8px 6px" }}>Brand</th>
+                    <th style={{ padding: "8px 6px" }}>Milk Type</th>
+                    <th style={{ padding: "8px 6px", textAlign: "right" }}>
+                      Imported (L)
+                    </th>
+                    <th style={{ padding: "8px 6px", textAlign: "right" }}>
+                      Delivered (L)
+                    </th>
+                    <th style={{ padding: "8px 6px", textAlign: "right" }}>
+                      Balance (L)
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {totalBreakdown.rows.map((r) => (
+                    <tr
+                      key={`${r.brand}|${r.milkType}`}
+                      style={{
+                        borderBottom: "1px solid var(--border-color)",
+                      }}
+                    >
+                      <td style={{ padding: "8px 6px", fontWeight: 600 }}>
+                        {r.brand}
+                      </td>
+                      <td style={{ padding: "8px 6px" }}>{r.milkType}</td>
+                      <td style={{ padding: "8px 6px", textAlign: "right" }}>
+                        {r.imported.toFixed(1)}
+                      </td>
+                      <td style={{ padding: "8px 6px", textAlign: "right" }}>
+                        {r.delivered.toFixed(1)}
+                      </td>
+                      <td
+                        style={{
+                          padding: "8px 6px",
+                          textAlign: "right",
+                          color:
+                            r.balance >= 0
+                              ? "var(--text-main)"
+                              : "#991b1b",
+                          fontWeight: 600,
+                        }}
+                      >
+                        {r.balance >= 0 ? "+" : ""}
+                        {r.balance.toFixed(1)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr
+                    style={{
+                      borderTop: "2px solid var(--border-color)",
+                      fontWeight: 700,
+                    }}
+                  >
+                    <td style={{ padding: "10px 6px" }}>Total</td>
+                    <td style={{ padding: "10px 6px" }} />
+                    <td style={{ padding: "10px 6px", textAlign: "right" }}>
+                      {totalBreakdown.totals.imported.toFixed(1)}
+                    </td>
+                    <td style={{ padding: "10px 6px", textAlign: "right" }}>
+                      {totalBreakdown.totals.delivered.toFixed(1)}
+                    </td>
+                    <td style={{ padding: "10px 6px", textAlign: "right" }}>
+                      {(
+                        totalBreakdown.totals.imported -
+                        totalBreakdown.totals.delivered
+                      ).toFixed(1)}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </Card>
+        )
+      ) : visibleLogs.length === 0 ? (
+        <Empty
+          message={
+            safeLogs.length === 0
+              ? "No deliveries scheduled for this date."
+              : q
+                ? "No customers match your search."
+                : activeView === "delivered"
+                  ? "No deliveries marked done yet."
+                  : "No deliveries skipped."
+          }
+        />
       ) : (
         <Card>
           <div style={{ display: "flex", flexDirection: "column" }}>
-            {resolvedLogs.map((l) => (
+            {visibleLogs.map((l) => (
               <DeliveryLogItem
                 key={l.id}
                 id={l.id}
@@ -189,6 +485,7 @@ export default function Delivery({
                 qty={l.qty}
                 delivered={l.delivered}
                 onToggle={onToggleLog}
+                readOnly={activeView !== "scheduled"}
               />
             ))}
           </div>

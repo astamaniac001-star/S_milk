@@ -1,3 +1,4 @@
+// fallow-ignore-file unused-file
 /* ============================================================================
  * MILK DELIVERY ADMIN — V21 (Security Patched)
  * FILE 1: sw.js  (Service Worker — place in project root / public/)

@@ -32,6 +32,7 @@ import {
   rolloverMonth,
   getSubscriptions,
   saveSubscription,
+  deleteSubscription,
   getSubscriptionHistory,
 } from "./api/subscriptions.js";
 import {
@@ -107,6 +108,7 @@ const DISPATCH = {
   rolloverMonth,
   getSubscriptions,
   saveSubscription,
+  deleteSubscription,
   getSubscriptionHistory,
 
   // Daily logs

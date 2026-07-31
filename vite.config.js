@@ -34,11 +34,16 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks(id) {
-          if (
-            id.includes("node_modules") &&
-            /[\\/]node_modules[\\/](react|react-dom|scheduler)[\\/]/.test(id)
-          ) {
-            return "vendor";
+          if (id.includes("node_modules")) {
+            if (/[\\/]node_modules[\\/](react|react-dom|scheduler)[\\/]/.test(id)) {
+              return "vendor-react";
+            }
+            if (/[\\/]node_modules[\\/](@supabase|isows|@supabase)[\\/]/.test(id)) {
+              return "vendor-supabase";
+            }
+            if (/[\\/]node_modules[\\/]lucide-react[\\/]/.test(id)) {
+              return "vendor-icons";
+            }
           }
         },
       },

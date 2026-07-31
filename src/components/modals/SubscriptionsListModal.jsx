@@ -1,4 +1,5 @@
-import { Modal, Btn } from "../ui.jsx";
+import { useMemo, useState } from "react";
+import { Modal, Btn, IS } from "../ui.jsx";
 import { DAYS_OF_WEEK } from "./shared";
 
 function resolveCustomerName(customers, customerId) {
@@ -13,8 +14,40 @@ export function SubscriptionsListModal({
   customers = [],
   onEdit,
   onViewHistory,
+  onDelete,
   onClose,
 }) {
+  const [search, setSearch] = useState("");
+  const [deletingId, setDeletingId] = useState(null);
+  const q = search.trim().toLowerCase();
+
+  const filtered = useMemo(() => {
+    if (!q) return subscriptions;
+    return subscriptions.filter((sub) => {
+      const name = resolveCustomerName(customers, sub.customerId).toLowerCase();
+      const milk = (sub.milkType || "").toLowerCase();
+      return name.includes(q) || milk.includes(q);
+    });
+  }, [subscriptions, customers, q]);
+
+  const handleDelete = async (sub) => {
+    if (!onDelete) return;
+    const name = resolveCustomerName(customers, sub.customerId);
+    if (
+      !window.confirm(
+        `Delete subscription for ${name}? This cannot be undone.`,
+      )
+    )
+      return;
+    if (deletingId) return; // busy guard
+    setDeletingId(sub.id);
+    try {
+      await onDelete({ id: sub.id, version: sub.version });
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   return (
     <Modal title="Manage Subscriptions" onClose={onClose} wide>
       <div
@@ -26,14 +59,22 @@ export function SubscriptionsListModal({
         }}
       >
         <span style={{ fontSize: 13, color: "#6b7280" }}>
-          {subscriptions.length} subscription(s)
+          {filtered.length} of {subscriptions.length} subscription(s)
         </span>
         <Btn small onClick={() => onEdit(null)}>
           + Add Subscription
         </Btn>
       </div>
+      <input
+        id="subscription-search"
+        name="subscription-search"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        placeholder="Search by customer or milk type…"
+        style={{ ...IS(), marginBottom: 10 }}
+      />
       <div style={{ maxHeight: 400, overflowY: "auto" }}>
-        {subscriptions.length === 0 ? (
+        {filtered.length === 0 ? (
           <div
             style={{
               padding: 20,
@@ -42,11 +83,13 @@ export function SubscriptionsListModal({
               fontSize: 13,
             }}
           >
-            No subscriptions yet. Click "Add Subscription" to create one.
+            {subscriptions.length === 0
+              ? 'No subscriptions yet. Click "Add Subscription" to create one.'
+              : "No subscriptions match your search."}
           </div>
         ) : (
           // fallow-ignore-next-line complexity
-          subscriptions.map((sub) => (
+          filtered.map((sub) => (
             <div
               key={sub.id}
               style={{
@@ -96,6 +139,17 @@ export function SubscriptionsListModal({
                 <Btn small variant="secondary" onClick={() => onEdit(sub)}>
                   Edit
                 </Btn>
+                {onDelete && (
+                  <Btn
+                    small
+                    variant="danger"
+                    disabled={deletingId === sub.id}
+                    title={sub.version ? `v${sub.version}` : undefined}
+                    onClick={() => handleDelete(sub)}
+                  >
+                    {deletingId === sub.id ? "…" : "Delete"}
+                  </Btn>
+                )}
               </div>
             </div>
           ))

@@ -11,6 +11,7 @@ export function useAdminHandlers(state) {
     modal = {},
     closeModal,
     setDiagRan,
+    setDiagResults,
   } = state;
   const { showToast, executeApiAction } = useHelpers(state);
 
@@ -107,15 +108,18 @@ export function useAdminHandlers(state) {
     if (diagBusyRef.current) return;
     diagBusyRef.current = true;
     try {
-      await callApi("runDiagnostics");
+      const res = await callApi("runDiagnostics");
       if (typeof setDiagRan === "function") setDiagRan(true);
+      // Persist the live per-item probe results so the More page can render
+      // verified values instead of a static reference list (audit §3.9).
+      if (typeof setDiagResults === "function") setDiagResults(res);
       showToast("Diagnostics executed successfully", "success");
     } catch (err) {
       showToast(err?.message || "Diagnostics failed", "error");
     } finally {
       diagBusyRef.current = false;
     }
-  }, [showToast, setDiagRan]);
+  }, [showToast, setDiagRan, setDiagResults]);
 
   const healthBusyRef = useRef(false);
   const healthCheck = useCallback(async () => {

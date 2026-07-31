@@ -548,7 +548,8 @@ test("Imports: + Import → save inserts a Draft row; Confirm marks Confirmed; D
     test.skip(true, "no __e2e__ brand seeded; run e2e/vitest/_cleanup.mjs + reseed first");
     return;
   }
-  const brandId = brandRow.id;
+  const _brandId = brandRow.id;
+  void _brandId;
   const brandName = brandRow.brand_name;
   const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
 
@@ -782,11 +783,12 @@ test("More: Run (Diagnostics) populates the Diagnostics card with live values", 
   // (More.jsx:281).
   await expect(page.getByText("Tap Run to check connectivity")).toBeVisible();
   // Click the Run button (exact=true because "Run" prefix-matches
-  // "Run Health Check").
-  await page.getByRole("button", { name: "Run", exact: true }).click();
-  // After clicking Run, the card renders the DIAGNOSTICS array
-  // (More.jsx:284-313). One of the entries is "Migration: Supabase CLI"
-  // so search for that text. The array also includes "Schema version V17".
+   // "Run Health Check").
+   await page.getByRole("button", { name: "Run", exact: true }).click();
+  // After clicking Run, the handler stores live per-item probe results (via
+  // callApi("runDiagnostics")) into `diagResults`, and the card renders those
+  // probes instead of the old static list. The probe labels include
+  // "Schema version" and "Migration" so search for those texts.
   await expect(page.getByText(/Schema version/)).toBeVisible({ timeout: 10_000 });
   await expect(page.getByText(/Migrations?/)).toBeVisible();
 });
@@ -819,7 +821,8 @@ test("More: Adjustments + Add → AdjustmentModal save inserts an adjustments ro
   });
   const { data: custRow } = await supabase.from("customers").select("id").eq("phone", phone).maybeSingle();
   const custId = custRow.id;
-  const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+  const _today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+  void _today;
 
   try {
     await page.getByRole("button", { name: "More" }).click();

@@ -103,3 +103,58 @@ export async function getSubscriptionHistory(payload) {
   }
   return { history };
 }
+
+// OCC delete: a Supabase mutation can return no error while matching zero rows,
+// so a successful HTTP response alone is not proof the row was deleted
+// (rule §5). Compare-and-set on `version`, then assert exactly one row was
+// affected by reading the (post-delete) count beforehand. We use the count
+// header on the delete itself so we don't need a separate round-trip.
+export async function deleteSubscription(payload) {
+  const { subscriptionId, version } = payload;
+  if (!subscriptionId) throw new Error("subscriptionId is required");
+  if (version === undefined)
+    throw new Error("subscription version is required for OCC");
+
+  const ev = toNum(version) || 1;
+  let count;
+  let error;
+  try {
+    const res = await supabase
+      .from("subscriptions")
+      .delete({ count: "exact" })
+      .eq("id", subscriptionId)
+      .eq("version", ev);
+    error = res.error;
+    count = res.count;
+  } catch (err) {
+    throw err instanceof Error ? err : new Error(err?.message || String(err));
+  }
+  must(error);
+  if (typeof count !== "number") {
+    // Some Supabase versions don't populate `count` without `Prefer: count=exact`.
+    // Fall back to a verification select — if the row still exists, the version
+    // must have moved (concurrent edit) and we surface a CONFLICT.
+    const { data: still, error: selErr } = await supabase
+      .from("subscriptions")
+      .select("id")
+      .eq("id", subscriptionId)
+      .maybeSingle();
+    must(selErr);
+    if (still) {
+      const conflict = new Error(
+        "This subscription was changed elsewhere. Please refresh and try again.",
+      );
+      conflict.code = "CONFLICT";
+      throw conflict;
+    }
+    count = 1;
+  }
+  if (count !== 1) {
+    const conflict = new Error(
+      "This subscription was changed elsewhere. Please refresh and try again.",
+    );
+    conflict.code = "CONFLICT";
+    throw conflict;
+  }
+  return { subscriptionId, deleted: true };
+}

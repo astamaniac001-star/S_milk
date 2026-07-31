@@ -18,6 +18,7 @@ function baseState(overrides = {}) {
     setAdjustments: vi.fn(),
     setBills: vi.fn(),
     setDiagRan: vi.fn(),
+    setDiagResults: vi.fn(),
     closeModal: vi.fn(),
     toast$: vi.fn(),
     form: {},
@@ -46,6 +47,24 @@ describe("useAdminHandlers — diagnostics + health + rotatePin (audit 2026-07-2
     );
   });
 
+  it("runDiagnostics persists the live probe results into state (audit §3.9)", async () => {
+    const live = {
+      ok: true,
+      mode: "Production",
+      probes: {
+        "Schema version": { ok: true, value: "V17" },
+        "MilkBrands seeded": { ok: true, value: "2 active / 2 total" },
+      },
+    };
+    callApi.mockResolvedValue(live);
+    const s = baseState();
+    const { result } = renderHook(() => useAdminHandlers(s));
+    await act(async () => {
+      await result.current.runDiagnostics();
+    });
+    expect(s.setDiagResults).toHaveBeenCalledWith(live);
+  });
+
   it("runDiagnostics swallows re-entrant taps (busy guard)", async () => {
     let resolve;
     callApi.mockImplementation(
@@ -72,6 +91,9 @@ describe("useAdminHandlers — diagnostics + health + rotatePin (audit 2026-07-2
     expect(s.toast$).toHaveBeenCalledWith("DB down", "error");
     // setDiagRan must NOT fire on failure — the action didn't run
     expect(s.setDiagRan).not.toHaveBeenCalled();
+    // Live results must not be written on failure — the card stays in the
+    // placeholder state rather than showing a stale/partial result set.
+    expect(s.setDiagResults).not.toHaveBeenCalled();
   });
 
   it("healthCheck toasts 'Health check passed — V17' on success", async () => {
