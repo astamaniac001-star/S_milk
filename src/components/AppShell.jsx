@@ -66,6 +66,9 @@ export function AppShell({
       document.documentElement.classList.remove("dark");
     }
     localStorage.setItem("darkMode", darkMode);
+  }, [darkMode]);
+
+  useEffect(() => {
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
     window.addEventListener("online", handleOnline);
@@ -74,7 +77,7 @@ export function AppShell({
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
     };
-  }, [darkMode]);
+  }, []);
 
   return (
     <div

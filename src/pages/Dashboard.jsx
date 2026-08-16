@@ -137,9 +137,19 @@ export default function Dashboard({
               <Btn
                 key={q.label}
                 variant="secondary"
-                onClick={() =>
-                  q.type === "generate" ? onGenerateBill() : onOpenModal(q.type)
-                }
+                onClick={() => {
+                  if (q.type === "generate") {
+                    const currentMonth = (today || "").substring(0, 7);
+                    if (
+                      window.confirm(
+                        `Generate bills for ${currentMonth}? This will create or update a bill for every active customer.`,
+                      )
+                    )
+                      onGenerateBill();
+                  } else {
+                    onOpenModal(q.type);
+                  }
+                }}
                 style={{
                   display: "flex",
                   flexDirection: "column",

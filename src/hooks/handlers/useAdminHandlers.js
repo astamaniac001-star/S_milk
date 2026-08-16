@@ -32,7 +32,6 @@ export function useAdminHandlers(state) {
           startDate,
           endDate,
           reason,
-          idempotencyKey: Date.now().toString(),
         };
         return executeApiAction(
           "addPausePeriod",
@@ -86,7 +85,6 @@ export function useAdminHandlers(state) {
           defaultMilkType: f.defaultType || "Full Cream",
           ratePerLiter:
             f.rate !== undefined && f.rate !== "" ? Number(f.rate) : undefined,
-          idempotencyKey: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
         });
         showToast("Brand added", "success");
         if (closeModal) closeModal();
@@ -122,14 +120,21 @@ export function useAdminHandlers(state) {
   }, [showToast, setDiagRan, setDiagResults]);
 
   const healthBusyRef = useRef(false);
+  // FIX (AI-m audit M-4, 2026-08-01): healthCheck now returns the live
+  // response so the SystemHealthCard can re-render with fresh probe data
+  // instead of staying on a stale static list. Callers should still toast
+  // on success/failure via their own feedback; this handler returns the
+  // raw payload.
   const healthCheck = useCallback(async () => {
-    if (healthBusyRef.current) return;
+    if (healthBusyRef.current) return null;
     healthBusyRef.current = true;
     try {
-      await callApi("healthCheck");
+      const result = await callApi("healthCheck");
       showToast("Health check passed — V17", "success");
+      return result;
     } catch (err) {
       showToast(err?.message || "Health check failed", "error");
+      return null;
     } finally {
       healthBusyRef.current = false;
     }

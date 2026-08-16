@@ -2,15 +2,18 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { BrandModal } from "./BrandModal.jsx";
 
-// Audit fix: the modal should default `defaultType` to "Full Cream" per
-// AGENTS.md rule §16 — canonical constants, not empty strings.
+// Audit fix (AI-C §2.3): BrandModal calls its prop as `onChange("name")` —
+// a curried `(field) => (event) => {...}`. Passing a flat `vi.fn()` makes
+// `onChange("name")` return undefined, leaving fields without a handler and
+// emitting a React warning on every run. Use a curried mock.
+const curriedOnChange = () => vi.fn();
 
 describe("BrandModal — default milk type (audit 2026-07-24, rule §16)", () => {
   it("renders the Default Milk Type dropdown with 'Full Cream' selected even when form is empty", () => {
     render(
       <BrandModal
         form={{}}
-        onChange={vi.fn()}
+        onChange={curriedOnChange()}
         onSave={vi.fn()}
         onClose={vi.fn()}
         milkTypes={["Full Cream", "Toned", "Skimmed"]}
@@ -24,7 +27,7 @@ describe("BrandModal — default milk type (audit 2026-07-24, rule §16)", () =>
     render(
       <BrandModal
         form={{ defaultType: "Toned" }}
-        onChange={vi.fn()}
+        onChange={curriedOnChange()}
         onSave={vi.fn()}
         onClose={vi.fn()}
         milkTypes={["Full Cream", "Toned", "Skimmed"]}
@@ -37,7 +40,7 @@ describe("BrandModal — default milk type (audit 2026-07-24, rule §16)", () =>
     render(
       <BrandModal
         form={{}}
-        onChange={vi.fn()}
+        onChange={curriedOnChange()}
         onSave={vi.fn()}
         onClose={vi.fn()}
         milkTypes={["Full Cream", "Toned"]}

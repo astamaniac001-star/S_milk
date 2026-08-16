@@ -1,6 +1,7 @@
 // ── Delivery.jsx ──────────────────────────────────────────────────────────────
 import { useMemo, useState } from "react";
 import { useBusy } from "../hooks/useBusy.js";
+import { matchBrandByMilkType } from "../lib/utils.js";
 import { Card, Field, IS, Empty, Btn } from "../components/ui.jsx";
 
 function calculateDeliveryStats(logs) {
@@ -132,11 +133,7 @@ function buildTotalBreakdown(imports, logs, brands, logDate) {
   const deliveredLogs = (logs || []).filter((l) => l.delivered);
   deliveredLogs.forEach((l) => {
     const milkType = l.product || "Milk";
-    // Try to find a brand whose defaultMilkType matches this product.
-    const matchedBrand = (brands || []).find(
-      (b) => b.defaultMilkType && b.defaultMilkType === milkType,
-    );
-    const brandName = matchedBrand?.name || "Unknown brand";
+    const brandName = matchBrandByMilkType(l, brands);
     const m = ensureMilk(ensureBrand(brandName), milkType);
     m.delivered += Number(l.qty || 0);
   });

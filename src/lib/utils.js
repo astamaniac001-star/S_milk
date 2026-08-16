@@ -48,14 +48,12 @@ export const getDaysAgoIST = (days) => {
 
 export const cleanPhone = (p) => String(p || "").replace(/\D/g, "");
 
-let _uuidCounter = 0;
-export const uuid = () => {
-  _uuidCounter += 1;
-  return (
-    Date.now().toString(36).toUpperCase().slice(-4) +
-    "-" +
-    _uuidCounter.toString(36).toUpperCase().padStart(4, "0")
+export const matchBrandByMilkType = (log, brands) => {
+  const milkType = log.product || "Milk";
+  const matchedBrand = (brands || []).find(
+    (b) => b.defaultMilkType && b.defaultMilkType === milkType,
   );
+  return matchedBrand?.name || "Unknown brand";
 };
 
 export const generateKey = () => {

@@ -110,7 +110,7 @@ VITE_SUPABASE_ANON_KEY=your-anon-key-here
 # Optional: override the operator email used for 6-digit PIN sign-in.
 # Defaults to astamaniac001@gmail.com. Its auth.uid() must be seeded into the
 # `operators` table for RLS/`is_operator()` to grant access.
-# VITE_OPERATOR_EMAIL=operator@milk.local
+# VITE_OPERATOR_EMAIL=operator@example.com
 ```
 
 ### 3. Database Setup
@@ -119,11 +119,15 @@ present-state snapshot). Apply it via the Supabase CLI — **do not** use the
 Supabase Table Editor UI:
 
 ```bash
-# From a fresh project: push the current schema
+# From a fresh project: apply the committed migrations (rebuilds the current schema)
 supabase db push
 
 # Regenerate local type + schema artifacts after any schema change
 npm run db:sync     # = db:dump (schema.sql) + db:types (database.types.ts)
+
+# Capture an existing linked DB as two baseline migrations
+# (supabase/migrations/<ts>_initial_schema.sql + <ts+1>_seed_data.sql):
+npm run db:baseline
 ```
 
 If you need to make a schema change, create a new migration rather than editing
@@ -162,7 +166,8 @@ npm run test:coverage   # with enforced coverage thresholds
 npm run test:watch      # watch mode
 
 npm run test:e2e        # Playwright end-to-end (needs E2E_* env, see e2e/README.md)
-npm run test:db         # integration tests against a disposable Supabase env
+npm run test:db         # Vitest integration against the live Supabase project; self-skips when E2E_OPERATOR_PIN is unset
+npm run test:all        # lint + db integration + unit tests + build + browser e2e (alias of check-all && test:e2e)
 ```
 
 ---

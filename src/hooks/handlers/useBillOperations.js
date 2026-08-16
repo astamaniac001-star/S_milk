@@ -129,7 +129,7 @@ export function useBillOperations(state) {
       }
       const digits = String(phone).replace(/\D/g, "");
       const intlPhone = digits.length === 10 ? "91" + digits : digits;
-      if (!intlPhone) {
+      if (!/^\d{10,15}$/.test(intlPhone)) {
         showToast("Invalid phone number", "error");
         return;
       }

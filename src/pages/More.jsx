@@ -1,6 +1,7 @@
 // ── More.jsx ──────────────────────────────────────────────────────────────────
 // "More" tab: Security / Adjustments / Pause Periods / Diagnostics / System Health.
 
+import { useState } from "react";
 import { fmt } from "../lib/utils.js";
 import {
   Card,
@@ -12,13 +13,34 @@ import {
 } from "../components/ui.jsx";
 import { ShieldCheck } from "lucide-react";
 
-// FIX (audit 2026-07-15 & Phase 6): Updated to reflect actual production stack
-const HEALTH = [
-  { label: "Schema Version", value: "V17", ok: true },
-  { label: "API Version", value: "17", ok: true },
-  { label: "Auth Provider", value: "Supabase Native", ok: true },
-  { label: "Mode", value: "Production (Vite + Supabase)", ok: true },
-];
+// FIX (AI-m audit M-4, 2026-08-01): HEALTH was a static reference list that
+// never updated when the "Run Health Check" button was clicked — the toast
+// succeeded but the displayed list stayed stale. Now the card starts blank
+// and gets populated from the live `healthCheck` RPC response on click.
+function defaultHealth() {
+  return [
+    { label: "Database", value: "Not checked", ok: null },
+  ];
+}
+
+function buildHealthFromResult(previous, result) {
+  // Preserve static reference labels so the row list doesn't flicker on
+  // every probe — only the Database row flips to the live value.
+  const base = previous ?? defaultHealth();
+  const live = Array.isArray(result?.checks) ? result.checks : null;
+  if (!live) {
+    return base.map((row) =>
+      row.label === "Database"
+        ? { ...row, value: result?.status ?? "OK", ok: true }
+        : row,
+    );
+  }
+  return base.map((row) => {
+    const probe = live.find((c) => c.label === row.label);
+    if (!probe) return row;
+    return { label: probe.label, value: probe.value ?? "OK", ok: !!probe.ok };
+  });
+}
 
 function AdjustmentAmount({ amount }) {
   // FIX M8: Use CSS variables for Dark Mode
@@ -113,10 +135,10 @@ function AdjustmentItem({ a, onApplyAdj, resolveCustomer }) {
         </div>
         <AdjustmentActions
           applied={!!a.applied}
-          // FIX H1: Pass the correct ID to the handler
-          onApply={() =>
-            onApplyAdj(a.adjustmentId || a.id, a.billId, a.version)
-          }
+          onApply={() => {
+            if (!a.billId) return;
+            onApplyAdj(a.adjustmentId || a.id, a.billId, a.version);
+          }}
         />
       </div>
     </div>
@@ -316,11 +338,37 @@ function DiagnosticsCard({ diagRan, diagResults, onRunDiag }) {
   );
 }
 
-function SystemHealthCard({ health, onHealthCheck }) {
+function SystemHealthCard({ onHealthCheck }) {
+  // FIX (AI-m audit M-4, 2026-08-01): previously the displayed list was a
+  // static constant and never updated when "Run Health Check" was clicked.
+  // Now the card owns its own state, starts blank, and refreshes from the
+  // live `healthCheck` RPC response on click.
+  const [rows, setRows] = useState([
+    { label: "Database", value: "Not checked", ok: null },
+  ]);
+  const [running, setRunning] = useState(false);
+
+  const run = async () => {
+    if (running) return;
+    setRunning(true);
+    try {
+      const result = await onHealthCheck();
+      // FIX (audit M-4): guard against null. On failure the handler returns
+      // null and toasts an error — we must NOT call buildHealthFromResult
+      // with null because its `result?.status ?? "OK"` fallback would
+      // misleadingly flip the Database row to "OK" while the toast says
+      // "error". Leaving `rows` untouched keeps the card on "Not checked",
+      // which is coherent with the error toast.
+      if (result) setRows((prev) => buildHealthFromResult(prev, result));
+    } finally {
+      setRunning(false);
+    }
+  };
+
   return (
     <Card>
       <CardHeader title="System Health" />
-      {health.map((x) => (
+      {rows.map((x) => (
         <div
           key={x.label}
           style={{
@@ -334,25 +382,29 @@ function SystemHealthCard({ health, onHealthCheck }) {
           <span style={{ color: "var(--text-muted, #6b7280)" }}>{x.label}</span>
           <span
             style={{
-              color: x.ok
-                ? "var(--success-text, #166534)"
-                : "var(--danger-text, #991b1b)",
+              color:
+                x.ok === null
+                  ? "var(--text-muted, #6b7280)"
+                  : x.ok
+                    ? "var(--success-text, #166534)"
+                    : "var(--danger-text, #991b1b)",
               fontWeight: 500,
             }}
           >
             {x.value}
-          </span>
-        </div>
+         </span>
+       </div>
       ))}
       <Btn
         full
         variant="secondary"
         style={{ marginTop: 10 }}
-        onClick={onHealthCheck}
+        onClick={run}
+        disabled={running}
       >
-        Run Health Check
-      </Btn>
-    </Card>
+        {running ? "Checking..." : "Run Health Check"}
+     </Btn>
+   </Card>
   );
 }
 
@@ -392,7 +444,7 @@ export default function More({
         diagResults={diagResults}
         onRunDiag={onRunDiag}
       />
-      <SystemHealthCard health={HEALTH} onHealthCheck={onHealthCheck} />
+      <SystemHealthCard onHealthCheck={onHealthCheck} />
     </div>
   );
 }

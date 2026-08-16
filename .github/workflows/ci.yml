@@ -22,7 +22,9 @@ jobs:
         run: npm ci
 
       - name: Run Full Release Gate
-        # This runs lint, prettier, tests (with coverage thresholds), build, circular deps, spellcheck, and depcheck
+        # Runs lint, vitest-integration (self-skips if env not set), unit tests, and build.
+        # Coverage, prettier, circular deps, spellcheck, and depcheck are advisory only
+        # and run separately via `npm run advisor-all` (not gated on CI).
         run: npm run check-all
 
       - name: Upload Coverage Reports

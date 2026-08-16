@@ -1,6 +1,6 @@
 // ── Imports.jsx ───────────────────────────────────────────────────────────────
 import { useRef, useState, useMemo } from "react";
-import { fmt, getToday, toNum } from "../lib/utils.js";
+import { fmt, getToday, toNum, matchBrandByMilkType } from "../lib/utils.js";
 import { Card, Btn, IS, Section, StatGrid, Empty, Badge, Modal } from "../components/ui.jsx";
 
 const STATUS_FILTERS = ["Draft", "Confirmed", "Reconciled"];
@@ -42,10 +42,7 @@ function buildImportDeliveryBreakdown(imports, logs, brands, logDate, today) {
 
   deliveredLogs.forEach((l) => {
     const milkType = l.product || "Milk";
-    const matchedBrand = (brands || []).find(
-      (b) => b.defaultMilkType && b.defaultMilkType === milkType,
-    );
-    const brandName = matchedBrand?.name || "Unknown brand";
+    const brandName = matchBrandByMilkType(l, brands);
     const r = ensure(brandName, milkType);
     r.delivered += toNum(l.qty);
   });
@@ -179,7 +176,7 @@ function BrandImportRow({ brand, today, onSaveImport }) {
         </div>
         <Badge label={brand.status} />
         <Btn small variant="secondary" onClick={() => setOpen((o) => !o)}>
-          {open ? "Close" : "+ Import"}
+          {open ? "Close" : "Add"}
         </Btn>
       </div>
       {open && (
@@ -252,7 +249,10 @@ export default function Imports({
   onSaveImport,
   today,
 }) {
-  const safeFiltered = Array.isArray(filtered) ? filtered : [];
+  const safeFiltered = useMemo(
+    () => (Array.isArray(filtered) ? filtered : []),
+    [filtered],
+  );
   const [modal, setModal] = useState(null); // "qtyBreakdown" | "deliveryBreakdown"
 
   const totalQty = safeFiltered
@@ -284,14 +284,19 @@ export default function Imports({
 
   return (
     <div>
-      <Section
-        title="Milk Imports"
-        action={
-          <Btn small variant="secondary" onClick={() => onOpenModal("addBrand")}>
-            + Brand
-          </Btn>
-        }
-      />
+       <Section
+          title="Milk Imports"
+          action={
+            <div style={{ display: "flex", gap: 6 }}>
+              <Btn small variant="secondary" onClick={() => onOpenModal("addBrand")}>
+                + Brand
+              </Btn>
+              <Btn small variant="primary" onClick={() => onOpenModal("addImport")}>
+                + Import
+              </Btn>
+            </div>
+          }
+       />
       <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
         <input
           id="import-month"

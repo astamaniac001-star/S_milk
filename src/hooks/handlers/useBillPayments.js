@@ -11,6 +11,7 @@ export function useBillPayments(state) {
   const {
     setBills,
     setAdjustments,
+    billMonth,
     form = {},
     modal = {},
     closeModal,
@@ -47,13 +48,13 @@ export function useBillPayments(state) {
         showToast(`₹${amount} recorded`, "success");
 
         if (closeModal) closeModal();
-        const res = await callApi("getBills", {});
+        const res = await callApi("getBills", { month: billMonth });
         setBills(res.bills || []);
       } catch (e) {
         showToast(e.message, "error");
       }
     },
-    [setBills, form, modal, closeModal, showToast],
+    [setBills, billMonth, form, modal, closeModal, showToast],
   );
 
   const saveAdjustment = useCallback(
@@ -79,7 +80,6 @@ export function useBillPayments(state) {
           amount: Number(amount),
           reason,
           date,
-          idempotencyKey: Date.now().toString(),
         };
         await callApi("addAdjustment", payload);
         showToast("Added", "success");
@@ -103,7 +103,7 @@ export function useBillPayments(state) {
 
         const [adjRes, billRes] = await Promise.all([
           callApi("getAdjustments", {}),
-          callApi("getBills", {}),
+          callApi("getBills", { month: billMonth }),
         ]);
 
         setAdjustments((adjRes.adjustments || []).map(mapAdjustmentFromApi));
@@ -112,7 +112,7 @@ export function useBillPayments(state) {
         showToast(err.message || "Failed to apply adjustment", "error");
       }
     },
-    [showToast, setAdjustments, setBills],
+    [showToast, setAdjustments, setBills, billMonth],
   );
 
   const addCreditNote = useCallback(

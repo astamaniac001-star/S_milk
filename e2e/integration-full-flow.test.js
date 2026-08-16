@@ -228,7 +228,7 @@ test.describe("full operator lifecycle", () => {
     // (PaymentModal.jsx:21-29). We pay HALF the pending now for the
     // Partial state assertion.
     const pending = num(billRow.amount) - num(billRow.amount_paid);
-    const halfStr = String(Math.floor(pending * 100) / 100);
+    const halfStr = String(Math.floor((pending / 2) * 100) / 100);
     await page.getByLabel(/Amount/).first().fill(halfStr);
     await page.getByRole("button", { name: /Record ₹/ }).click();
     await expect(page.getByRole("dialog")).toHaveCount(0, { timeout: 15_000 });

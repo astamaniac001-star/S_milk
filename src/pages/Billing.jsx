@@ -14,7 +14,7 @@ import {
   Badge,
 } from "../components/ui.jsx";
 
-const STATUS_FILTERS = ["All", "Unpaid", "Partial", "Paid"];
+const STATUS_FILTERS = ["All", "Unpaid", "Partial", "Paid", "Draft"];
 
 // ✅ Extracted style helper to reduce cognitive complexity in the render tree
 const getFilterBtnStyle = (isActive) => ({

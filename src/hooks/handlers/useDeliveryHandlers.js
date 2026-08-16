@@ -15,7 +15,6 @@ export function useDeliveryHandlers(state) {
             logId,
             delivered,
             date: logDate || getToday(),
-            idempotencyKey: Date.now().toString(),
           };
           await callApi("updateLogEntry", payload);
           showToast("Log updated", "success");
@@ -31,7 +30,6 @@ export function useDeliveryHandlers(state) {
         try {
           const payload = {
             logs: logsToUpsert,
-            idempotencyKey: Date.now().toString(),
           };
           await callApi("bulkUpsertLogs", payload);
           const res = await callApi("getDailyLogs", {
@@ -57,7 +55,6 @@ export function useDeliveryHandlers(state) {
           qty: data.qty,
           reason: data.reason,
           product: data.product,
-          idempotencyKey: `adhoc-${Date.now()}`,
         };
 
         await callApi("addAdHocLog", payload);
@@ -74,10 +71,8 @@ export function useDeliveryHandlers(state) {
   const generateDailyLogs = useCallback(
     async (date) => {
       try {
-        const idempotencyKey = `gen-logs-${date}-${Date.now()}`;
         const summary = await callApi("generateDailyLogsForDate", {
           date,
-          idempotencyKey,
         });
 
         const skipped =

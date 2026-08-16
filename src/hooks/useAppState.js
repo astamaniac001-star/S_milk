@@ -43,9 +43,6 @@ function useAppUi() {
     (k) => (e) => setForm((p) => ({ ...p, [k]: e.target.value })),
     [],
   );
-  const updateForm = useCallback((k, v) => {
-    setForm((p) => ({ ...p, [k]: v }));
-  }, []);
 
   // ✅ Fix U2: Track timer ID to clear on unmount and prevent leaks
   const toastIdRef = useRef(0);
@@ -100,7 +97,6 @@ function useAppUi() {
     logDate,
     setLogDate,
     setF,
-    updateForm,
     toast$,
     openModal,
     closeModal,

@@ -139,9 +139,27 @@ export async function runDiagnostics(/* payload */) {
 }
 
 export async function healthCheck(/* payload */) {
+  // FIX (AI-m audit M-4, 2026-08-01): the previous implementation returned
+  // { status: "Healthy" } but the SystemHealthCard in More.jsx's
+  // buildHealthFromResult expects { checks: [{ label, value, ok }] }. Without
+  // the `checks` array the card silently fell into its fallback branch and
+  // rendered the Database row with the bare `status` string while every other
+  // row stayed on its placeholder text. Return a `checks` array so the card
+  // renders the live probe.
+  //
+  // We MUST still `must(error)` so the administering handler in
+  // useAdminHandlers catches the failure, toasts an error, and returns null.
+  // The More.jsx card guards against null so it stays on "Not checked"
+  // instead of incorrectly flipping the Database row to "OK". An earlier
+  // draft here swallowed the error and returned { status: "Unhealthy" }
+  // — that broke the handler's error detection (it would toast "Health
+  // check passed" while the DB was down). Throwing keeps the contract intact.
   const { error } = await supabase.from("settings").select("key").limit(1);
   must(error);
-  return { status: "Healthy" };
+  return {
+    status: "Healthy",
+    checks: [{ label: "Database", value: "Healthy", ok: true }],
+  };
 }
 
 export async function rotatePIN(payload) {

@@ -1,28 +1,9 @@
 // fallow-ignore-file unused-file
 // Throwaway: delete leftover e2e test rows so the next full-lifecycle run
 // starts clean. Mirrors cleanupAll() in integration-full-flow.test.js.
-import { createClient } from "@supabase/supabase-js";
-import { readFileSync } from "node:fs";
+import { getOperatorClient } from "./_client.mjs";
 
-const env = readFileSync(".env", "utf8").split(/\r?\n/).reduce((a, l) => {
-  const i = l.indexOf("=");
-  if (i < 0) return a;
-  const k = l.slice(0, i).trim();
-  let v = l.slice(i + 1).trim();
-  if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) v = v.slice(1, -1);
-  a[k] = v;
-  return a;
-}, {});
-
-const s = createClient(env.VITE_SUPABASE_URL, env.VITE_SUPABASE_ANON_KEY, {
-  auth: { persistSession: false },
-});
-
-const { error: authErr } = await s.auth.signInWithPassword({
-  email: env.E2E_OPERATOR_EMAIL || "astamaniac001@gmail.com",
-  password: env.E2E_OPERATOR_PIN,
-});
-if (authErr) { console.log("auth error:", authErr.message); process.exit(1); }
+const s = await getOperatorClient();
 
 const custs = await s.from("customers").select("id").like("name", "__e2e__%");
 console.log("orphan customers:", custs.data);

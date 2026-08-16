@@ -9,11 +9,14 @@ export default [
       "node_modules/**",
       "public/sw.js",
       ".tmp/**",
+      "e2e-test-results/**",
+      "coverage/**",
       // Throwaway node helper scripts (top-level await + node:fs). They are not
       // part of the app or test suite; linting them as browser/jsx source pulls
       // in node globals (`process`) that conflict with the .mjs ecmaVersion.
       "e2e/vitest/_cleanup.mjs",
       "e2e/vitest/_state.mjs",
+      "e2e/vitest/_client.mjs",
     ],
   },
   js.configs.recommended,

@@ -30,7 +30,7 @@ from the operator's phone, installable as a PWA, designed to work offline.
 | Service Wk  | Vanilla `public/sw.js` (V22)              | Cache-first shell, network-only for /api      |
 | State       | React hooks (no Redux/Zustand)            | Composable custom hooks                       |
 | Routing     | Tab-based (no react-router)               | State field `tab` in `useAppState`            |
-| Tests       | Vitest 4 + jsdom + Testing Library        | Coverage is intentionally enforced separately |
+| Tests       | Vitest 4 + jsdom 29 + Testing Library; Playwright (browser e2e) | Coverage enforced separately via `test:coverage` |
 | Lint        | ESLint 10 + react-hooks + react-refresh   | `no-console` warn (warn/error allowed)        |
 | Other tools | cspell, fallow, madge, prettier, depcheck | Advisory tools are not all in `check-all`     |
 
@@ -56,9 +56,10 @@ src/
 │   │   └── admin.js
 │   ├── constants.js       # SC (status colors), DAYS, MILK_TYPES, PRODUCTS, PAY_MODES, OPERATOR_EMAIL
 │   ├── filters.js         # Pure filter helpers (filterCustomers/Imports/Bills)
-│   ├── utils.js           # fmt(), getToday() [Asia/Kolkata], getDaysAgoIST(), cleanPhone, generateKey, uuid
+│   ├── utils.js           # fmt(), getToday() [Asia/Kolkata], getDaysAgoIST(), cleanPhone, generateKey [uuid], matchBrandByMilkType
 │   ├── database.types.ts  # Generated current Supabase types; never edit manually
-│   └── validation/        # validateCustomerForm, validateImportForm
+│   ├── validation.js      # Re-exports validateCustomerForm / validateImportForm
+│   └── validation/        # customer.js, import.js (re-exported from validation.js)
 ├── hooks/
 │   ├── useAuth.js                  # Supabase Auth session + 6-digit operator PIN login
 │   ├── useAppState.js              # Composes: useEntityStore + useFilterState + useAppUi + useAppDerived
@@ -90,19 +91,33 @@ src/
 │   ├── ErrorBoundary.jsx   # Class component — Reload / Sign-out & reload
 │   ├── login.jsx           # 6-digit operator PIN form
 │   ├── ui.jsx              # Badge, Toast, Modal, Btn, Field, Card, Empty, Section, StatGrid
-│   ├── forms.jsx           # All 13 modal components (Customer, Import, Payment, …)
-│   └── modals/             # One file per modal (same as forms.jsx exports)
-└── test/setup.js
+│   ├── forms.jsx           # Re-exports the 12 modal components consumed by AppModals
+│   └── modals/             # 13 modal .jsx files (incl. shared.jsx); forms.jsx re-exports most
+└── test/setup.js           # Vitest + Testing Library setup; referenced from vite.config.js
 
 public/
-├── sw.js                   # Service worker (offline-first PWA)
+├── sw.js                   # Service worker (offline-first PWA), cache name "milk-v22"
 ├── register-sw.js
 ├── app.css
-├── favicon.svg, icons.svg, icon-512.png, apple-touch-icon.png
+├── apply-dark-mode.js      # Early-strip dark-mode script (precached by sw.js shell)
+├── manifest.json           # PWA manifest (installable from the operator's phone)
+├── favicon.svg
+├── icons.svg
+├── icon-512.png
+└── apple-touch-icon.png
 
 supabase/
 ├── schema.sql              # Generated present-state schema; never edit manually
 └── migrations/             # Historical ledger; ignore except a newly created migration
+
+scripts/
+└── db-baseline.js          # `npm run db:baseline` — dumps the linked DB into two baseline migrations
+
+e2e/                        # Playwright + Vitest integration tests against the live Supabase project
+                            # (see e2e/README.md for layout and run instructions)
+
+# Root config files (not in src/ or public/): vite.config.js, eslint.config.js,
+# cspell.json, playwright.config.js, .fallowignore.
 ```
 
 ## Architecture rules — please follow
@@ -373,15 +388,16 @@ atomic and can leave partial financial state.
 
 - Check the `console.warn` breadcrumb trail — `useHelpers` logs every step.
 - Check `loadErrors` banner at top of `AppShell`.
-- Check Supabase Auth for the confirmed `operator@milk.local` account if login is
-  broken; never inspect or store a PIN in `settings`.
+- Check Supabase Auth for the confirmed `OPERATOR_EMAIL` account (production default
+  `astamaniac001@gmail.com`, overridable via `VITE_OPERATOR_EMAIL`) if login is broken;
+  never inspect or store a PIN in `settings`.
 - Service worker cache: bump `CACHE` constant in `public/sw.js` to force
   eviction on next load (currently `"milk-v22"`).
 
 ### Run all checks
 
 ```bash
-npm run check-all      # currently lint + unit tests + build only
+npm run check-all      # lint + db integration (test:db) + unit tests + build
 npm run test:coverage  # enforced thresholds; run and report separately
 npm run advisor-all    # coverage + fallow + spellcheck + depcheck
 ```
@@ -393,15 +409,27 @@ or remove checks merely to make a gate green.
 
 ## Environment
 
-`.env` (committed in this repo, treat as dev/test):
+`.env` is **git-ignored** (per `.gitignore`) — each developer/operator keeps their own
+local copy. It is the source of truth for runtime config in dev and for the local
+Playwright/Vitest suites; production reads the same vars from the hosting provider's
+environment.
 
-- `VITE_SUPABASE_URL` = `https://qipvmrgieuvpygjytcpt.supabase.co`
-- `VITE_SUPABASE_ANON_KEY` = public anon JWT; authenticated RLS and RPC authorization
-  must protect business data.
+Required variables:
 
-Both are read once in `src/lib/supabaseClient.js`. No env-var type-checking;
-missing env = null client = silent failures. Don't add new env vars without
-a guard in `supabaseClient.js`.
+- `VITE_SUPABASE_URL` — e.g. `https://qipvmrgieuvpygjytcpt.supabase.co`
+- `VITE_SUPABASE_ANON_KEY` — public anon JWT; authenticated RLS and RPC authorization
+  must protect business data. Public by design (§9).
+
+Optional:
+
+- `VITE_OPERATOR_EMAIL` — overrides the default operator login email (production
+  default `astamaniac001@gmail.com`, set in `src/lib/constants.js`).
+- `E2E_OPERATOR_PIN` / `E2E_OPERATOR_EMAIL` — needed by `e2e/` integration tests
+  (see `e2e/README.md`). Self-skip when unset.
+
+Both `VITE_*` vars are read once in `src/lib/supabaseClient.js`. No env-var
+type-checking; missing env = null client = silent failures. Don't add new env vars
+without a guard in `supabaseClient.js`.
 
 ## Things to be careful about
 
@@ -440,8 +468,10 @@ Use only these present-state artifacts for database discovery:
 AI agents must otherwise ignore:
 
 - `supabase/migrations/` — historical ledger
-- `supabase/_archive/` — legacy scripts
-- `supabase_sql_editor/` — legacy manual SQL
+
+(`supabase/_archive/` and `supabase_sql_editor/` are referenced in older guidance but are
+not present in the current tree; ignore this list if those directories ever reappear as
+legacy imports.)
 
 The only migration-directory exception is a migration created during the current task:
 an agent may create and edit that new file, but must not inspect older migrations for

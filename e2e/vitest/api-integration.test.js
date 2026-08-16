@@ -11,35 +11,9 @@
 
 import { describe, it, expect, beforeAll } from "vitest";
 import { createClient } from "@supabase/supabase-js";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { getEnv } from "./_client.mjs";
 
-function readDotEnv() {
-  try {
-    const text = readFileSync(resolve(process.cwd(), ".env"), "utf8");
-    const out = {};
-    for (const rawLine of text.split(/\r?\n/)) {
-      const line = rawLine.trim();
-      if (!line || line.startsWith("#")) continue;
-      const eq = line.indexOf("=");
-      if (eq < 0) continue;
-      const key = line.slice(0, eq).trim();
-      let val = line.slice(eq + 1).trim();
-      if (
-        (val.startsWith('"') && val.endsWith('"')) ||
-        (val.startsWith("'") && val.endsWith("'"))
-      ) {
-        val = val.slice(1, -1);
-      }
-      out[key] = val;
-    }
-    return out;
-  } catch {
-    return {};
-  }
-}
-
-const env = { ...readDotEnv(), ...process.env };
+const env = getEnv();
 const URL = env.SUPABASE_URL || env.VITE_SUPABASE_URL;
 const KEY = env.SUPABASE_ANON_KEY || env.VITE_SUPABASE_ANON_KEY;
 const PIN = env.E2E_OPERATOR_PIN;

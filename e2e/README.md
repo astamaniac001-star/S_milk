@@ -16,6 +16,8 @@ e2e/
 │                                  every table readable, every RPC exists
 ├── all-buttons.test.js           Playwright: login, six bottom-nav tabs,
 │                                  quick-action modals, every page's controls
+├── per-card-buttons.test.js      Playwright: per-card UI controls (delivery
+│                                  toggle, payments, brand rows)
 ├── data-rendering.test.js        Playwright: UI text matches what DB holds
 │                                  (customer cards, billing KPIs, brands list)
 ├── integration-full-flow.test.js Playwright: create customer → generate
@@ -23,8 +25,11 @@ e2e/
 │                                  verify DB → RLS-aware cleanup
 ├── vitest.config.js              separate Vitest config (no app interference)
 └── vitest/
-    └── api-integration.test.js   Vitest: exercises lib/api.js callApi switch
-                                  against live Supabase (no browser needed)
+    ├── api-integration.test.js   Vitest: exercises lib/api.js callApi switch
+    │                              against live Supabase (no browser needed)
+    ├── _client.mjs               shared: getEnv() + getOperatorClient() auth helper
+    ├── _state.mjs                 throwaway: list current rows in each entity table
+    └── _cleanup.mjs               throwaway: delete leftover __e2e__ rows pre-run
 ```
 
 ## Running
@@ -56,8 +61,10 @@ test scope. Self-skips when `E2E_OPERATOR_PIN` isn't set so the regular
 ### Everything
 
 ```bash
-npm run test:all    # lint + unit + db integration + build
+npm run test:all    # lint + unit + db integration + build + browser e2e
 ```
+
+This is an alias for `npm run check-all && npm run test:e2e` (defined in `package.json`).
 
 ## What runs without `E2E_OPERATOR_PIN`
 
@@ -84,9 +91,10 @@ ffmpeg binaries just to collect the suite.
 - **Playwright run**: the suite boots Vite's dev server (`npm run dev` on
   `:5173`) via `playwright.config.js`'s `webServer` config and uses
   **Edge** (`channel: "msedge"`). Edge is on every modern Windows host —
-  skip the bundled Chromium download entirely. If you re-enable
-  `video: "retain-on-failure"` (default is `"off"` because ffmpeg is not
-  distributed with Edge), you also need: `npx playwright install ffmpeg`.
+  skip the bundled Chromium download entirely. Failure videos default to
+  `"off"` because ffmpeg is not distributed with Edge; set `PW_VIDEO=on`
+  (or override `playwright.config.js`) to enable, and run
+  `npx playwright install ffmpeg` once to make the capture succeed.
 - **Vitest run**: no browser at all — direct supabase-js calls from node.
 
 ## Required env

@@ -24,7 +24,7 @@ COMMENT ON SCHEMA "public" IS 'standard public schema';
 
 
 CREATE OR REPLACE FUNCTION "public"."apply_adjustment_rpc"("p_adjustment_id" "uuid", "p_bill_id" "uuid", "p_version" integer) RETURNS "jsonb"
-    LANGUAGE "plpgsql"
+    LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'public'
     AS $$
 DECLARE
@@ -32,22 +32,42 @@ DECLARE
   v_bill record;
   v_new_amount numeric;
 BEGIN
+  -- Operator-only — explicit guard (matches sibling RPCs).
+  IF NOT public.is_operator() THEN
+    RAISE EXCEPTION 'Unauthorized: only the operator may apply adjustments';
+  END IF;
+
   -- Fetch and lock the adjustment
   SELECT * INTO v_adj FROM adjustments WHERE id = p_adjustment_id FOR UPDATE;
   IF v_adj IS NULL THEN RAISE EXCEPTION 'Adjustment not found'; END IF;
-  
+
   -- Check version for Optimistic Concurrency Control (OCC)
-  IF v_adj.version != p_version THEN RAISE EXCEPTION 'CONFLICT: Adjustment was modified by another process.'; END IF;
-  
+  IF v_adj.version != p_version THEN
+    RAISE EXCEPTION 'CONFLICT: Adjustment was modified by another process.';
+  END IF;
+
   -- Check if already applied
-  IF v_adj.applied = true THEN RAISE EXCEPTION 'Adjustment has already been applied.'; END IF;
+  IF v_adj.applied = true THEN
+    RAISE EXCEPTION 'Adjustment has already been applied.';
+  END IF;
 
   -- Fetch and lock the bill
   SELECT * INTO v_bill FROM bills WHERE id = p_bill_id FOR UPDATE;
   IF v_bill IS NULL THEN RAISE EXCEPTION 'Bill not found'; END IF;
-  IF v_bill.locked = true THEN RAISE EXCEPTION 'Cannot apply adjustment to a locked bill.'; END IF;
+  IF v_bill.locked = true THEN
+    RAISE EXCEPTION 'Cannot apply adjustment to a locked bill.';
+  END IF;
 
-  -- Calculate new amount (Assumes v_adj.amount is a positive discount. Change to '+' if it's a surcharge)
+  -- AI-m audit H-3 (2026-08-01): adjustment and bill must belong to the
+  -- same customer. Without this guard, a misclick could apply a credit
+  -- owed to one customer to another customer's bill.
+  IF v_adj.customer_id IS DISTINCT FROM v_bill.customer_id THEN
+    RAISE EXCEPTION 'Adjustment and bill belong to different customers';
+  END IF;
+
+  -- Calculate new amount (Assumes v_adj.amount is a positive discount.
+  -- The adjustments.amount CHECK constraint blocks 0 only — sign is the
+  -- caller's responsibility per AGENTS.md §14.)
   v_new_amount := v_bill.amount - v_adj.amount;
 
   -- CRITICAL: Prevent violating the chk_bills_paid_lte_amount constraint
@@ -58,7 +78,7 @@ BEGIN
   -- Apply the adjustment and recompute status atomically
   UPDATE bills
   SET amount = v_new_amount,
-      status = CASE 
+      status = CASE
         WHEN v_new_amount <= v_bill.amount_paid THEN 'Paid'
         WHEN v_bill.amount_paid > 0 THEN 'Partial'
         ELSE 'Unpaid'
@@ -83,7 +103,7 @@ ALTER FUNCTION "public"."apply_adjustment_rpc"("p_adjustment_id" "uuid", "p_bill
 
 
 CREATE OR REPLACE FUNCTION "public"."apply_credit_note_rpc"("p_credit_note_id" "uuid", "p_bill_id" "uuid", "p_version" integer) RETURNS "jsonb"
-    LANGUAGE "plpgsql"
+    LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'public'
     AS $$
 DECLARE
@@ -92,24 +112,41 @@ DECLARE
   v_new_paid numeric;
   v_status text;
 BEGIN
+  -- Operator-only — explicit guard (matches sibling RPCs).
+  IF NOT public.is_operator() THEN
+    RAISE EXCEPTION 'Unauthorized: only the operator may apply credit notes';
+  END IF;
+
   -- 1. Fetch and lock the credit note
   SELECT * INTO v_cn FROM credit_notes WHERE id = p_credit_note_id FOR UPDATE;
   IF v_cn IS NULL THEN RAISE EXCEPTION 'Credit note not found'; END IF;
-  
+
   -- 2. Check version for Optimistic Concurrency Control (OCC)
-  IF v_cn.version != p_version THEN RAISE EXCEPTION 'CONFLICT: Credit note was modified by another process.'; END IF;
-  
+  IF v_cn.version != p_version THEN
+    RAISE EXCEPTION 'CONFLICT: Credit note was modified by another process.';
+  END IF;
+
   -- 3. Check if already applied
-  IF v_cn.applied = true THEN RAISE EXCEPTION 'Credit note has already been applied.'; END IF;
+  IF v_cn.applied = true THEN
+    RAISE EXCEPTION 'Credit note has already been applied.';
+  END IF;
 
   -- 4. Fetch and lock the bill
   SELECT * INTO v_bill FROM bills WHERE id = p_bill_id FOR UPDATE;
   IF v_bill IS NULL THEN RAISE EXCEPTION 'Bill not found'; END IF;
-  IF v_bill.locked = true THEN RAISE EXCEPTION 'Cannot apply a credit note to a locked bill.'; END IF;
+  IF v_bill.locked = true THEN
+    RAISE EXCEPTION 'Cannot apply a credit note to a locked bill.';
+  END IF;
+
+  -- AI-m audit H-3 (2026-08-01): same cross-customer guard as
+  -- apply_adjustment_rpc above.
+  IF v_cn.customer_id IS DISTINCT FROM v_bill.customer_id THEN
+    RAISE EXCEPTION 'Credit note and bill belong to different customers';
+  END IF;
 
   -- 5. Calculate new paid amount and status
   v_new_paid := v_bill.amount_paid + v_cn.amount;
-  v_status := CASE 
+  v_status := CASE
     WHEN v_new_paid >= v_bill.amount THEN 'Paid'
     WHEN v_new_paid > 0 THEN 'Partial'
     ELSE 'Unpaid'
@@ -975,6 +1012,10 @@ ALTER TABLE "public"."milk_imports" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "public"."operators" ENABLE ROW LEVEL SECURITY;
 
 
+CREATE POLICY "operators_service_role_only" ON "public"."operators" USING (false) WITH CHECK (false);
+
+
+
 ALTER TABLE "public"."pause_periods" ENABLE ROW LEVEL SECURITY;
 
 
@@ -1200,8 +1241,9 @@ GRANT ALL ON FUNCTION "public"."generate_month_bill_rpc"("p_customer_id" "uuid",
 
 
 
-GRANT ALL ON FUNCTION "public"."is_operator"() TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."is_operator"() FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."is_operator"() TO "service_role";
+GRANT ALL ON FUNCTION "public"."is_operator"() TO "authenticated";
 
 
 
@@ -1298,7 +1340,6 @@ ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON SEQ
 
 
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON FUNCTIONS TO "postgres";
-ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON FUNCTIONS TO "anon";
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON FUNCTIONS TO "authenticated";
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON FUNCTIONS TO "service_role";
 

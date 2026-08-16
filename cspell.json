@@ -62,6 +62,8 @@
     "refetches",
     "refetched",
     "destructures",
-    "affordances"
+    "affordances",
+    "precached",
+    "fallowignore"
   ]
 }
