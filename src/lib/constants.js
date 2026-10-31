@@ -38,15 +38,7 @@ export const MILK_TYPES = [
   "Small",
   "A2",
 ];
-export const PRODUCTS = [
-  "Full Cream",
-  "Toned",
-  "Double Toned",
-  "Skimmed",
-  "Standard",
-  "Small",
-  "A2",
-];
+export const PRODUCTS = MILK_TYPES; // alias — same domain enum, kept for callers that import PRODUCTS
 export const PAY_MODES = [
   "Cash",
   "UPI",

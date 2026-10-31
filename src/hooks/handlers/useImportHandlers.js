@@ -109,14 +109,17 @@ export function useImportHandlers(state) {
   );
 
   const deleteMilkImport = useCallback(
-    async (importId) =>
-      handleImportAction(
-        "deleteMilkImport",
-        importId,
-        "Import deleted",
-        "Failed to delete import",
-      ),
-    [handleImportAction],
+    async (id, version) => {
+      try {
+        await callApi("deleteMilkImport", { importId: id, version });
+        showToast("Import deleted", "success");
+        const res = await callApi("getMilkImports", {});
+        setImports((res.imports || []).map(mapImportFromApi));
+      } catch (err) {
+        showToast(err.message || "Failed to delete import", "error");
+      }
+    },
+    [showToast, setImports],
   );
 
   return { ...importHandlers, saveImport, confirmMilkImport, deleteMilkImport };

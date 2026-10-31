@@ -41,18 +41,28 @@ export async function bulkUpsertLogs(payload) {
     return { saved: 0 };
   }
   const rows = payload.logs.map((l) => ({
-    customer_id: l.customerId,
+    // UI-shaped logs use `custId` (mapLogFromApi); accept both spellings so a
+    // wired-up caller can't silently insert orphan rows with a NULL
+    // customer_id (daily_logs.customer_id is nullable).
+    customer_id: l.customerId ?? l.custId,
     date: l.date,
     product: l.product || "Full Cream",
     qty: toNum(l.qty),
     delivered: !!l.delivered,
     note: l.note || "",
   }));
-  const { error } = await supabase
+  // count MUST go in the upsert options: the transform-builder `.select()`
+  // (used after POST/PATCH) accepts only a columns string — a second
+  // `{count, head}` argument is silently dropped, so `count` stays null.
+  const { count, error } = await supabase
     .from("daily_logs")
-    .upsert(rows, { onConflict: "customer_id,date" });
+    .upsert(rows, { onConflict: "customer_id,date", count: "exact" });
   must(error);
-  return { saved: rows.length };
+  const saved = Number(count) || 0;
+  if (saved !== rows.length) {
+    console.warn(`bulkUpsertLogs count mismatch: expected ${rows.length}, got ${saved}`);
+  }
+  return { saved };
 }
 
 export async function generateDailyLogsForDate(payload) {
@@ -135,11 +145,16 @@ export async function generateDailyLogsForDate(payload) {
   }
 
   if (toInsert.length) {
-    const { error } = await supabase
+    // count in upsert options — see bulkUpsertLogs above.
+    const { count, error } = await supabase
       .from("daily_logs")
-      .upsert(toInsert, { onConflict: "customer_id,date" });
+      .upsert(toInsert, { onConflict: "customer_id,date", count: "exact" });
     must(error);
-    created = toInsert.length;
+    const savedCount = Number(count) || 0;
+    if (savedCount !== toInsert.length) {
+      console.warn(`generateDailyLogsForDate upsert count mismatch: expected ${toInsert.length}, got ${savedCount}`);
+    }
+    created = savedCount;
   }
   return {
     created,

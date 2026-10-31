@@ -71,7 +71,13 @@ vi.mock("../lib/api", () => ({
       case "addAdjustment":
         return { success: true, data: { adjustmentId: "ADJ-MOCK123" } };
       case "recordPayment":
-        return { success: true, data: { paymentId: "PAY-MOCK123" } };
+        return {
+          billId: "B1",
+          amountPaid: 100,
+          status: "Partial",
+          bill: { id: "B1", amount: 200, paid: 100, status: "Partial", version: 2 },
+          idempotent: false,
+        };
       case "getBills":
         return { success: true, data: { bills: [] } };
       case "getAdjustments":
@@ -164,7 +170,7 @@ describe("useAppHandlers - recordPayment", () => {
 });
 
 describe("useAppHandlers - saveAdjustment", () => {
-  it("validates and creates adjustment", async () => {
+  it("validates and creates adjustment with the resolved month bill", async () => {
     const setAdjustments = vi.fn();
     const toast$ = vi.fn();
     const closeModal = vi.fn();
@@ -173,6 +179,7 @@ describe("useAppHandlers - saveAdjustment", () => {
       setAdjustments,
       form: { custId: "C1", amount: "50", reason: "Quality issue" },
       customers: [{ id: "C1", name: "Ramesh" }],
+      bills: [{ id: "BILL-1", custId: "C1", month: "2025-01" }],
       toast$,
       closeModal,
     });
@@ -181,9 +188,35 @@ describe("useAppHandlers - saveAdjustment", () => {
       await handlers.saveAdjustment();
     });
 
+    // The adjustment payload must carry the resolved bill id — without it
+    // adjustments.bill_id stays NULL and the Apply button never fires.
+    const { callApi } = await import("../lib/api");
+    const adjPayload = callApi.mock.calls.find(
+      ([action]) => action === "addAdjustment",
+    )?.[1];
+    expect(adjPayload?.billId).toBe("BILL-1");
     expect(setAdjustments).toHaveBeenCalled();
     expect(toast$).toHaveBeenCalledWith("Added", "success");
     expect(closeModal).toHaveBeenCalled();
+  });
+
+  it("rejects an adjustment when no bill exists for the viewed month", async () => {
+    const toast$ = vi.fn();
+
+    const handlers = createMockHandlers({
+      form: { custId: "C1", amount: "50", reason: "Quality issue" },
+      bills: [],
+      toast$,
+    });
+
+    await act(async () => {
+      await handlers.saveAdjustment();
+    });
+
+    expect(toast$).toHaveBeenCalledWith(
+      expect.stringContaining("No 2025-01 bill found"),
+      "error",
+    );
   });
 
   it("rejects incomplete adjustment data", async () => {

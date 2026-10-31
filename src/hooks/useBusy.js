@@ -19,7 +19,7 @@ export function useBusy(asyncFn) {
     busyRef.current = true;
     setBusy(true);
     try {
-      await fnRef.current(...cleanArgs);
+      return await fnRef.current(...cleanArgs);
     } finally {
       busyRef.current = false;
       setBusy(false);

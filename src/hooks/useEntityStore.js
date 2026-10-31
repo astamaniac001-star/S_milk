@@ -54,6 +54,7 @@ export function useEntityStore(token, logDate, billMonth) {
   // This drops 7 redundant network calls per date pick.
   useEffect(() => {
     if (!token) return;
+    let cancelled = false;
     const fetchData = async () => {
       const [custs, imps, adjs, paus, brnds, subs, cns] =
         await Promise.all([
@@ -65,6 +66,7 @@ export function useEntityStore(token, logDate, billMonth) {
           safeFetch("getSubscriptions", {}, "subscriptions"),
           safeFetch("getCreditNotes", {}, "creditNotes"),
         ]);
+      if (cancelled) return;
       if (custs !== null) setCustomers(custs.map(mapCustomerFromApi));
       if (imps !== null) setImports(imps.map(mapImportFromApi));
       if (adjs !== null) setAdjustments(adjs.map(mapAdjustmentFromApi));
@@ -74,6 +76,7 @@ export function useEntityStore(token, logDate, billMonth) {
       if (cns !== null) setCreditNotes(cns.map(mapCreditNoteFromApi));
     };
     fetchData();
+    return () => { cancelled = true; };
   }, [token, safeFetch, refreshKey]);
 
   // Separate effect for date-dependent entities — fires only on logDate /
@@ -81,15 +84,18 @@ export function useEntityStore(token, logDate, billMonth) {
   // and `getBills` are the ONLY expensive-per-date reads.
   useEffect(() => {
     if (!token) return;
+    let cancelled = false;
     const fetchData = async () => {
       const [bils, lgs] = await Promise.all([
         safeFetch("getBills", { month: billMonth }, "bills"),
         safeFetch("getDailyLogs", { date: logDate || getToday() }, "logs"),
       ]);
+      if (cancelled) return;
       if (bils !== null) setBills(bils);
       if (lgs !== null) setLogs(lgs.map(mapLogFromApi));
     };
     fetchData();
+    return () => { cancelled = true; };
   }, [token, safeFetch, refreshKey, logDate, billMonth]);
 
   const fetchLogs = useCallback(async (date) => {

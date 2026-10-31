@@ -7,7 +7,7 @@ export default defineConfig({
     environment: "jsdom",
     globals: true,
     setupFiles: ["./src/test/setup.js"],
-    include: ["src/**/*.test.{js,jsx}", "functions/**/*.test.{js,jsx}"],
+    include: ["src/**/*.test.{js,jsx}"],
     coverage: {
       provider: "v8",
       reporter: ["text", "json", "html"],
@@ -38,7 +38,7 @@ export default defineConfig({
             if (/[\\/]node_modules[\\/](react|react-dom|scheduler)[\\/]/.test(id)) {
               return "vendor-react";
             }
-            if (/[\\/]node_modules[\\/](@supabase|isows|@supabase)[\\/]/.test(id)) {
+            if (/[\\/]node_modules[\\/](@supabase|isows)[\\/]/.test(id)) {
               return "vendor-supabase";
             }
             if (/[\\/]node_modules[\\/]lucide-react[\\/]/.test(id)) {

@@ -43,7 +43,10 @@ function buildHealthFromResult(previous, result) {
 }
 
 function AdjustmentAmount({ amount }) {
-  // FIX M8: Use CSS variables for Dark Mode
+  // Sign contract matches apply_adjustment_rpc (schema.sql): a POSITIVE
+  // adjustment amount is a deduction — it REDUCES the bill the customer
+  // owes (a credit in the customer's favor), hence the green "+".
+  // A negative amount adds to the bill (extra charge) and renders red.
   const color =
     amount < 0 ? "var(--danger-text, #991b1b)" : "var(--success-text, #166534)";
   return (
@@ -137,7 +140,9 @@ function AdjustmentItem({ a, onApplyAdj, resolveCustomer }) {
           applied={!!a.applied}
           onApply={() => {
             if (!a.billId) return;
-            onApplyAdj(a.adjustmentId || a.id, a.billId, a.version);
+            if (window.confirm(`Apply adjustment to this bill? This action is irreversible.`)) {
+              onApplyAdj(a.adjustmentId || a.id, a.billId, a.version);
+            }
           }}
         />
       </div>

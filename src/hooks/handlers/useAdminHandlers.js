@@ -1,7 +1,8 @@
-import { useMemo, useCallback, useRef } from "react";
+import { useMemo, useCallback } from "react";
 import { mapPauseFromApi, mapBrandFromApi, callApi } from "../../lib/api.js";
 import { getToday } from "../../lib/utils.js";
 import { useHelpers } from "./shared.js";
+import { useBusy } from "../useBusy.js";
 
 export function useAdminHandlers(state) {
   const {
@@ -101,10 +102,7 @@ export function useAdminHandlers(state) {
   // guard (busyRef) actually fires. The inline version in AppPage bypassed
   // useBusy and could double-fire on rapid taps. Each handler tracks its own
   // busy flag so toggling diagnostics does not disable health-check (or vice versa).
-  const diagBusyRef = useRef(false);
-  const runDiagnostics = useCallback(async () => {
-    if (diagBusyRef.current) return;
-    diagBusyRef.current = true;
+  const [, runDiagnostics] = useBusy(async () => {
     try {
       const res = await callApi("runDiagnostics");
       if (typeof setDiagRan === "function") setDiagRan(true);
@@ -114,20 +112,15 @@ export function useAdminHandlers(state) {
       showToast("Diagnostics executed successfully", "success");
     } catch (err) {
       showToast(err?.message || "Diagnostics failed", "error");
-    } finally {
-      diagBusyRef.current = false;
     }
   }, [showToast, setDiagRan, setDiagResults]);
 
-  const healthBusyRef = useRef(false);
   // FIX (AI-m audit M-4, 2026-08-01): healthCheck now returns the live
   // response so the SystemHealthCard can re-render with fresh probe data
   // instead of staying on a stale static list. Callers should still toast
   // on success/failure via their own feedback; this handler returns the
   // raw payload.
-  const healthCheck = useCallback(async () => {
-    if (healthBusyRef.current) return null;
-    healthBusyRef.current = true;
+  const [, healthCheck] = useBusy(async () => {
     try {
       const result = await callApi("healthCheck");
       showToast("Health check passed — V17", "success");
@@ -135,8 +128,6 @@ export function useAdminHandlers(state) {
     } catch (err) {
       showToast(err?.message || "Health check failed", "error");
       return null;
-    } finally {
-      healthBusyRef.current = false;
     }
   }, [showToast]);
 
@@ -144,28 +135,20 @@ export function useAdminHandlers(state) {
   // component does not import callApi directly (rule §1 — components go through
   // handlers). The modal will call this handler instead. busyRef guards
   // re-entrant rapid taps on the "Update PIN" button.
-  const pinBusyRef = useRef(false);
-  const rotatePin = useCallback(
-    async ({ currentPin, newPin }) => {
-      if (pinBusyRef.current) return false;
-      pinBusyRef.current = true;
-      try {
-        await callApi("rotatePIN", { currentPin, newPin });
-        showToast(
-          "PIN updated successfully! Use it next time you log in.",
-          "success",
-        );
-        if (closeModal) closeModal();
-        return true;
-      } catch (err) {
-        showToast(err?.message || "Failed to update PIN", "error");
-        return false;
-      } finally {
-        pinBusyRef.current = false;
-      }
-    },
-    [showToast, closeModal],
-  );
+  const [, rotatePin] = useBusy(async ({ currentPin, newPin }) => {
+    try {
+      await callApi("rotatePIN", { currentPin, newPin });
+      showToast(
+        "PIN updated successfully! Use it next time you log in.",
+        "success",
+      );
+      if (closeModal) closeModal();
+      return true;
+    } catch (err) {
+      showToast(err?.message || "Failed to update PIN", "error");
+      return false;
+    }
+  }, [showToast, closeModal]);
 
   return {
     ...adminHandlers,

@@ -4,7 +4,7 @@ import { getToday } from "../../lib/utils.js";
 import { useHelpers } from "./shared.js";
 
 export function useDeliveryHandlers(state) {
-  const { setLogs, logDate, closeModal } = state;
+  const { setLogs, logDate, closeModal, fetchLogs } = state;
   const { showToast } = useHelpers(state);
 
   const deliveryHandlers = useMemo(
@@ -60,12 +60,12 @@ export function useDeliveryHandlers(state) {
         await callApi("addAdHocLog", payload);
         showToast("Extra delivery added", "success");
         if (closeModal) closeModal();
-        if (state.fetchLogs) await state.fetchLogs(data.date);
+        if (fetchLogs) await fetchLogs(data.date);
       } catch (err) {
         showToast(err.message || "Failed to add extra delivery", "error");
       }
     },
-    [showToast, closeModal, state],
+    [showToast, closeModal, fetchLogs],
   );
 
   const generateDailyLogs = useCallback(
@@ -86,14 +86,14 @@ export function useDeliveryHandlers(state) {
           summary.created > 0 ? "success" : "info",
         );
 
-        if (state.fetchLogs) {
-          await state.fetchLogs(date);
+        if (fetchLogs) {
+          await fetchLogs(date);
         }
       } catch (err) {
         showToast(err.message || "Failed to generate logs", "error");
       }
     },
-    [showToast, state],
+    [showToast, fetchLogs],
   );
 
   return { ...deliveryHandlers, addAdHocLog, generateDailyLogs };

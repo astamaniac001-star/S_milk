@@ -28,6 +28,8 @@ export function SubscriptionHistoryModal({
   useEffect(() => {
     const id = data?.id;
     if (!id) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setLoading(true);
     const fn = handlersRef.current?.fetchSubscriptionHistory;
     if (!fn) {
       // FIX (audit 2026-07-24): if the handler is missing, surface the error

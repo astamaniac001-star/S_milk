@@ -191,7 +191,7 @@ shape. Double-mapping silently turns fields such as `custId`/`paid` into
 
 ### 5. Optimistic concurrency control
 
-`customers`, `milk_imports`, `bills`, and `subscriptions` currently carry a
+`customers`, `milk_imports`, `bills`, `subscriptions`, `adjustments`, and `credit_notes` currently carry a
 `version INT` column. Confirm this in `database.types.ts` before relying on it;
 do not invent a version field for another table. The
 `updateWithVersion(table, id, expectedVersion, patch)` helper performs a
@@ -450,6 +450,12 @@ without a guard in `supabaseClient.js`.
   refactor to a sequential loop or you'll kill the "Generate" button perf.
 - **Service worker: never cache `/api` or `/functions`** — security fix
   baked into the V22 `sw.js`.
+- **`DEFAULT PRIVILEGES` grant TABLES + SEQUENCES to `anon`** (schema.sql lines
+  ~1332-1354). Any new table created by the `postgres` role will auto-grant `anon`
+  full access until RLS policies are added in the same migration. A migration
+  that creates a table and forgets RLS would expose data publicly. Future
+  migrations should `REVOKE ALL ON FUTURE TABLES IN SCHEMA public FROM anon`
+  before adding per-table grants.
 
 ## 🗄️ Database Migrations & Schema Context
 
@@ -491,5 +497,5 @@ context. Review the generated present-state artifacts after applying it.
 6. Run `npm run db:sync` after pushing. Do not manually edit `schema.sql` or
    `database.types.ts`.
 7. Review the regenerated artifacts for stale overloads, permissive policies, grants
-   to `anon`, invalid triggers, missing constraints, and type drift.
+    to `anon`, invalid triggers, missing constraints, type drift, and default-privileges.
 8. Commit the new migration and both regenerated artifacts together.

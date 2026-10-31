@@ -104,8 +104,8 @@ export function SubscriptionsListModal({
                 <div style={{ fontSize: 13, fontWeight: 600, color: "#111" }}>
                   {resolveCustomerName(customers, sub.customerId)}
                 </div>
-                <div style={{ fontSize: 12, color: "#6b7280", marginTop: 2 }}>
-                  {sub.milkType} • {sub.qty ?? sub.quantity ?? 0}L •{" "}
+                 <div style={{ fontSize: 12, color: "#6b7280", marginTop: 2 }}>
+                   {sub.milkType} • {sub.qty ?? 0}L •{" "}
                   {(Array.isArray(sub.deliveryDays) ? sub.deliveryDays : [])
                     .slice()
                     .sort((a, b) => a - b)

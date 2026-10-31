@@ -171,7 +171,11 @@ export default function Billing({
             >
               Add Credit Note
             </Btn>
-            <Btn small onClick={() => onGenerateBill()}>
+            <Btn small onClick={() => {
+              if (window.confirm(`Generate bills for ${billMonth}? This will create or update a bill for every active customer.`)) {
+                onGenerateBill();
+              }
+            }}>
               Generate Bills
             </Btn>
           </div>

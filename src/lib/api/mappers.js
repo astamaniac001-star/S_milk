@@ -80,7 +80,7 @@ export function mapAdjustmentFromApi(a) {
     reason: a.reason,
     applied: !!a.applied,
     date: a.date,
-    version: a.version ?? 1,
+    version: toNum(a.version ?? 1),
   };
 }
 
@@ -123,11 +123,15 @@ export function mapCreditNoteFromApi(c) {
     id: c.id,
     customerId: c.customer_id,
     billId: c.bill_id,
+    // Written by apply_credit_note_rpc when the note is applied — kept
+    // separate from `bill_id` (the bill the note was issued against) so an
+    // applied note can be traced to the bill it actually reduced.
+    appliedToBillId: c.applied_to_bill_id,
     amount: toNum(c.amount),
     reason: c.reason,
     applied: !!c.applied,
     date: c.date,
-    version: c.version ?? 1,
+    version: toNum(c.version ?? 1),
   };
 }
 
@@ -179,12 +183,19 @@ export function mapImportToApi(form) {
 }
 
 export function mapPaymentToApi(billId, amount, opts = {}) {
+  // Idempotency contract (AGENTS §14): a retryable write must reuse the SAME
+  // key for the same user attempt so the DB uniqueness guard can dedup a
+  // network-blip retry. The caller owns the key lifecycle (mint on a fresh
+  // user submit, reuse on retry of that submit, mint fresh on the next
+  // distinct submit). MINTING HERE WAS A BUG — a fresh UUID per call
+  // defeated the `record_payment_rpc` uniqueness guard, letting a manual
+  // retry after a successful-but-unacked RPC double-charge the customer.
   return {
     billId,
     amount: Number(amount),
     mode: opts.mode || "Cash",
     date: opts.date || getToday(),
     note: opts.note,
-    idempotencyKey: generateKey(),
+    idempotencyKey: opts.idempotencyKey || generateKey(),
   };
 }

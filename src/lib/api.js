@@ -105,6 +105,7 @@ const DISPATCH = {
   deactivateCustomer,
 
   // Subscriptions / rollover
+  // NOTE: rolloverMonth is registered but intentionally unwired — future feature
   rolloverMonth,
   getSubscriptions,
   saveSubscription,
@@ -142,6 +143,7 @@ const DISPATCH = {
   deleteMilkImport,
   getBrands,
   addMilkBrand,
+  // NOTE: getDailyInventory is registered but intentionally unwired — future feature
   getDailyInventory,
 
   // Admin

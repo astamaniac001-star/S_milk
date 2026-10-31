@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { callApi } from "./api.js";
+import { mapCreditNoteFromApi, mapPaymentToApi } from "./api/mappers.js";
 import { supabase } from "./supabaseClient.js";
 
 // Mock Supabase
@@ -69,6 +70,49 @@ describe("api.js - Money Paths", () => {
           idempotencyKey: "test-key-2",
         }),
       ).rejects.toThrow("CONFLICT");
+    });
+  });
+
+  describe("recordPayment idempotency contract (AGENTS §14)", () => {
+    // Regression: mapping must honor a caller-supplied idempotency key so a
+    // network blip can be retried without minting a fresh UUID (which would
+    // defeat the `record_payment_rpc` uniqueness guard and double-charge).
+    it("reuses the caller-supplied idempotencyKey instead of minting a new one", () => {
+      const payload = mapPaymentToApi("bill-1", 100, {
+        idempotencyKey: "stable-key-for-retry",
+      });
+      expect(payload.idempotencyKey).toBe("stable-key-for-retry");
+    });
+
+    it("mints a new key only when the caller omits one", () => {
+      const a = mapPaymentToApi("bill-1", 50);
+      const b = mapPaymentToApi("bill-1", 50);
+      expect(a.idempotencyKey).toBeTruthy();
+      expect(b.idempotencyKey).toBeTruthy();
+      expect(a.idempotencyKey).not.toBe(b.idempotencyKey);
+    });
+  });
+
+  describe("mapCreditNoteFromApi shape (AGENTS §4)", () => {
+    // Regression: applied_to_bill_id (written by apply_credit_note_rpc) must
+    // survive the DB→UI mapping so an applied note stays traceable to the
+    // bill it reduced — it is a DIFFERENT column from bill_id.
+    it("maps appliedToBillId separately from billId", () => {
+      const ui = mapCreditNoteFromApi({
+        id: "cn-1",
+        customer_id: "c-1",
+        bill_id: "bill-issued-against",
+        applied_to_bill_id: "bill-actually-reduced",
+        amount: 50,
+        reason: "Spoiled milk",
+        applied: true,
+        date: "2026-10-31",
+        version: 3,
+      });
+      expect(ui.billId).toBe("bill-issued-against");
+      expect(ui.appliedToBillId).toBe("bill-actually-reduced");
+      expect(ui.applied).toBe(true);
+      expect(ui.version).toBe(3);
     });
   });
 });

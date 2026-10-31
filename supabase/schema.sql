@@ -131,6 +131,12 @@ BEGIN
     RAISE EXCEPTION 'Credit note has already been applied.';
   END IF;
 
+  -- FIX: validate the amount up front (AGENTS §14 — enforce invariants in
+  -- SQL, not just the constraint). Zero/negative notes are never valid.
+  IF v_cn.amount IS NULL OR v_cn.amount <= 0 THEN
+    RAISE EXCEPTION 'Credit note amount must be positive';
+  END IF;
+
   -- 4. Fetch and lock the bill
   SELECT * INTO v_bill FROM bills WHERE id = p_bill_id FOR UPDATE;
   IF v_bill IS NULL THEN RAISE EXCEPTION 'Bill not found'; END IF;
@@ -142,6 +148,12 @@ BEGIN
   -- apply_adjustment_rpc above.
   IF v_cn.customer_id IS DISTINCT FROM v_bill.customer_id THEN
     RAISE EXCEPTION 'Credit note and bill belong to different customers';
+  END IF;
+
+  -- FIX: bound the applied amount so chk_bills_paid_lte_amount can never
+  -- abort the transaction with a raw constraint error.
+  IF v_bill.amount_paid + v_cn.amount > v_bill.amount THEN
+    RAISE EXCEPTION 'Credit note (%) exceeds the pending balance (%) on this bill. Issue a smaller note or apply it to the next cycle.', v_cn.amount, v_bill.amount - v_bill.amount_paid;
   END IF;
 
   -- 5. Calculate new paid amount and status
@@ -278,21 +290,30 @@ ALTER FUNCTION "public"."delete_milk_import_rpc"("p_import_id" "uuid", "p_expect
 CREATE OR REPLACE FUNCTION "public"."generate_month_bill_rpc"("p_customer_id" "uuid", "p_month" "text") RETURNS "jsonb"
     LANGUAGE "plpgsql"
     SET "search_path" TO 'public'
-    AS $$
-DECLARE 
-  v_rate numeric; 
-  v_total_qty numeric; 
-  v_amount numeric; 
+    AS $_$
+DECLARE
+  v_rate numeric;
+  v_total_qty numeric;
+  v_amount numeric;
   v_existing_bill record;
   v_product text;
 BEGIN
+  -- Operator-only — explicit guard (matches sibling RPCs; AGENTS §13).
+  IF NOT public.is_operator() THEN
+    RAISE EXCEPTION 'Unauthorized: only the operator may generate bills';
+  END IF;
+
+  IF p_month IS NULL OR p_month !~ '^\d{4}-\d{2}$' THEN
+    RAISE EXCEPTION 'Invalid month format (expected YYYY-MM): %', p_month;
+  END IF;
+
   -- Get customer's product to find the correct rate
   SELECT product INTO v_product FROM customers WHERE id = p_customer_id;
-  
+
   -- Fetch rate strictly: must be Active, ordered by newest, limit 1
-  SELECT rate_per_liter INTO v_rate 
-  FROM milk_brands 
-  WHERE default_milk_type = v_product AND status = 'Active' 
+  SELECT rate_per_liter INTO v_rate
+  FROM milk_brands
+  WHERE default_milk_type = v_product AND status = 'Active'
   ORDER BY created_at DESC LIMIT 1;
 
   -- FAIL LOUDLY if no rate is found (prevents silent ₹0 bills)
@@ -311,15 +332,27 @@ BEGIN
     IF v_existing_bill.locked = true THEN
       RAISE EXCEPTION 'Cannot regenerate a locked bill.';
     END IF;
-    UPDATE bills SET amount = v_amount, version = version + 1, updated_at = now() WHERE id = v_existing_bill.id;
+    -- FIX: recompute status together with amount (AGENTS §14 — bill and its
+    -- state must move together). Previously a regenerated Paid bill kept
+    -- status='Paid' with amount > amount_paid, hiding the pending balance.
+    UPDATE bills SET
+        amount = v_amount,
+        status = CASE
+          WHEN v_existing_bill.amount_paid >= v_amount THEN 'Paid'
+          WHEN v_existing_bill.amount_paid > 0 THEN 'Partial'
+          ELSE 'Unpaid'
+        END,
+        version = version + 1,
+        updated_at = now()
+    WHERE id = v_existing_bill.id;
   ELSE
     INSERT INTO bills (id, customer_id, month, amount, amount_paid, status, locked, version)
     VALUES (gen_random_uuid(), p_customer_id, p_month, v_amount, 0, 'Unpaid', false, 1);
   END IF;
 
   RETURN jsonb_build_object('success', true, 'amount', v_amount);
-END; 
-$$;
+END;
+$_$;
 
 
 ALTER FUNCTION "public"."generate_month_bill_rpc"("p_customer_id" "uuid", "p_month" "text") OWNER TO "postgres";
@@ -438,6 +471,11 @@ DECLARE
   v_pending numeric;
   v_customer_id uuid;
 BEGIN
+  -- Operator-only — explicit guard (matches sibling RPCs; AGENTS §13).
+  IF NOT public.is_operator() THEN
+    RAISE EXCEPTION 'Unauthorized: only the operator may record payments';
+  END IF;
+
   -- 1. Idempotency check.
   --    payments.idempotency_key is text; cast the uuid param to text so
   --    Postgres can resolve `text = text` (was: `text = uuid` → 42883).
@@ -456,7 +494,7 @@ BEGIN
 
   v_pending := v_bill.amount - v_bill.amount_paid;
   IF p_amount > v_pending + 0.01 THEN
-    RAISE EXCEPTION 'Payment exceeds pending amount (%). Use a credit note for advance payment.', v_pending;
+    RAISE EXCEPTION 'Payment exceeds pending amount (%). Overpayment is not supported — record the exact pending amount and issue the excess as a credit note for the next cycle.', v_pending;
   END IF;
 
   v_customer_id := v_bill.customer_id;
@@ -779,6 +817,11 @@ ALTER TABLE ONLY "public"."adjustments"
 
 ALTER TABLE ONLY "public"."bills"
     ADD CONSTRAINT "bills_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE "public"."credit_notes"
+    ADD CONSTRAINT "chk_credit_notes_amount_positive" CHECK (("amount" > (0)::numeric)) NOT VALID;
 
 
 

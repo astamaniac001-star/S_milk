@@ -95,13 +95,6 @@ function ImportMetaFields({ data, form, onChange }) {
           onChange={onChange("supplier")}
         />
       </Field>
-      <Field label="Notes">
-        <input
-          style={IS()}
-          value={form?.notes ?? data?.notes ?? ""}
-          onChange={onChange("notes")}
-        />
-      </Field>
     </>
   );
 }
