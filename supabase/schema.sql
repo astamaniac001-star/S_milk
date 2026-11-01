@@ -297,15 +297,25 @@ DECLARE
   v_amount numeric;
   v_existing_bill record;
   v_product text;
+  v_month_start date;
+  v_month_end date;
 BEGIN
   -- Operator-only — explicit guard (matches sibling RPCs; AGENTS §13).
   IF NOT public.is_operator() THEN
     RAISE EXCEPTION 'Unauthorized: only the operator may generate bills';
   END IF;
 
-  IF p_month IS NULL OR p_month !~ '^\d{4}-\d{2}$' THEN
-    RAISE EXCEPTION 'Invalid month format (expected YYYY-MM): %', p_month;
+  -- Strict YYYY-MM with a real month (01..12). The old regex accepted
+  -- '2026-13', which silently produced a zero-quantity bill; the date cast
+  -- below would raise a raw date/time error, so reject it explicitly.
+  IF p_month IS NULL OR p_month !~ '^\d{4}-(0[1-9]|1[0-2])$' THEN
+    RAISE EXCEPTION 'Invalid month format (expected YYYY-MM between 01 and 12): %', p_month;
   END IF;
+
+  -- 'YYYY-MM' is not a valid date literal for Postgres — append the day
+  -- before casting.
+  v_month_start := (p_month || '-01')::date;
+  v_month_end := (v_month_start + INTERVAL '1 month')::date;
 
   -- Get customer's product to find the correct rate
   SELECT product INTO v_product FROM customers WHERE id = p_customer_id;
@@ -321,8 +331,12 @@ BEGIN
         RAISE EXCEPTION 'No active rate found for milk type %', v_product;
   END IF;
 
+  -- Sargable month filter: half-open range [month_start, month_end).
   SELECT COALESCE(SUM(qty), 0) INTO v_total_qty FROM daily_logs
-  WHERE customer_id = p_customer_id AND to_char(date, 'YYYY-MM') = p_month AND delivered = true;
+  WHERE customer_id = p_customer_id
+    AND date >= v_month_start
+    AND date < v_month_end
+    AND delivered = true;
 
   v_amount := v_total_qty * v_rate;
 
@@ -332,7 +346,7 @@ BEGIN
     IF v_existing_bill.locked = true THEN
       RAISE EXCEPTION 'Cannot regenerate a locked bill.';
     END IF;
-    -- FIX: recompute status together with amount (AGENTS §14 — bill and its
+    -- Recompute status together with amount (AGENTS §14 — bill and its
     -- state must move together). Previously a regenerated Paid bill kept
     -- status='Paid' with amount > amount_paid, hiding the pending balance.
     UPDATE bills SET
@@ -902,6 +916,10 @@ CREATE INDEX "idx_bills_customer_month" ON "public"."bills" USING "btree" ("cust
 
 
 
+CREATE INDEX "idx_bills_month" ON "public"."bills" USING "btree" ("month");
+
+
+
 CREATE INDEX "idx_credit_notes_applied_to_bill_id" ON "public"."credit_notes" USING "btree" ("applied_to_bill_id");
 
 
@@ -918,7 +936,15 @@ CREATE INDEX "idx_daily_logs_customer_date" ON "public"."daily_logs" USING "btre
 
 
 
+CREATE INDEX "idx_daily_logs_date" ON "public"."daily_logs" USING "btree" ("date");
+
+
+
 CREATE INDEX "idx_milk_imports_brand_id" ON "public"."milk_imports" USING "btree" ("brand_id");
+
+
+
+CREATE INDEX "idx_milk_imports_date" ON "public"."milk_imports" USING "btree" ("date");
 
 
 
