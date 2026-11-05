@@ -3,9 +3,16 @@ import { renderHook, act } from "@testing-library/react";
 import { useSubscriptionHandlers } from "./useSubscriptionHandlers";
 
 // Mock callApi so the handler tests are unit-level (no Supabase).
+// mapSubscriptionToApi mimics the real mapper's contract: pass-through of the
+// form plus id→expectedVersion for OCC (the mapper's exact shape is covered
+// in api.test.js).
 vi.mock("../../lib/api", () => ({
   callApi: vi.fn(),
   mapSubscriptionFromApi: vi.fn((x) => x),
+  mapSubscriptionToApi: vi.fn((d) => ({
+    ...d,
+    ...(d.id ? { expectedVersion: d.version } : {}),
+  })),
 }));
 
 import { callApi } from "../../lib/api";
@@ -27,6 +34,16 @@ describe("useSubscriptionHandlers (advisor-all coverage)", () => {
 
   // ── saveSubscription ─────────────────────────────────────────────────
 
+  // Valid minimal form — satisfies validateSubscriptionForm (customer +
+  // brand + milk type + qty + days) so tests exercise the API path.
+  const validForm = {
+    customerId: "C1",
+    brandId: "B1",
+    milkType: "Full Cream",
+    qty: 2,
+    deliveryDays: [1, 2],
+  };
+
   it("saveSubscription (new) calls saveSubscription API without expectedVersion", async () => {
     callApi
       .mockResolvedValueOnce({}) // saveSubscription
@@ -36,17 +53,31 @@ describe("useSubscriptionHandlers (advisor-all coverage)", () => {
     const { result } = renderHook(() => useSubscriptionHandlers(s));
 
     await act(async () => {
-      await result.current.saveSubscription({ qty: 2, milkType: "Full Cream" });
+      await result.current.saveSubscription({ ...validForm });
     });
 
     // First call: save (no expectedVersion because no id)
-    expect(callApi).toHaveBeenCalledWith("saveSubscription", {
-      qty: 2,
-      milkType: "Full Cream",
-    });
+    expect(callApi).toHaveBeenCalledWith("saveSubscription", validForm);
     expect(s.toast$).toHaveBeenCalledWith("Subscription saved", "success");
     expect(s.closeModal).toHaveBeenCalled();
     expect(s.setSubscriptions).toHaveBeenCalledWith([{ id: "s1" }]);
+  });
+
+  it("saveSubscription blocks an invalid form (no brand) without calling the API", async () => {
+    const s = baseState();
+    const { result } = renderHook(() => useSubscriptionHandlers(s));
+
+    await act(async () => {
+      await result.current.saveSubscription({
+        customerId: "C1",
+        milkType: "Full Cream",
+        qty: 2,
+        deliveryDays: [1],
+      });
+    });
+
+    expect(s.toast$).toHaveBeenCalledWith("Brand is required", "error");
+    expect(callApi).not.toHaveBeenCalled();
   });
 
   it("saveSubscription (update) sends expectedVersion from data.version", async () => {
@@ -61,6 +92,7 @@ describe("useSubscriptionHandlers (advisor-all coverage)", () => {
       await result.current.saveSubscription({
         id: "sub-1",
         version: 3,
+        ...validForm,
         qty: 1,
       });
     });
@@ -68,7 +100,11 @@ describe("useSubscriptionHandlers (advisor-all coverage)", () => {
     expect(callApi).toHaveBeenCalledWith("saveSubscription", {
       id: "sub-1",
       version: 3,
+      customerId: "C1",
+      brandId: "B1",
+      milkType: "Full Cream",
       qty: 1,
+      deliveryDays: [1, 2],
       expectedVersion: 3,
     });
   });
@@ -79,7 +115,7 @@ describe("useSubscriptionHandlers (advisor-all coverage)", () => {
     const { result } = renderHook(() => useSubscriptionHandlers(s));
 
     await act(async () => {
-      await result.current.saveSubscription({ qty: 1 });
+      await result.current.saveSubscription({ ...validForm, qty: 1 });
     });
 
     expect(s.toast$).toHaveBeenCalledWith("RPC failed", "error");
@@ -92,7 +128,7 @@ describe("useSubscriptionHandlers (advisor-all coverage)", () => {
     const { result } = renderHook(() => useSubscriptionHandlers(s));
 
     await act(async () => {
-      await result.current.saveSubscription({ qty: 1 });
+      await result.current.saveSubscription({ ...validForm, qty: 1 });
     });
 
     expect(s.toast$).toHaveBeenCalledWith(
@@ -110,7 +146,7 @@ describe("useSubscriptionHandlers (advisor-all coverage)", () => {
     const { result } = renderHook(() => useSubscriptionHandlers(s));
 
     await act(async () => {
-      await result.current.saveSubscription({ qty: 1 });
+      await result.current.saveSubscription({ ...validForm, qty: 1 });
     });
 
     // Should succeed without throwing on missing closeModal

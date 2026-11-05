@@ -309,6 +309,7 @@ describe("api.js - Atomicity + OCC fixes (2026-07-24)", () => {
         p_date: "2026-07-25",
         p_qty: 2.5,
         p_product: "Toned",
+        p_brand_id: null,
         p_reason: "extra bottle",
       });
       expect(out).toEqual({ logId: "log-1", qty: 2.5, created: true });

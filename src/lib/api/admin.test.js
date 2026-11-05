@@ -4,7 +4,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const mockState = vi.hoisted(() => ({
   settings: undefined, // { schema_version, api_version }
   brands: [],
-  customers: [],
+  subscriptions: [],
   settingsError: null,
 }));
 
@@ -75,9 +75,10 @@ vi.mock("./shared.js", () => {
       }
     }
 
-    if (table === "customers") {
-      // distinct product probe (head:true)
-      return { data: mockState.customers, error: null };
+    if (table === "subscriptions") {
+      // distinct milk_type probe (subscription-centric model — customers no
+      // longer carry a product column)
+      return { data: mockState.subscriptions, error: null };
     }
 
     return { data: null, error: null };
@@ -100,10 +101,10 @@ describe("api/admin.js — runDiagnostics (live per-item probes, audit §3.9)", 
   beforeEach(() => {
     mockState.settings = undefined;
     mockState.brands = [{ status: "Active" }, { status: "Active" }];
-    mockState.customers = [
-      { product: "Full Cream" },
-      { product: "Toned" },
-      { product: "Full Cream" },
+    mockState.subscriptions = [
+      { milk_type: "Full Cream" },
+      { milk_type: "Toned" },
+      { milk_type: "Full Cream" },
     ];
     mockState.settingsError = null;
   });
@@ -142,8 +143,8 @@ describe("api/admin.js — runDiagnostics (live per-item probes, audit §3.9)", 
     expect(res.probes["API version"]).toEqual({ ok: true, value: "18" });
   });
 
-  it("flags an unknown milk type referenced in customers as not ok", async () => {
-    mockState.customers = [{ product: "Mystery Milk" }];
+  it("flags an unknown milk type referenced in subscriptions as not ok", async () => {
+    mockState.subscriptions = [{ milk_type: "Mystery Milk" }];
     const res = await runDiagnostics({});
     expect(res.probes["MilkTypes seeded"].ok).toBe(false);
     expect(res.probes["MilkTypes seeded"].value).toBe(`${MILK_TYPES.length} total`);

@@ -17,6 +17,7 @@ import {
   E2E_MARKER,
   e2eName,
 } from "./helpers/supabase.js";
+import { waitForAppReady } from "./helpers/app.js";
 
 // Collection-time conditional skip — every test in this describe block
 // requires an operator session. Skipping at file scope means Playwright
@@ -37,7 +38,7 @@ test.describe("UI shows what DB holds", () => {
       await pin.fill(OPERATOR_PIN);
       await page.getByRole("button", { name: "Login" }).click();
     }
-    await expect(page.getByRole("heading", { name: "Milk Delivery Admin" })).toBeVisible();
+    await waitForAppReady(page);
   });
 
   test("every customer the DB returns appears as a Card on the Customers page", async ({ page }) => {
@@ -108,8 +109,13 @@ test.describe("UI shows what DB holds", () => {
       .filter({ hasText: "Delivered" })
       .first();
     await expect(tile).toBeVisible();
-    const valueText = await tile.locator(".stat-value").textContent();
-    expect(String(valueText).trim()).toContain(String(deliveredCount));
+    // The tile renders as soon as the shell mounts, but its VALUE depends on
+    // the async daily_logs fetch — assert with a retrying expectation so the
+    // test waits for the data instead of snapshotting the pre-load "0".
+    await expect(tile.locator(".stat-value")).toHaveText(
+      new RegExp(`\\b${deliveredCount}\\b`),
+      { timeout: 15_000 },
+    );
   });
 
   test("Billing page KPI grid equals computed DB totals (no other-month leak)", async ({ page }) => {

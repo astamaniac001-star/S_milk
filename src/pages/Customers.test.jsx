@@ -156,4 +156,101 @@ describe("Customers.jsx — callback-shape contract (audit 2026-07-25)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Pause" }));
     expect(onOpenModal).toHaveBeenCalledWith("addPause", { custId: "C1" });
   });
+
+  it("'+ Sub' opens addSubscription prefilled with the customer id", () => {
+    const customers = [
+      {
+        id: "C1",
+        name: "Ramesh",
+        status: "Active",
+        phone: "9",
+        address: "a",
+        balance: 0,
+        version: 1,
+      },
+    ];
+    const onOpenModal = vi.fn();
+    setup({ filtered: customers, total: 1, onOpenModal });
+
+    fireEvent.click(screen.getByRole("button", { name: "+ Sub" }));
+    expect(onOpenModal).toHaveBeenCalledWith("addSubscription", {
+      brandId: "",
+      customerId: "C1",
+      milkType: "Full Cream",
+      qty: 1,
+      deliveryDays: [1, 2, 3, 4, 5],
+      isActive: true,
+    });
+  });
+
+  it("does not offer '+ Sub' for an inactive (deactivated) customer", () => {
+    const customers = [
+      {
+        id: "C1",
+        name: "Ramesh",
+        status: "Inactive",
+        phone: "9",
+        address: "a",
+        balance: 0,
+      },
+    ];
+    setup({ filtered: customers, total: 1 });
+
+    expect(screen.queryByRole("button", { name: "+ Sub" })).toBeNull();
+  });
+
+  it("renders the customer's subscriptions (milk type, qty, days)", () => {
+    const customers = [
+      {
+        id: "C1",
+        name: "Ramesh",
+        status: "Active",
+        phone: "9",
+        address: "a",
+        balance: 0,
+      },
+    ];
+    const subsByCustomer = {
+      C1: [
+        {
+          id: "S1",
+          customerId: "C1",
+          milkType: "Full Cream",
+          qty: 1,
+          deliveryDays: [1, 2],
+          isActive: true,
+          version: 1,
+        },
+        {
+          id: "S2",
+          customerId: "C1",
+          milkType: "Toned",
+          qty: 2,
+          deliveryDays: [0],
+          isActive: false,
+          version: 1,
+        },
+      ],
+    };
+    setup({ filtered: customers, total: 1, subsByCustomer });
+
+    expect(screen.getByText(/Full Cream · 1L · Mon, Tue/)).toBeTruthy();
+    expect(screen.getByText(/Toned · 2L · Sun \(paused\)/)).toBeTruthy();
+  });
+
+  it("shows 'No subscriptions' when a customer has none", () => {
+    const customers = [
+      {
+        id: "C1",
+        name: "Ramesh",
+        status: "Active",
+        phone: "9",
+        address: "a",
+        balance: 0,
+      },
+    ];
+    setup({ filtered: customers, total: 1, subsByCustomer: {} });
+
+    expect(screen.getByText("No subscriptions")).toBeTruthy();
+  });
 });

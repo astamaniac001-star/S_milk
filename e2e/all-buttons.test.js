@@ -15,6 +15,7 @@
 
 import { test, expect } from "@playwright/test";
 import { OPERATOR_PIN } from "./helpers/supabase.js";
+import { waitForAppReady } from "./helpers/app.js";
 
 // Collection-time conditional skip: skip EVERY test in this file when the
 // operator PIN isn't configured. Doing this at module scope means Playwright
@@ -42,8 +43,9 @@ async function loginOnce(page) {
     await pinInput.fill(OPERATOR_PIN);
     await page.getByRole("button", { name: "Login" }).click();
   }
-  // Authenticated app shell always renders the brand header.
-  await expect(page.getByRole("heading", { name: "Milk Delivery Admin" })).toBeVisible();
+  // Authenticated app shell always renders the bottom nav (the heading alone
+  // also shows on the login page — see e2e/helpers/app.js).
+  await waitForAppReady(page);
 }
 
 test.beforeEach(async ({ page }) => {
@@ -101,16 +103,17 @@ test("dashboard renders Today's Delivery stats and quick actions", async ({ page
   }
 });
 
-test("Customers page renders the Add + Subscriptions controls and at least one card or an Empty state", async ({ page }) => {
+test("Customers page renders the Add control and at least one card or an Empty state", async ({ page }) => {
   await page.getByRole("button", { name: "Customers" }).click();
-  // AppShell renders <h2>Customers</h2> (TAB_TITLES) AND Customers.jsx:25
+  // AppShell renders <h2>Customers</h2> (TAB_TITLES) AND Customers.jsx
   // renders <h3>Customers</h3> via <Section title="Customers">. Both match
   // `name: "Customers"` and strict mode would error on multiple matches —
   // use .first() to disambiguate. Both being visible is itself the contract.
   await expect(page.getByRole("heading", { name: "Customers", exact: true }).first()).toBeVisible();
 
-  // Two action buttons in the section header (Customers.jsx:25-40).
-  await expect(page.getByRole("button", { name: "Subscriptions" })).toBeVisible();
+  // The section header carries the Add control. Subscriptions moved to their
+  // own nav tab (bottom-nav "Subs"), so there is no Subscriptions button
+  // on the Customers page any more.
   await expect(page.getByRole("button", { name: "+ Add" })).toBeVisible();
 
   // The list is either populated (.card) or shows the empty state — both
@@ -125,6 +128,15 @@ test("Customers page renders the Add + Subscriptions controls and at least one c
       expect(n, "no cards and no empty state — page failed to render").toBeGreaterThan(0);
     },
   ).toPass();
+});
+
+test("Bottom nav renders the Subscriptions tab and it opens the Subscriptions page", async ({ page }) => {
+  // The Subscriptions tab sits between Customers and Delivery (AppShell TABS).
+  await page.getByRole("button", { name: "Subs", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "Subscriptions", exact: true }).first(),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "+ Add" })).toBeVisible();
 });
 
 test("Delivery page reveals Generate Deliveries + Extra Delivery and stats", async ({ page }) => {

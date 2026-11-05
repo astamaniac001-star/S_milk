@@ -15,7 +15,7 @@
 //       page)
 //     - Deactivate (calls deactivateCustomer RPC → customer.status=Inactive)
 //     - Pause (opens addPause modal; we save → pause_periods row inserted)
-//     - Subscriptions list modal → + Add Subscription → saves a new
+//     - Subscriptions tab → + Add Subscription → saves a new
 //       subscription row → History button on an existing sub opens the
 //       history modal → Edit on the existing subscription opens the edit
 //       modal pre-filled.
@@ -346,10 +346,25 @@ test("Customers: WhatsApp button opens https://wa.me/<phone> in a new tab/popup"
 // ────────────────────────────────────────────────────────────────────────
 // Subscriptions list → Add Subscription
 // ────────────────────────────────────────────────────────────────────────
-test("Subscriptions: list modal + Add Subscription inserts a subscriptions row + Edit + History open modals", async ({ page }) => {
+test("Subscriptions: Subscriptions tab + Add Subscription inserts a subscriptions row + Edit + History open modals", async ({ page }) => {
   const cname = e2eName("SubsProbe Customer");
   const phone = "9000020005";
-  const supabase = await loginWithProbeCustomer(page, {
+  const supabase = await makeSupabase({ withSession: true });
+  // Subscriptions are brand-aware: a subscription = (customer, brand, milk
+  // type, qty, days). Insert the probe brand BEFORE the login reload so the
+  // app's brand list (fetched once on sign-in) already contains it.
+  const { data: brandRow, error: brandErr } = await supabase
+    .from("milk_brands")
+    .insert({
+      brand_name: e2eName("SubsProbe Brand"),
+      status: "Active",
+      default_milk_type: "Full Cream",
+      rate_per_liter: 60,
+    })
+    .select("id,brand_name")
+    .single();
+  if (brandErr) throw new Error(`Probe brand insert failed: ${brandErr.message}`);
+  await loginWithProbeCustomer(page, {
     name: cname,
     phone,
     product: "Full Cream",
@@ -359,15 +374,19 @@ test("Subscriptions: list modal + Add Subscription inserts a subscriptions row +
   const custId = custRow.id;
 
   try {
-    await page.getByRole("button", { name: "Customers" }).click();
-    await page.getByRole("button", { name: "Subscriptions" }).click();
-    await expect(page.getByRole("heading", { name: "Manage Subscriptions" })).toBeVisible();
+    // Subscriptions now live on their own nav tab (bottom-nav "Subs").
+    await page.getByRole("button", { name: "Subs", exact: true }).click();
+    // AppShell <h2>Subscriptions</h2> + Subscriptions.jsx <Section> <h3>.
+    await expect(
+      page.getByRole("heading", { name: "Subscriptions", exact: true }).first(),
+    ).toBeVisible();
 
-    // "+ Add Subscription" → opens the SubscriptionModal with defaults.
-    await page.getByRole("button", { name: "+ Add Subscription" }).click();
+    // "+ Add" → opens the SubscriptionModal with defaults.
+    await page.getByRole("button", { name: "+ Add" }).click();
     await expect(page.getByRole("heading", { name: "Add Subscription" })).toBeVisible();
-    // Pick our customer in the dropdown, qty 2, save.
+    // Pick our customer in the dropdown, the brand (required), qty 2, save.
     await page.getByLabel(/Customer/i).selectOption({ label: cname });
+    await page.getByLabel(/Brand/i).selectOption(brandRow.id);
     await page.getByLabel(/Quantity/i).fill("2");
     await page.getByRole("button", { name: "Save" }).click();
     await expect(page.getByRole("dialog")).toHaveCount(0, { timeout: 10_000 });
@@ -377,7 +396,7 @@ test("Subscriptions: list modal + Add Subscription inserts a subscriptions row +
     await expect(async () => {
       const { data, error } = await supabase
         .from("subscriptions")
-        .select("id,customer_id,milk_type,qty,is_active,version")
+        .select("id,customer_id,milk_type,qty,is_active,version,brand_id")
         .eq("customer_id", custId)
         .maybeSingle();
       expect(error).toBeNull();
@@ -386,28 +405,28 @@ test("Subscriptions: list modal + Add Subscription inserts a subscriptions row +
     }).toPass({ timeout: 10_000, intervals: [500, 1000, 2000] });
     expect(subRow.qty).toBe(2);
     expect(subRow.is_active).toBe(true);
+    expect(subRow.brand_id).toBe(brandRow.id);
 
-    // Re-open the list modal. Click History on OUR row (the operator's
-    // "hhi" subscription also renders a History button, so scope to the
-    // row whose customer name matches our probe).
-    await page.getByRole("button", { name: "Subscriptions" }).click();
-    await expect(page.getByRole("heading", { name: "Manage Subscriptions" })).toBeVisible();
-    await page.locator(".modal-content").filter({ hasText: cname })
-      .getByRole("button", { name: "History" }).first().click();
+    // The new row renders as a card on the Subscriptions page. Click History
+    // on OUR row (other customers' subscriptions render too, so scope to the
+    // card whose customer name matches our probe).
+    const ourCard = page.locator(".card").filter({ hasText: cname }).first();
+    await expect(ourCard).toBeVisible({ timeout: 10_000 });
+    await ourCard.getByRole("button", { name: "History" }).click();
     await expect(page.getByRole("heading", { name: /^History:/ })).toBeVisible();
     await page.getByRole("button", { name: "Close dialog" }).click();
     await expect(page.getByRole("dialog")).toHaveCount(0);
 
     // Edit on the same row → opens the SubscriptionModal in edit mode.
-    await page.getByRole("button", { name: "Subscriptions" }).click();
-    await page.locator(".modal-content").filter({ hasText: cname })
-      .getByRole("button", { name: "Edit" }).first().click();
+    await page.locator(".card").filter({ hasText: cname }).first()
+      .getByRole("button", { name: "Edit" }).click();
     await expect(page.getByRole("heading", { name: "Edit Subscription" })).toBeVisible();
     // Cancel without saving — proving the modal opens is the contract.
     await page.getByRole("button", { name: "Cancel" }).click();
   } finally {
     await supabase.from("subscriptions").delete().eq("customer_id", custId);
     await supabase.from("customers").delete().eq("phone", phone);
+    await supabase.from("milk_brands").delete().eq("id", brandRow.id);
   }
 });
 
@@ -643,14 +662,15 @@ test("Imports: + Brand → BrandModal save inserts a new milk_brands row (status
     await expect(page.getByRole("dialog")).toBeVisible();
     await expect(page.getByRole("heading", { name: "Add Milk Brand" })).toBeVisible();
     // BrandModal fields (BrandModal.jsx): Brand Name, Supplier Name,
-    // Supplier Phone, Default Milk Type, Rate per Litre. Use label-based
-    // lookups — placeholder substring conflicts (e.g. "Amul" matches both
-    // "Amul" and "Amul Dairy Ltd.") cause strict-mode violations.
+    // Supplier Phone and a per-milk-type rate editor (rows with a
+    // "Type N" select + a "Rate N" input). Use label-based lookups —
+    // placeholder substring conflicts (e.g. "Amul" matches both "Amul"
+    // and "Amul Dairy Ltd.") cause strict-mode violations.
     await page.getByLabel("Brand Name").fill(bname);
     await page.getByLabel("Supplier Name").fill("probe supplier");
     await page.getByLabel("Supplier Phone").fill("9000030001");
-    await page.getByLabel(/Default Milk Type/i).selectOption({ label: "Full Cream" });
-    await page.getByLabel("Rate per Litre").fill("65");
+    await page.getByLabel("Type 1", { exact: true }).selectOption({ label: "Full Cream" });
+    await page.getByLabel("Rate 1", { exact: true }).fill("65");
     await page.getByRole("button", { name: "Save" }).click();
     await expect(page.getByRole("dialog")).toHaveCount(0, { timeout: 15_000 });
 
@@ -665,6 +685,25 @@ test("Imports: + Brand → BrandModal save inserts a new milk_brands row (status
       expect(data.default_milk_type).toBe("Full Cream");
       expect(Number(data.rate_per_liter)).toBe(65);
       expect(data.status).toBe("Active");
+    }).toPass({ timeout: 10_000, intervals: [500, 1000, 2000] });
+
+    // The per-type rate lives in brand_rates (brand × milk type pricing).
+    await expect(async () => {
+      const { data: rateRow, error: rateErr } = await supabase
+        .from("brand_rates")
+        .select("milk_type,rate_per_liter")
+        .eq("brand_id", (
+          await supabase
+            .from("milk_brands")
+            .select("id")
+            .eq("brand_name", bname)
+            .maybeSingle()
+        ).data.id)
+        .eq("milk_type", "Full Cream")
+        .maybeSingle();
+      expect(rateErr).toBeNull();
+      expect(rateRow, "brand_rates row was not inserted").not.toBeNull();
+      expect(Number(rateRow.rate_per_liter)).toBe(65);
     }).toPass({ timeout: 10_000, intervals: [500, 1000, 2000] });
   } finally {
     await supabase.from("milk_brands").delete().like("brand_name", `${E2E_MARKER}%BrandProbe%`);
@@ -824,6 +863,23 @@ test("More: Adjustments + Add → AdjustmentModal save inserts an adjustments ro
   const _today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
   void _today;
 
+  // An adjustment is applied to a BILL: the handler resolves the customer's
+  // bill for the viewed month and refuses to save without one. Give the
+  // probe customer a bill in the current month and reload so the app's
+  // in-memory bill list contains it.
+  const _month = _today.substring(0, 7);
+  await supabase.from("bills").insert({
+    customer_id: custId,
+    month: _month,
+    amount: 100,
+    amount_paid: 0,
+    status: "Unpaid",
+    locked: false,
+    version: 1,
+  });
+  await page.reload();
+  await expect(page.locator(".bottom-nav")).toBeVisible();
+
   try {
     await page.getByRole("button", { name: "More" }).click();
     await page.getByRole("heading", { name: "Adjustments" }).waitFor();
@@ -832,7 +888,7 @@ test("More: Adjustments + Add → AdjustmentModal save inserts an adjustments ro
     await expect(page.getByRole("heading", { name: "Add Adjustment" })).toBeVisible();
     await page.getByLabel(/Customer/i).selectOption({ label: cname });
     // CustomerDateFields already prefilled date=today.
-    await page.getByPlaceholder("-50 or 100").fill("25");
+    await page.getByPlaceholder("50 reduces · -50 adds").fill("25");
     await page.getByPlaceholder("Half delivery, Quality issue…").fill("E2E probe adjustment");
     await page.getByRole("button", { name: "Save" }).click();
     await expect(page.getByRole("dialog")).toHaveCount(0, { timeout: 10_000 });
@@ -851,6 +907,7 @@ test("More: Adjustments + Add → AdjustmentModal save inserts an adjustments ro
     }).toPass({ timeout: 10_000, intervals: [500, 1000, 2000] });
   } finally {
     await supabase.from("adjustments").delete().eq("customer_id", custId);
+    await supabase.from("bills").delete().eq("customer_id", custId);
     await supabase.from("customers").delete().eq("phone", phone);
   }
 });

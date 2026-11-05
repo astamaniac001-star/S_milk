@@ -25,6 +25,7 @@ import {
   E2E_MARKER,
   e2eName,
 } from "./helpers/supabase.js";
+import { waitForAppReady } from "./helpers/app.js";
 
 // Collection-time conditional skip — the lifecycle test creates real
 // customers/bills and reads the live DB, so it cannot run without an
@@ -38,12 +39,17 @@ test.describe("full operator lifecycle", () => {
       test.skip();
       return;
     }
+    // "Generate Bills" (Billing.jsx) asks for confirmation via
+    // window.confirm — Playwright auto-dismisses native dialogs, which
+    // would silently skip the billing step. Accept them.
+    page.on("dialog", (d) => d.accept());
     await page.goto("/");
     const pin = page.locator("#pin-input");
     if (await pin.isVisible({ timeout: 8_000 }).catch(() => false)) {
       await pin.fill(OPERATOR_PIN);
       await page.getByRole("button", { name: "Login" }).click();
     }
+    await waitForAppReady(page);
   });
 
   test("create customer, generate log, generate bill, partial payment — DB ↔ UI agree", async ({ page }) => {
@@ -90,7 +96,8 @@ test.describe("full operator lifecycle", () => {
     await page.getByPlaceholder("Ramesh Sharma").fill(cname);
     await page.getByPlaceholder("14, Shivaji Nagar").fill("E2E Test Address");
     await page.getByPlaceholder("9876543210").fill("9000010001");
-    // Product + qty default to Full Cream / 1 — leave alone.
+    // CustomerModal is identity-only now (name/address/phone) — milk type,
+    // quantity and delivery days belong to a subscription.
     await page.getByRole("button", { name: "Save" }).click();
 
     await expect(page.getByRole("dialog")).toHaveCount(0, { timeout: 15_000 });
@@ -123,6 +130,66 @@ test.describe("full operator lifecycle", () => {
     await expect(
       page.locator(".card").filter({ hasText: cname }).first(),
     ).toBeVisible({ timeout: 10_000 });
+
+    // ─── STEP 1b: Give the customer a subscription ───────────────────────
+    // Subscription-centric model: delivery logs are generated from ACTIVE
+    // SUBSCRIPTIONS only — a customer without one gets no scheduled
+    // delivery. Subscriptions are brand-aware: a subscription is
+    // (customer, brand, milk type, qty, days) and the bill prices each
+    // delivery at that brand's rate for the milk type (brand_rates).
+    //
+    // The subscription is created through the APP (Subscriptions page), not
+    // by inserting the row directly: "Generate Bills" only bills customers
+    // whose subscription is in the app's in-memory list, so a DB-only insert
+    // would be invisible to the billing step.
+    //
+    // The probe brand is inserted directly (the Brands page's rate editor is
+    // covered by its own test) and carries a Full Cream rate so the bill has
+    // something to price with.
+    const { data: probeBrand, error: probeBrandErr } = await supabase
+      .from("milk_brands")
+      .insert({
+        brand_name: e2eName("Lifecycle Brand"),
+        status: "Active",
+        default_milk_type: "Full Cream",
+        rate_per_liter: 60,
+      })
+      .select("id")
+      .single();
+    expect(
+      probeBrandErr,
+      "could not insert the probe brand for the lifecycle customer",
+    ).toBeNull();
+    const { error: probeRateErr } = await supabase.from("brand_rates").insert({
+      brand_id: probeBrand.id,
+      milk_type: "Full Cream",
+      rate_per_liter: 60,
+    });
+    expect(probeRateErr, "could not insert the probe brand rate").toBeNull();
+
+    // The app fetches its brand list once on sign-in, so a brand inserted
+    // after login is invisible to the Brand dropdown. Reload to re-fetch.
+    await page.reload();
+    await expect(page.locator(".bottom-nav")).toBeVisible();
+
+    await page.getByRole("button", { name: "Subs", exact: true }).click();
+    await page.getByRole("button", { name: "+ Add" }).click();
+    await expect(page.getByRole("heading", { name: "Add Subscription" })).toBeVisible();
+    await page.getByLabel(/Customer/i).selectOption({ label: cname });
+    await page.getByLabel(/Brand/i).selectOption(probeBrand.id);
+    await page.getByLabel(/Milk Type/i).selectOption({ label: "Full Cream" });
+    await page.getByLabel(/Quantity/i).fill("1");
+    // Every delivery day must be selected for today's log to be generated.
+    // The day buttons toggle, so only click the ones that are not already
+    // pressed (the modal pre-selects the default set).
+    for (const day of ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]) {
+      const dayBtn = page.getByRole("button", { name: day, exact: true });
+      if ((await dayBtn.getAttribute("aria-pressed")) !== "true") {
+        await dayBtn.click();
+      }
+    }
+    await page.getByRole("button", { name: "Save" }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0, { timeout: 15_000 });
 
     // ─── STEP 2: Generate delivery logs for today ──────────────────────
     await page.getByRole("button", { name: "Delivery" }).click();
@@ -247,6 +314,10 @@ test.describe("full operator lifecycle", () => {
 
     // ─── STEP 4: Cleanup (RLS-aware: operator session owns every row) ──
     await cleanupAll(supabase, { customerId, billId, month, today });
+    // The probe brand (and its brand_rates row) is test-owned — remove it
+    // last so the subscription FK stays valid while it is deleted.
+    await supabase.from("brand_rates").delete().eq("brand_id", probeBrand.id);
+    await supabase.from("milk_brands").delete().eq("id", probeBrand.id);
   });
 });
 
@@ -256,6 +327,13 @@ test.describe("full operator lifecycle", () => {
 // invariant (helpers/supabase.js:e2eName) so only test-issued rows are
 // touched — never operator real data.
 async function preClean(supabase) {
+  // Probe brands created by this test — they are test-owned (the name is
+  // unique per run), so a failed run cannot leak them into later runs.
+  await supabase
+    .from("milk_brands")
+    .delete()
+    .like("brand_name", `${E2E_MARKER}%Lifecycle Brand%`);
+
   const { data: orphans } = await supabase
     .from("customers")
     .select("id")

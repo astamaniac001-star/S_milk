@@ -38,6 +38,7 @@
     "wprettier",
     "upsert",
     "Upsert",
+    "upserts",
     "supabase",
     "SUPABASE",
     "PGRST",
@@ -64,6 +65,9 @@
     "destructures",
     "affordances",
     "precached",
-    "fallowignore"
+    "fallowignore",
+    "Postg",
+    "nullsafe",
+    "plpgsql"
   ]
 }

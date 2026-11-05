@@ -142,7 +142,17 @@ test.describe("database connectivity & RLS gate", () => {
           p_qty: 0,
           p_product: "",
           p_reason: "",
+          // Brand-aware signature (6 args since 2026-11): a NULL brand means
+          // "unbranded" — the legacy path.
+          p_brand_id: null,
         },
+        okIf: (r) =>
+          r.error !== null &&
+          !/Could not find the function/i.test(r.error.message),
+      },
+      {
+        name: "save_brand_rpc",
+        args: { p_brand: {}, p_rates: [] },
         okIf: (r) =>
           r.error !== null &&
           !/Could not find the function/i.test(r.error.message),

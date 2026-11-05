@@ -63,3 +63,59 @@ describe("SubscriptionModal — single onChange contract (audit 2026-07-24)", ()
     expect(calls).toContainEqual({ key: "isActive", value: false });
   });
 });
+
+describe("SubscriptionModal — brand field (brand-aware subscriptions)", () => {
+  const brands = [
+    { id: "B1", name: "Amul", status: "Active" },
+    { id: "B2", name: "Local", status: "Active" },
+    { id: "B3", name: "Dead Co", status: "Inactive" },
+  ];
+
+  function setup(props = {}) {
+    const { setF, calls } = makeSetF();
+    render(
+      <SubscriptionModal
+        form={{ deliveryDays: [1] }}
+        customers={[{ id: "C1", name: "Ramesh", status: "Active" }]}
+        brands={brands}
+        milkTypes={["Full Cream", "Toned"]}
+        onChange={setF}
+        onSave={vi.fn()}
+        onClose={vi.fn()}
+        {...props}
+      />,
+    );
+    return { calls };
+  }
+
+  it("renders the Brand select with only Active brands as options", () => {
+    setup();
+    const brandSelect = screen.getByLabelText(/Brand/i);
+    const values = Array.from(brandSelect.options).map((o) => o.value);
+    expect(values).toEqual(["", "B1", "B2"]);
+    // Required field starts empty (no silent brand default)
+    expect(brandSelect.value).toBe("");
+  });
+
+  it("prefills the brand from the edit target and writes selection via the curried contract", () => {
+    const { calls } = setup({
+      form: {},
+      data: { id: "S1", customerId: "C1", brandId: "B1", milkType: "Toned" },
+    });
+    const brandSelect = screen.getByLabelText(/Brand/i);
+    expect(brandSelect.value).toBe("B1");
+
+    fireEvent.change(brandSelect, { target: { value: "B2" } });
+    expect(calls).toContainEqual({ key: "brandId", value: "B2" });
+  });
+
+  it("exposes each delivery day as a toggle button with aria-pressed", () => {
+    setup({ form: { deliveryDays: [1, 3] } });
+    const mon = screen.getByRole("button", { name: "Mon" });
+    const tue = screen.getByRole("button", { name: "Tue" });
+    // aria-pressed reflects the current selection so the state is readable
+    // from the DOM (the e2e suite relies on it to pick only unselected days).
+    expect(mon.getAttribute("aria-pressed")).toBe("true");
+    expect(tue.getAttribute("aria-pressed")).toBe("false");
+  });
+});

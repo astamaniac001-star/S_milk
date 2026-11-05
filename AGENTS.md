@@ -79,11 +79,12 @@ src/
 │       └── useSubscriptionHandlers.js
 ├── pages/
 │   ├── Dashboard.jsx
-│   ├── Customers.jsx
-│   ├── Delivery.jsx        # 📍 Daily-driver page: toggle delivered/skipped, generate, ad-hoc
+│   ├── Customers.jsx        # Identity only (name/address/phone) + per-customer subscription list
+│   ├── Subscriptions.jsx    # 📍 Manage subscriptions (multiple per customer): add/edit/delete/history
+│   ├── Delivery.jsx         # 📍 Daily-driver page: toggle delivered/skipped, generate, ad-hoc
 │   ├── Imports.jsx
 │   ├── Billing.jsx
-│   └── More.jsx            # Adjustments, Pauses, Brands, diagnostics, health, PIN rotate
+│   └── More.jsx             # Adjustments, Pauses, Brands, diagnostics, health, PIN rotate
 ├── components/
 │   ├── AppShell.jsx        # Top header + bottom nav + load-error banner + dark mode
 │   ├── AppPage.jsx         # PAGE_RENDERERS table: tab → page component
@@ -91,12 +92,12 @@ src/
 │   ├── ErrorBoundary.jsx   # Class component — Reload / Sign-out & reload
 │   ├── login.jsx           # 6-digit operator PIN form
 │   ├── ui.jsx              # Badge, Toast, Modal, Btn, Field, Card, Empty, Section, StatGrid
-│   ├── forms.jsx           # Re-exports the 12 modal components consumed by AppModals
-│   └── modals/             # 13 modal .jsx files (incl. shared.jsx); forms.jsx re-exports most
+│   ├── forms.jsx           # Re-exports the 11 modal components consumed by AppModals
+│   └── modals/             # 12 modal .jsx files (incl. shared.jsx); forms.jsx re-exports most
 └── test/setup.js           # Vitest + Testing Library setup; referenced from vite.config.js
 
 public/
-├── sw.js                   # Service worker (offline-first PWA), cache name "milk-v22"
+├── sw.js                   # Service worker (offline-first PWA), cache name "milk-v23"
 ├── register-sw.js
 ├── app.css
 ├── apply-dark-mode.js      # Early-strip dark-mode script (precached by sw.js shell)
@@ -258,8 +259,8 @@ compare literally and silently fail filtering.
 
 ### 11. Modal and page routing
 
-- `PAGE_RENDERERS` map in `AppPage.jsx`: `{ dashboard, customers, delivery, imports, billing, more }`.
-- `MODAL_RENDERERS` map in `AppModals.jsx`: `{ addCustomer, editCustomer, addImport, payment, changePin, billDetail, addAdj, addPause, addBrand, addAdHoc, addCreditNote, subscriptionHistory, subscriptionsList, addSubscription, editSubscription }`.
+- `PAGE_RENDERERS` map in `AppPage.jsx`: `{ dashboard, customers, subscriptions, delivery, imports, billing, more }`.
+- `MODAL_RENDERERS` map in `AppModals.jsx`: `{ addCustomer, editCustomer, addImport, payment, changePin, billDetail, addAdj, addPause, addBrand, addAdHoc, addCreditNote, subscriptionHistory, addSubscription, editSubscription }`.
 - To add a page: add to the tab list in `AppShell.jsx` (`TABS` array) AND
   add a `renderX(state, handlers)` + an entry in `PAGE_RENDERERS`.
 - To add a modal: create the component, import in `AppModals.jsx`, add a
@@ -364,6 +365,51 @@ atomic and can leave partial financial state.
 - Never label a release production-ready solely because `check-all` passes. Report
   exactly which commands ran, what they include, and any checks omitted or failing.
 
+### 18. Brand-aware subscriptions and pricing
+
+A subscription is **not** just (customer, milk type). It is
+(customer, **brand**, milk type, qty, delivery days), and each brand prices each
+milk type independently.
+
+- `brand_rates (brand_id, milk_type, rate_per_liter)` is the rate table —
+  `UNIQUE (brand_id, milk_type)`, `CHECK rate_per_liter >= 0`, operator-only RLS.
+  The legacy `milk_brands.default_milk_type` / `rate_per_liter` columns still
+  exist and are kept in sync by `save_brand_rpc` (they drive the legacy path
+  below); do not use them as the rate source for a branded delivery.
+- `subscriptions.brand_id` is required by the app on save (brand is a required
+  field in `SubscriptionModal`; `validateSubscriptionForm` enforces it). One
+  active subscription per (customer, brand, milk type) —
+  `uniq_sub_customer_brand_type_active` is partial and uses
+  `COALESCE(brand_id, '00000000-…')`, so NULL-brand rows stay distinct while
+  same-type/different-brand subscriptions are allowed.
+- `daily_logs` identity is `(customer_id, date, brand_id, product)`. The plain
+  UNIQUE constraint exists for PostgREST `onConflict` inference; the
+  expression index `uniq_daily_logs_cust_date_brand_product_nullsafe` adds the
+  NULL coverage that the plain constraint cannot provide. Brandless rows are
+  therefore updated in place, never duplicated — a duplicate would be billed
+  twice.
+- **Billing**: `generate_month_bill_rpc` groups delivered logs by
+  (product, brand) and prices each pair at that brand's rate for that milk
+  type. A branded delivery with no matching rate **fails loudly** (the error
+  names the brand + type) — it is never priced with another brand's rate.
+  Only NULL-brand (legacy) deliveries fall back to the old heuristic: the most
+  recent Active brand whose `default_milk_type` matches the product.
+- **Ad-hoc deliveries**: `record_ad_hoc_log_rpc(p_customer_id, p_date, p_qty,
+  p_product, p_brand_id, p_reason)` — 6 arguments. It accumulates onto the row
+  with the *same* brand (`brand_id IS NOT DISTINCT FROM p_brand_id`, so NULL
+  brands match NULL brands). The old 5-argument overload was dropped; do not
+  reintroduce it. In plpgsql, test `FOUND` after `SELECT … INTO` — a record's
+  `IS NOT NULL` is FALSE when *any* field is NULL (this silently broke
+  brandless accumulation once already).
+- **Brand save**: `save_brand_rpc(p_brand jsonb, p_rates jsonb)` — atomic
+  brand + replace-all rates. `BrandModal` edits the brand and its per-type
+  rates; the frontend never writes `brand_rates` directly.
+- Frontend contract: the brand select stores the **brand id**
+  (`ActiveBrandOptions valueKey="id"`); `mapSubscriptionFromApi` /
+  `mapLogFromApi` expose `brandId`; `brandLabel(record, brands)` in
+  `lib/utils.js` resolves a display name and falls back to the milk type for
+  legacy rows.
+
 ## Common workflows
 
 ### Add a new entity
@@ -392,7 +438,7 @@ atomic and can leave partial financial state.
   `astamaniac001@gmail.com`, overridable via `VITE_OPERATOR_EMAIL`) if login is broken;
   never inspect or store a PIN in `settings`.
 - Service worker cache: bump `CACHE` constant in `public/sw.js` to force
-  eviction on next load (currently `"milk-v22"`).
+  eviction on next load (currently `"milk-v24"`).
 
 ### Run all checks
 
