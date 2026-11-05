@@ -115,6 +115,38 @@ export type Database = {
           },
         ]
       }
+      brand_rates: {
+        Row: {
+          brand_id: string
+          created_at: string | null
+          id: string
+          milk_type: string
+          rate_per_liter: number
+        }
+        Insert: {
+          brand_id: string
+          created_at?: string | null
+          id?: string
+          milk_type: string
+          rate_per_liter?: number
+        }
+        Update: {
+          brand_id?: string
+          created_at?: string | null
+          id?: string
+          milk_type?: string
+          rate_per_liter?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "brand_rates_brand_id_fkey"
+            columns: ["brand_id"]
+            isOneToOne: false
+            referencedRelation: "milk_brands"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       credit_notes: {
         Row: {
           amount: number | null
@@ -226,39 +258,49 @@ export type Database = {
       }
       daily_logs: {
         Row: {
+          brand_id: string | null
           created_at: string | null
           customer_id: string | null
           date: string
           delivered: boolean | null
           id: string
           note: string | null
-          product: string | null
+          product: string
           qty: number | null
           updated_at: string | null
         }
         Insert: {
+          brand_id?: string | null
           created_at?: string | null
           customer_id?: string | null
           date: string
           delivered?: boolean | null
           id?: string
           note?: string | null
-          product?: string | null
+          product?: string
           qty?: number | null
           updated_at?: string | null
         }
         Update: {
+          brand_id?: string | null
           created_at?: string | null
           customer_id?: string | null
           date?: string
           delivered?: boolean | null
           id?: string
           note?: string | null
-          product?: string | null
+          product?: string
           qty?: number | null
           updated_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "daily_logs_brand_id_fkey"
+            columns: ["brand_id"]
+            isOneToOne: false
+            referencedRelation: "milk_brands"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "daily_logs_customer_id_fkey"
             columns: ["customer_id"]
@@ -481,6 +523,7 @@ export type Database = {
       }
       subscriptions: {
         Row: {
+          brand_id: string | null
           created_at: string | null
           customer_id: string | null
           delivery_days: Json | null
@@ -492,6 +535,7 @@ export type Database = {
           version: number | null
         }
         Insert: {
+          brand_id?: string | null
           created_at?: string | null
           customer_id?: string | null
           delivery_days?: Json | null
@@ -503,6 +547,7 @@ export type Database = {
           version?: number | null
         }
         Update: {
+          brand_id?: string | null
           created_at?: string | null
           customer_id?: string | null
           delivery_days?: Json | null
@@ -514,6 +559,13 @@ export type Database = {
           version?: number | null
         }
         Relationships: [
+          {
+            foreignKeyName: "subscriptions_brand_id_fkey"
+            columns: ["brand_id"]
+            isOneToOne: false
+            referencedRelation: "milk_brands"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "subscriptions_customer_id_fkey"
             columns: ["customer_id"]
@@ -551,6 +603,7 @@ export type Database = {
       is_operator: { Args: never; Returns: boolean }
       record_ad_hoc_log_rpc: {
         Args: {
+          p_brand_id: string
           p_customer_id: string
           p_date: string
           p_product: string
@@ -571,6 +624,7 @@ export type Database = {
         Returns: Json
       }
       rollover_month_rpc: { Args: { p_month: string }; Returns: Json }
+      save_brand_rpc: { Args: { p_brand: Json; p_rates: Json }; Returns: Json }
     }
     Enums: {
       [_ in never]: never

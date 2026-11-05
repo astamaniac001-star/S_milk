@@ -292,53 +292,78 @@ CREATE OR REPLACE FUNCTION "public"."generate_month_bill_rpc"("p_customer_id" "u
     SET "search_path" TO 'public'
     AS $_$
 DECLARE
-  v_rate numeric;
-  v_total_qty numeric;
-  v_amount numeric;
+  v_amount numeric := 0;
   v_existing_bill record;
-  v_product text;
+  v_line record;
+  v_rate numeric;
+  v_missing text := '';
   v_month_start date;
   v_month_end date;
+  v_brand_name text;
 BEGIN
   -- Operator-only — explicit guard (matches sibling RPCs; AGENTS §13).
   IF NOT public.is_operator() THEN
     RAISE EXCEPTION 'Unauthorized: only the operator may generate bills';
   END IF;
 
-  -- Strict YYYY-MM with a real month (01..12). The old regex accepted
-  -- '2026-13', which silently produced a zero-quantity bill; the date cast
-  -- below would raise a raw date/time error, so reject it explicitly.
+  -- Strict YYYY-MM with a real month (01..12).
   IF p_month IS NULL OR p_month !~ '^\d{4}-(0[1-9]|1[0-2])$' THEN
     RAISE EXCEPTION 'Invalid month format (expected YYYY-MM between 01 and 12): %', p_month;
   END IF;
 
-  -- 'YYYY-MM' is not a valid date literal for Postgres — append the day
-  -- before casting.
   v_month_start := (p_month || '-01')::date;
   v_month_end := (v_month_start + INTERVAL '1 month')::date;
 
-  -- Get customer's product to find the correct rate
-  SELECT product INTO v_product FROM customers WHERE id = p_customer_id;
+  -- Brand-aware pricing: each delivered (product, brand) pair is priced at
+  -- that brand's rate for that milk type (brand_rates). Rows without a brand
+  -- (legacy/unbranded) fall back to the legacy most-recent-Active-brand
+  -- heuristic. A branded row with no rate fails loudly — silently pricing it
+  -- with a different brand's rate is the exact bug this schema fixes.
+  FOR v_line IN
+    SELECT product, brand_id, SUM(qty) AS qty
+    FROM daily_logs
+    WHERE customer_id = p_customer_id
+      AND date >= v_month_start
+      AND date < v_month_end
+      AND delivered = true
+    GROUP BY product, brand_id
+    ORDER BY product, brand_id
+  LOOP
+    v_rate := NULL;
+    v_brand_name := NULL;
 
-  -- Fetch rate strictly: must be Active, ordered by newest, limit 1
-  SELECT rate_per_liter INTO v_rate
-  FROM milk_brands
-  WHERE default_milk_type = v_product AND status = 'Active'
-  ORDER BY created_at DESC LIMIT 1;
+    IF v_line.brand_id IS NOT NULL THEN
+      SELECT brand_name INTO v_brand_name
+        FROM milk_brands WHERE id = v_line.brand_id;
+      SELECT rate_per_liter INTO v_rate
+        FROM brand_rates
+        WHERE brand_id = v_line.brand_id AND milk_type = v_line.product;
+    END IF;
 
-  -- FAIL LOUDLY if no rate is found (prevents silent ₹0 bills)
-  IF v_rate IS NULL THEN
-        RAISE EXCEPTION 'No active rate found for milk type %', v_product;
+    IF v_rate IS NULL AND v_line.brand_id IS NULL THEN
+      SELECT rate_per_liter, brand_name INTO v_rate, v_brand_name
+        FROM milk_brands
+        WHERE default_milk_type = v_line.product AND status = 'Active'
+        ORDER BY created_at DESC
+        LIMIT 1;
+    END IF;
+
+    IF v_rate IS NULL THEN
+      v_missing := v_missing
+        || (CASE WHEN v_missing = '' THEN '' ELSE ', ' END)
+        || v_line.product
+        || COALESCE(' (brand: ' || v_brand_name || ')', '');
+    ELSE
+      v_amount := v_amount + (v_line.qty * v_rate);
+    END IF;
+  END LOOP;
+
+  -- FAIL LOUDLY if any delivered (product, brand) has no rate (prevents
+  -- silent ₹0 / wrong-rate bills). Zero delivered logs => zero-amount bill,
+  -- no rate needed.
+  IF v_missing <> '' THEN
+    RAISE EXCEPTION 'No active rate found for milk type(s): %', v_missing;
   END IF;
-
-  -- Sargable month filter: half-open range [month_start, month_end).
-  SELECT COALESCE(SUM(qty), 0) INTO v_total_qty FROM daily_logs
-  WHERE customer_id = p_customer_id
-    AND date >= v_month_start
-    AND date < v_month_end
-    AND delivered = true;
-
-  v_amount := v_total_qty * v_rate;
 
   SELECT * INTO v_existing_bill FROM bills WHERE customer_id = p_customer_id AND month = p_month FOR UPDATE;
 
@@ -346,9 +371,6 @@ BEGIN
     IF v_existing_bill.locked = true THEN
       RAISE EXCEPTION 'Cannot regenerate a locked bill.';
     END IF;
-    -- Recompute status together with amount (AGENTS §14 — bill and its
-    -- state must move together). Previously a regenerated Paid bill kept
-    -- status='Paid' with amount > amount_paid, hiding the pending balance.
     UPDATE bills SET
         amount = v_amount,
         status = CASE
@@ -387,7 +409,7 @@ $$;
 ALTER FUNCTION "public"."is_operator"() OWNER TO "postgres";
 
 
-CREATE OR REPLACE FUNCTION "public"."record_ad_hoc_log_rpc"("p_customer_id" "uuid", "p_date" "date", "p_qty" numeric, "p_product" "text", "p_reason" "text") RETURNS "jsonb"
+CREATE OR REPLACE FUNCTION "public"."record_ad_hoc_log_rpc"("p_customer_id" "uuid", "p_date" "date", "p_qty" numeric, "p_product" "text", "p_brand_id" "uuid", "p_reason" "text") RETURNS "jsonb"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'public'
     AS $$
@@ -396,6 +418,8 @@ DECLARE
   v_note text := COALESCE(p_reason, '');
   v_display_note text;
   v_qty numeric := COALESCE(p_qty, 0);
+  v_product text := COALESCE(NULLIF(p_product, ''), 'Full Cream');
+  v_brand_id uuid := p_brand_id;
 BEGIN
   IF p_customer_id IS NULL THEN
     RAISE EXCEPTION 'BAD_REQUEST: customer_id is required';
@@ -411,6 +435,13 @@ BEGIN
     RAISE EXCEPTION 'Unauthorized: only the operator may record ad-hoc logs';
   END IF;
 
+  -- Validate the brand when provided (fail loudly on an unknown brand_id).
+  IF v_brand_id IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM milk_brands WHERE id = v_brand_id
+  ) THEN
+    RAISE EXCEPTION 'BAD_REQUEST: unknown brand';
+  END IF;
+
   -- Human-readable note. Existing tests/UX expect "Extra: <reason>" or
   -- "Extra delivery" — keep that contract here so the UI shows identical text
   -- whether the log is created or accumulated.
@@ -419,16 +450,20 @@ BEGIN
     ELSE 'Extra: ' || v_note
   END;
 
-  -- Lock the existing row (if any). FOR UPDATE makes the row unavailable to
-  -- a concurrent record_ad_hoc_log_rpc call, so the accumulation is serial.
+  -- Lock the existing row for THIS (customer, date, product, brand). Rows
+  -- without a brand (NULL) only accumulate onto other NULL-brand rows —
+  -- IS NOT DISTINCT FROM treats NULLs as equal for this lookup.
   SELECT * INTO v_existing
     FROM daily_logs
-    WHERE customer_id = p_customer_id AND date = p_date
+    WHERE customer_id = p_customer_id AND date = p_date AND product = v_product
+      AND brand_id IS NOT DISTINCT FROM v_brand_id
     FOR UPDATE;
 
-  IF v_existing IS NOT NULL THEN
-    -- Atomic accumulation under row lock. Note appendage uses " | " separator
-    -- to match the previous client-side behavior exactly.
+  -- FOUND is TRUE iff the SELECT INTO assigned a row. Do NOT use
+  -- `v_existing IS NOT NULL` — row-wise IS NOT NULL is false when ANY field
+  -- is NULL (brand_id/note are nullable), which silently diverted every
+  -- brandless extra delivery onto a duplicate row.
+  IF FOUND THEN
     UPDATE daily_logs
       SET qty = COALESCE(v_existing.qty, 0) + v_qty,
           delivered = true,
@@ -447,19 +482,15 @@ BEGIN
     );
   END IF;
 
-  -- No existing row. INSERT; the unique (customer_id, date) constraint may
-  -- raise unique_violation on a concurrent insert — let that propagate so the
-  -- caller (the API wrapper) can signal a retry.
+  -- No existing row for this (product, brand). INSERT; the unique
+  -- (customer_id, date, brand_id, product) constraint may raise
+  -- unique_violation on a concurrent insert — let that propagate so the
+  -- caller can retry.
   BEGIN
-    INSERT INTO daily_logs (id, customer_id, date, product, qty, delivered, note)
-      VALUES (gen_random_uuid(), p_customer_id, p_date,
-              COALESCE(NULLIF(p_product, ''), 'Full Cream'),
-              v_qty, true, v_display_note)
+    INSERT INTO daily_logs (id, customer_id, date, product, brand_id, qty, delivered, note)
+      VALUES (gen_random_uuid(), p_customer_id, p_date, v_product, v_brand_id, v_qty, true, v_display_note)
       RETURNING id, qty INTO v_existing.id, v_existing.qty;
   EXCEPTION WHEN unique_violation THEN
-    -- A concurrent insert won. Surface a typed error so the client can
-    -- re-call this RPC — which will then take the UPDATE branch under the
-    -- row lock and accumulate the qty on the winner.
     RAISE EXCEPTION 'CONFLICT: ad-hoc log race, please retry';
   END;
 
@@ -472,7 +503,7 @@ END;
 $$;
 
 
-ALTER FUNCTION "public"."record_ad_hoc_log_rpc"("p_customer_id" "uuid", "p_date" "date", "p_qty" numeric, "p_product" "text", "p_reason" "text") OWNER TO "postgres";
+ALTER FUNCTION "public"."record_ad_hoc_log_rpc"("p_customer_id" "uuid", "p_date" "date", "p_qty" numeric, "p_product" "text", "p_brand_id" "uuid", "p_reason" "text") OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."record_payment_rpc"("p_bill_id" "uuid", "p_amount" numeric, "p_mode" "text", "p_date" "date", "p_note" "text", "p_idempotency_key" "uuid") RETURNS "jsonb"
@@ -592,6 +623,113 @@ $_$;
 ALTER FUNCTION "public"."rollover_month_rpc"("p_month" "text") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."save_brand_rpc"("p_brand" "jsonb", "p_rates" "jsonb") RETURNS "jsonb"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+DECLARE
+  v_brand_id uuid;
+  v_name text;
+  v_supplier text;
+  v_phone text;
+  v_status text;
+  v_rate jsonb;
+  v_type text;
+  v_rate_val numeric;
+  v_rate_count integer := 0;
+  v_first_type text;
+  v_first_rate numeric;
+BEGIN
+  IF NOT public.is_operator() THEN
+    RAISE EXCEPTION 'Unauthorized: only the operator may save brands';
+  END IF;
+
+  v_name := NULLIF(TRIM(COALESCE(p_brand->>'brand_name', '')), '');
+  IF v_name IS NULL THEN
+    RAISE EXCEPTION 'BAD_REQUEST: brand_name is required';
+  END IF;
+  IF length(v_name) > 120 THEN
+    RAISE EXCEPTION 'BAD_REQUEST: brand_name is too long';
+  END IF;
+
+  v_supplier := NULLIF(TRIM(COALESCE(p_brand->>'supplier_name', '')), '');
+  v_phone := NULLIF(TRIM(COALESCE(p_brand->>'supplier_phone', '')), '');
+
+  IF jsonb_typeof(p_rates) IS DISTINCT FROM 'array' THEN
+    RAISE EXCEPTION 'BAD_REQUEST: rates must be an array';
+  END IF;
+  IF jsonb_array_length(p_rates) = 0 THEN
+    RAISE EXCEPTION 'BAD_REQUEST: at least one milk type rate is required';
+  END IF;
+
+  IF p_brand->>'id' IS NOT NULL AND p_brand->>'id' <> '' THEN
+    -- Edit path: brand must exist; status is kept when not provided.
+    v_brand_id := (p_brand->>'id')::uuid;
+    IF NOT EXISTS (SELECT 1 FROM milk_brands WHERE id = v_brand_id) THEN
+      RAISE EXCEPTION 'Brand not found';
+    END IF;
+    v_status := COALESCE(
+      NULLIF(TRIM(COALESCE(p_brand->>'status', '')), ''),
+      (SELECT status FROM milk_brands WHERE id = v_brand_id),
+      'Active'
+    );
+    UPDATE milk_brands
+      SET brand_name = v_name,
+          supplier_name = v_supplier,
+          supplier_phone = v_phone,
+          status = v_status
+    WHERE id = v_brand_id;
+  ELSE
+    -- Insert path.
+    v_status := COALESCE(NULLIF(TRIM(COALESCE(p_brand->>'status', '')), ''), 'Active');
+    INSERT INTO milk_brands (id, brand_name, supplier_name, supplier_phone, status)
+      VALUES (gen_random_uuid(), v_name, v_supplier, v_phone, v_status)
+      RETURNING id INTO v_brand_id;
+  END IF;
+
+  -- Replace-all rate sync within the same transaction.
+  DELETE FROM brand_rates WHERE brand_id = v_brand_id;
+
+  FOR v_rate IN SELECT * FROM jsonb_array_elements(p_rates) LOOP
+    v_type := NULLIF(TRIM(COALESCE(v_rate->>'milk_type', '')), '');
+    v_rate_val := COALESCE(NULLIF(TRIM(COALESCE(v_rate->>'rate_per_liter', '')), ''), '0')::numeric;
+    IF v_type IS NULL THEN
+      RAISE EXCEPTION 'BAD_REQUEST: milk_type is required for every rate';
+    END IF;
+    IF v_rate_val < 0 THEN
+      RAISE EXCEPTION 'BAD_REQUEST: rate cannot be negative';
+    END IF;
+    IF EXISTS (
+      SELECT 1 FROM brand_rates WHERE brand_id = v_brand_id AND milk_type = v_type
+    ) THEN
+      RAISE EXCEPTION 'BAD_REQUEST: duplicate milk type: %', v_type;
+    END IF;
+
+    INSERT INTO brand_rates (brand_id, milk_type, rate_per_liter)
+      VALUES (v_brand_id, v_type, v_rate_val);
+
+    v_rate_count := v_rate_count + 1;
+    IF v_first_type IS NULL THEN
+      v_first_type := v_type;
+      v_first_rate := v_rate_val;
+    END IF;
+  END LOOP;
+
+  -- Keep the legacy milk_brands columns in sync with the first rate so the
+  -- import prefill and the legacy pricing fallback keep working.
+  UPDATE milk_brands
+    SET default_milk_type = v_first_type,
+        rate_per_liter = v_first_rate
+  WHERE id = v_brand_id;
+
+  RETURN jsonb_build_object('brandId', v_brand_id, 'rates', v_rate_count);
+END;
+$$;
+
+
+ALTER FUNCTION "public"."save_brand_rpc"("p_brand" "jsonb", "p_rates" "jsonb") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."update_updated_at_column"() RETURNS "trigger"
     LANGUAGE "plpgsql"
     SET "search_path" TO 'public'
@@ -652,6 +790,21 @@ ALTER TABLE ONLY "public"."bills" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "public"."bills" OWNER TO "postgres";
 
 
+CREATE TABLE IF NOT EXISTS "public"."brand_rates" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "brand_id" "uuid" NOT NULL,
+    "milk_type" "text" NOT NULL,
+    "rate_per_liter" numeric DEFAULT 0 NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    CONSTRAINT "chk_brand_rates_rate_nonneg" CHECK (("rate_per_liter" >= (0)::numeric))
+);
+
+ALTER TABLE ONLY "public"."brand_rates" FORCE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."brand_rates" OWNER TO "postgres";
+
+
 CREATE TABLE IF NOT EXISTS "public"."credit_notes" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "customer_id" "uuid",
@@ -697,12 +850,13 @@ CREATE TABLE IF NOT EXISTS "public"."daily_logs" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "customer_id" "uuid",
     "date" "date" NOT NULL,
-    "product" "text",
+    "product" "text" DEFAULT 'Full Cream'::"text" NOT NULL,
     "qty" numeric DEFAULT 0,
     "delivered" boolean DEFAULT false,
     "note" "text",
     "created_at" timestamp with time zone DEFAULT "now"(),
-    "updated_at" timestamp with time zone DEFAULT "now"()
+    "updated_at" timestamp with time zone DEFAULT "now"(),
+    "brand_id" "uuid"
 );
 
 ALTER TABLE ONLY "public"."daily_logs" FORCE ROW LEVEL SECURITY;
@@ -815,7 +969,8 @@ CREATE TABLE IF NOT EXISTS "public"."subscriptions" (
     "is_active" boolean DEFAULT true,
     "version" integer DEFAULT 1,
     "created_at" timestamp with time zone DEFAULT "now"(),
-    "updated_at" timestamp with time zone DEFAULT "now"()
+    "updated_at" timestamp with time zone DEFAULT "now"(),
+    "brand_id" "uuid"
 );
 
 ALTER TABLE ONLY "public"."subscriptions" FORCE ROW LEVEL SECURITY;
@@ -831,6 +986,16 @@ ALTER TABLE ONLY "public"."adjustments"
 
 ALTER TABLE ONLY "public"."bills"
     ADD CONSTRAINT "bills_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."brand_rates"
+    ADD CONSTRAINT "brand_rates_brand_type_unique" UNIQUE ("brand_id", "milk_type");
+
+
+
+ALTER TABLE ONLY "public"."brand_rates"
+    ADD CONSTRAINT "brand_rates_pkey" PRIMARY KEY ("id");
 
 
 
@@ -895,7 +1060,7 @@ ALTER TABLE ONLY "public"."subscriptions"
 
 
 ALTER TABLE ONLY "public"."daily_logs"
-    ADD CONSTRAINT "unique_customer_date" UNIQUE ("customer_id", "date");
+    ADD CONSTRAINT "unique_customer_date_brand_product" UNIQUE ("customer_id", "date", "brand_id", "product");
 
 
 
@@ -932,6 +1097,10 @@ CREATE INDEX "idx_credit_notes_customer_id" ON "public"."credit_notes" USING "bt
 
 
 
+CREATE INDEX "idx_daily_logs_brand_id" ON "public"."daily_logs" USING "btree" ("brand_id");
+
+
+
 CREATE INDEX "idx_daily_logs_customer_date" ON "public"."daily_logs" USING "btree" ("customer_id", "date");
 
 
@@ -960,7 +1129,19 @@ CREATE INDEX "idx_payments_customer_id" ON "public"."payments" USING "btree" ("c
 
 
 
+CREATE INDEX "idx_subscriptions_brand_id" ON "public"."subscriptions" USING "btree" ("brand_id");
+
+
+
 CREATE INDEX "idx_subscriptions_customer" ON "public"."subscriptions" USING "btree" ("customer_id");
+
+
+
+CREATE UNIQUE INDEX "uniq_daily_logs_cust_date_brand_product_nullsafe" ON "public"."daily_logs" USING "btree" ("customer_id", "date", COALESCE("brand_id", '00000000-0000-0000-0000-000000000000'::"uuid"), "product");
+
+
+
+CREATE UNIQUE INDEX "uniq_sub_customer_brand_type_active" ON "public"."subscriptions" USING "btree" ("customer_id", COALESCE("brand_id", '00000000-0000-0000-0000-000000000000'::"uuid"), "milk_type") WHERE "is_active";
 
 
 
@@ -1007,6 +1188,11 @@ ALTER TABLE ONLY "public"."bills"
 
 
 
+ALTER TABLE ONLY "public"."brand_rates"
+    ADD CONSTRAINT "brand_rates_brand_id_fkey" FOREIGN KEY ("brand_id") REFERENCES "public"."milk_brands"("id") ON DELETE CASCADE;
+
+
+
 ALTER TABLE ONLY "public"."credit_notes"
     ADD CONSTRAINT "credit_notes_applied_to_bill_id_fkey" FOREIGN KEY ("applied_to_bill_id") REFERENCES "public"."bills"("id");
 
@@ -1019,6 +1205,11 @@ ALTER TABLE ONLY "public"."credit_notes"
 
 ALTER TABLE ONLY "public"."credit_notes"
     ADD CONSTRAINT "credit_notes_customer_id_fkey" FOREIGN KEY ("customer_id") REFERENCES "public"."customers"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."daily_logs"
+    ADD CONSTRAINT "daily_logs_brand_id_fkey" FOREIGN KEY ("brand_id") REFERENCES "public"."milk_brands"("id") ON DELETE SET NULL;
 
 
 
@@ -1053,6 +1244,11 @@ ALTER TABLE ONLY "public"."payments"
 
 
 ALTER TABLE ONLY "public"."subscriptions"
+    ADD CONSTRAINT "subscriptions_brand_id_fkey" FOREIGN KEY ("brand_id") REFERENCES "public"."milk_brands"("id") ON DELETE SET NULL;
+
+
+
+ALTER TABLE ONLY "public"."subscriptions"
     ADD CONSTRAINT "subscriptions_customer_id_fkey" FOREIGN KEY ("customer_id") REFERENCES "public"."customers"("id") ON DELETE CASCADE;
 
 
@@ -1061,6 +1257,9 @@ ALTER TABLE "public"."adjustments" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "public"."bills" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."brand_rates" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "public"."credit_notes" ENABLE ROW LEVEL SECURITY;
@@ -1099,6 +1298,10 @@ CREATE POLICY "strict_auth_only_delete" ON "public"."adjustments" FOR DELETE USI
 
 
 CREATE POLICY "strict_auth_only_delete" ON "public"."bills" FOR DELETE USING ("public"."is_operator"());
+
+
+
+CREATE POLICY "strict_auth_only_delete" ON "public"."brand_rates" FOR DELETE USING ("public"."is_operator"());
 
 
 
@@ -1146,6 +1349,10 @@ CREATE POLICY "strict_auth_only_insert" ON "public"."bills" FOR INSERT WITH CHEC
 
 
 
+CREATE POLICY "strict_auth_only_insert" ON "public"."brand_rates" FOR INSERT WITH CHECK ("public"."is_operator"());
+
+
+
 CREATE POLICY "strict_auth_only_insert" ON "public"."credit_notes" FOR INSERT WITH CHECK ("public"."is_operator"());
 
 
@@ -1190,6 +1397,10 @@ CREATE POLICY "strict_auth_only_select" ON "public"."bills" FOR SELECT USING ("p
 
 
 
+CREATE POLICY "strict_auth_only_select" ON "public"."brand_rates" FOR SELECT USING ("public"."is_operator"());
+
+
+
 CREATE POLICY "strict_auth_only_select" ON "public"."credit_notes" FOR SELECT USING ("public"."is_operator"());
 
 
@@ -1231,6 +1442,10 @@ CREATE POLICY "strict_auth_only_update" ON "public"."adjustments" FOR UPDATE USI
 
 
 CREATE POLICY "strict_auth_only_update" ON "public"."bills" FOR UPDATE USING ("public"."is_operator"()) WITH CHECK ("public"."is_operator"());
+
+
+
+CREATE POLICY "strict_auth_only_update" ON "public"."brand_rates" FOR UPDATE USING ("public"."is_operator"()) WITH CHECK ("public"."is_operator"());
 
 
 
@@ -1316,9 +1531,9 @@ GRANT ALL ON FUNCTION "public"."is_operator"() TO "authenticated";
 
 
 
-REVOKE ALL ON FUNCTION "public"."record_ad_hoc_log_rpc"("p_customer_id" "uuid", "p_date" "date", "p_qty" numeric, "p_product" "text", "p_reason" "text") FROM PUBLIC;
-GRANT ALL ON FUNCTION "public"."record_ad_hoc_log_rpc"("p_customer_id" "uuid", "p_date" "date", "p_qty" numeric, "p_product" "text", "p_reason" "text") TO "authenticated";
-GRANT ALL ON FUNCTION "public"."record_ad_hoc_log_rpc"("p_customer_id" "uuid", "p_date" "date", "p_qty" numeric, "p_product" "text", "p_reason" "text") TO "service_role";
+REVOKE ALL ON FUNCTION "public"."record_ad_hoc_log_rpc"("p_customer_id" "uuid", "p_date" "date", "p_qty" numeric, "p_product" "text", "p_brand_id" "uuid", "p_reason" "text") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."record_ad_hoc_log_rpc"("p_customer_id" "uuid", "p_date" "date", "p_qty" numeric, "p_product" "text", "p_brand_id" "uuid", "p_reason" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."record_ad_hoc_log_rpc"("p_customer_id" "uuid", "p_date" "date", "p_qty" numeric, "p_product" "text", "p_brand_id" "uuid", "p_reason" "text") TO "service_role";
 
 
 
@@ -1334,6 +1549,12 @@ GRANT ALL ON FUNCTION "public"."rollover_month_rpc"("p_month" "text") TO "servic
 
 
 
+REVOKE ALL ON FUNCTION "public"."save_brand_rpc"("p_brand" "jsonb", "p_rates" "jsonb") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."save_brand_rpc"("p_brand" "jsonb", "p_rates" "jsonb") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."save_brand_rpc"("p_brand" "jsonb", "p_rates" "jsonb") TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."update_updated_at_column"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."update_updated_at_column"() TO "service_role";
 
@@ -1346,6 +1567,11 @@ GRANT ALL ON TABLE "public"."adjustments" TO "service_role";
 
 GRANT ALL ON TABLE "public"."bills" TO "authenticated";
 GRANT ALL ON TABLE "public"."bills" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."brand_rates" TO "authenticated";
+GRANT ALL ON TABLE "public"."brand_rates" TO "service_role";
 
 
 
