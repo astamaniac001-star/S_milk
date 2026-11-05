@@ -104,14 +104,15 @@ export async function runDiagnostics(/* payload */) {
     probe("Milk types", async () => {
       // The 7 milk types are a domain constant (constants.js#MILK_TYPES). The
       // *live* half: confirm every distinct milk type actually referenced in
-      // the data is one we know how to price (a subset of MILK_TYPES). We
-      // fetch the actual `product` column (no head:true) so we can dedupe.
+      // the data is one we know how to price (a subset of MILK_TYPES).
+      // Subscription-centric model: milk types live on `subscriptions`
+      // (customers carry identity only), so the probe reads that column.
       const { data, error } = await supabase
-        .from("customers")
-        .select("product");
+        .from("subscriptions")
+        .select("milk_type");
       must(error);
       const inUse = new Set(
-        (data || []).map((r) => r.product).filter(Boolean),
+        (data || []).map((r) => r.milk_type).filter(Boolean),
       );
       const unknown = [...inUse].filter((t) => !MILK_TYPES.includes(t));
       return {

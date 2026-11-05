@@ -11,15 +11,16 @@
 import { toArray, toNum, getToday, generateKey } from "./shared.js";
 
 export function mapCustomerFromApi(c) {
+  // Subscription-centric model: customers are identity-only (name/phone/
+  // address/status). The legacy `product` / `daily_qty` / `delivery_days`
+  // columns are deprecated in the DB and intentionally NOT mapped — milk
+  // type, quantity, and schedule live on `subscriptions` now.
   return {
     id: c.id,
     name: c.name,
     address: c.delivery_address,
     phone: c.phone,
     status: c.status,
-    product: c.product,
-    qty: toNum(c.daily_qty),
-    deliveryDays: toArray(c.delivery_days),
     balance: toNum(c.balance || 0),
     version: toNum(c.version ?? 1),
   };
@@ -67,6 +68,10 @@ export function mapLogFromApi(l) {
     delivered: !!l.delivered,
     qty: toNum(l.qty),
     product: l.product,
+    // Brand-aware identity: the log's brand resolves pricing and the
+    // Delivery page's brand breakdown directly; null for legacy/unbranded
+    // rows (UI falls back to matchBrandByMilkType).
+    brandId: l.brand_id ?? null,
     note: l.note,
   };
 }
@@ -95,6 +100,15 @@ export function mapPauseFromApi(p) {
 }
 
 export function mapBrandFromApi(b) {
+  // `rates` comes from the FK-embedded `brand_rates(milk_type, rate_per_liter)`
+  // rows (getBrands uses an embedded select). Plain-select callers that skip
+  // the embed get `rates: []` — brand×type pricing then falls back to the
+  // legacy defaultMilkType/rate columns. Kept in sync by save_brand_rpc.
+  const rates = Array.isArray(b.brand_rates)
+    ? b.brand_rates
+        .map((r) => ({ milkType: r.milk_type, rate: toNum(r.rate_per_liter) }))
+        .sort((x, y) => String(x.milkType).localeCompare(String(y.milkType)))
+    : [];
   return {
     id: b.id,
     name: b.brand_name,
@@ -103,6 +117,7 @@ export function mapBrandFromApi(b) {
     phone: b.supplier_phone,
     defaultMilkType: b.default_milk_type,
     rate: toNum(b.rate_per_liter),
+    rates,
   };
 }
 
@@ -110,6 +125,7 @@ export function mapSubscriptionFromApi(s) {
   return {
     id: s.id,
     customerId: s.customer_id,
+    brandId: s.brand_id ?? null,
     milkType: s.milk_type,
     qty: toNum(s.qty),
     deliveryDays: toArray(s.delivery_days),
@@ -138,29 +154,60 @@ export function mapCreditNoteFromApi(c) {
 // ── UI → DB ──────────────────────────────────────────────────────────────
 
 export function mapCustomerToApi(form) {
-  // Default `product` / `dailyQty` to the same canonical constants the modal
-  // uses for its visible default (`CustomerModal.jsx:50,63` → "Full Cream"
-  // and 1). Without this, an operator who opens Add Customer and clicks
-  // Save without touching the Product/Qty dropdowns leaves them as
-  // `undefined` in form state — the mapper passes `undefined` through, and
-  // `customers.product` gets written NULL. The downstream `generate_month_
-  // bill_rpc` then errors with "No active rate found for milk type <NULL>"
-  // because it derives milk type from `customers.product`, not from the
-  // `daily_logs.product` rows the daily-log generator writes. Defaulting
-  // here is the single-source-of-truth fix per rule §4 — the mapper owns
-  // the UI↔DB shape contract, so the default belongs here, not scattered
-  // across every caller of `openModal`.
+  // Subscription-centric model: only identity fields are written. The legacy
+  // customers.product/daily_qty/delivery_days columns are deprecated — DB
+  // defaults fill them harmlessly and nothing reads them anymore. Milk type,
+  // quantity, and schedule are owned by `subscriptions` (mapSubscriptionToApi).
   return {
     customerId: form.id || undefined,
     expectedVersion: form.version,
     name: form.name,
     deliveryAddress: form.address,
     phone: form.phone,
-    product: form.product || "Full Cream",
-    dailyQty: form.qty ?? 1,
-    deliveryDays: form.deliveryDays,
     status: form.status,
   };
+}
+
+export function mapSubscriptionToApi(form) {
+  const out = {
+    customerId: form.customerId,
+    // Brand is required by the UI on add/edit; null only for legacy rows
+    // that predate the brand dimension (pricing falls back to the legacy
+    // milk-type heuristic for those).
+    brandId: form.brandId || null,
+    milkType: form.milkType || "Full Cream",
+    // The modal renders qty 1 when the form has no qty yet — persist that
+    // visible default instead of writing 0. An EXPLICIT 0 is preserved so
+    // the API's "Quantity must be greater than 0" guard still fires.
+    qty: form.qty === undefined ? 1 : toNum(form.qty),
+    deliveryDays: form.deliveryDays,
+    isActive: form.isActive !== undefined ? form.isActive : true,
+  };
+  if (form.id) {
+    out.id = form.id;
+    out.expectedVersion = form.version;
+  }
+  return out;
+}
+
+export function mapBrandToApi(form) {
+  // save_brand_rpc payload: { pBrand: {...}, pRates: [...] }. The RPC reads
+  // jsonb fields with ->>'brand_name' style keys, so this payload stays in
+  // DB snake_case even though it never passes through a table mapper (§15).
+  const brand = {
+    brand_name: form.name,
+    supplier_name: form.supplier || null,
+    supplier_phone: form.phone || null,
+    status: form.status || "Active",
+  };
+  if (form.id) brand.id = form.id;
+  const rates = (form.rates || [])
+    .filter((r) => r && (r.milkType || "").trim())
+    .map((r) => ({
+      milk_type: String(r.milkType).trim(),
+      rate_per_liter: toNum(r.rate),
+    }));
+  return { brand, rates };
 }
 
 export function mapImportToApi(form) {
@@ -184,12 +231,12 @@ export function mapImportToApi(form) {
 
 export function mapPaymentToApi(billId, amount, opts = {}) {
   // Idempotency contract (AGENTS §14): a retryable write must reuse the SAME
-  // key for the same user attempt so the DB uniqueness guard can dedup a
-  // network-blip retry. The caller owns the key lifecycle (mint on a fresh
+  // key for the same user attempt so the DB uniqueness guard can deduplicate
+  // a network-blip retry. The caller owns the key lifecycle (mint on a fresh
   // user submit, reuse on retry of that submit, mint fresh on the next
   // distinct submit). MINTING HERE WAS A BUG — a fresh UUID per call
   // defeated the `record_payment_rpc` uniqueness guard, letting a manual
-  // retry after a successful-but-unacked RPC double-charge the customer.
+  // retry after a successful-but-unacknowledged RPC double-charge the customer.
   return {
     billId,
     amount: Number(amount),

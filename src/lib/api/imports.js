@@ -123,31 +123,41 @@ export async function deleteMilkImport(payload) {
 }
 
 export async function getBrands(/* payload */) {
+  // FK-embed brand_rates so each brand carries its per-milk-type selling
+  // rates (mapBrandFromApi maps the embed into brand.rates).
   const { data, error } = await supabase
     .from("milk_brands")
-    .select("*")
+    .select("*, brand_rates(milk_type, rate_per_liter)")
     .order("brand_name");
   must(error);
   return { brands: data || [] };
 }
 
-export async function addMilkBrand(payload) {
-  const { data, error } = await supabase
-    .from("milk_brands")
-    .insert([
-      {
-        brand_name: payload.brandName,
-        supplier_name: payload.supplierName,
-        supplier_phone: payload.supplierPhone,
-        default_milk_type: payload.defaultMilkType,
-        rate_per_liter: toNum(payload.ratePerLiter),
-        status: "Active",
-      },
-    ])
-    .select()
-    .single();
-  must(error);
-  return { brandId: data.id };
+// Atomic brand + rates save (insert or edit) — rule §14: brand and its rate
+// rows must land together or not at all, otherwise billing hits a half-
+// configured brand. Delegated to save_brand_rpc (SECURITY DEFINER,
+// operator-guarded). Returns { brandId, rates }.
+export async function saveBrand(payload) {
+  const { data: rpcResult, error: rpcError } = await supabase.rpc(
+    "save_brand_rpc",
+    { p_brand: payload.brand, p_rates: payload.rates },
+  );
+  if (rpcError) {
+    if (rpcError.message.includes("Unauthorized")) {
+      throw new AuthzError(rpcError.message);
+    }
+    if (rpcError.message.includes("BAD_REQUEST")) {
+      throw new Error(rpcError.message.replace(/^BAD_REQUEST:\s*/, ""));
+    }
+    if (rpcError.message.includes("duplicate key")) {
+      throw new Error("This brand already has a rate for this milk type");
+    }
+    throw rpcError;
+  }
+  return {
+    brandId: rpcResult?.brandId,
+    rates: toNum(rpcResult?.rates) || 0,
+  };
 }
 
 export async function getDailyInventory(payload) {

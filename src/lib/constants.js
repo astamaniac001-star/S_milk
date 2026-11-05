@@ -38,7 +38,9 @@ export const MILK_TYPES = [
   "Small",
   "A2",
 ];
-export const PRODUCTS = MILK_TYPES; // alias — same domain enum, kept for callers that import PRODUCTS
+// NOTE: the old `PRODUCTS` alias was removed — the customer form no longer
+// carries a product field (milk type lives on subscriptions, which read
+// MILK_TYPES directly).
 export const PAY_MODES = [
   "Cash",
   "UPI",
@@ -48,6 +50,18 @@ export const PAY_MODES = [
   "Bank Transfer",
   "Cheque",
 ];
+
+// Defaults for a NEW subscription — the same values the SubscriptionModal
+// displays when its form is empty (1L Full Cream, Mon–Fri, active). Both
+// entry points (Subscriptions tab "+ Add", Customers card "+ Sub") pass
+// them as modal data so the visible defaults are the ones persisted.
+export const NEW_SUB_DEFAULTS = {
+  brandId: "",
+  milkType: "Full Cream",
+  qty: 1,
+  deliveryDays: [1, 2, 3, 4, 5],
+  isActive: true,
+};
 
 // Email used for Supabase Auth operator sign-in (rule §9 of AGENTS.md). The
 // six-digit operator PIN is the Supabase Auth password of this confirmed

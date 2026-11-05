@@ -1,7 +1,7 @@
 // lib/api/customers.js — getCustomers, addCustomer, updateCustomer,
 // deactivateCustomer. (Subscription-domain actions live in subscriptions.js.)
 
-import { supabase, toNum, updateWithVersion, must } from "./shared.js";
+import { supabase, updateWithVersion, must } from "./shared.js";
 import { mapCustomerFromApi } from "./mappers.js";
 
 export async function getCustomers(/* payload */) {
@@ -21,11 +21,6 @@ export async function addCustomer(payload) {
         name: payload.name,
         phone: payload.phone,
         delivery_address: payload.deliveryAddress,
-        product: payload.product,
-        daily_qty: toNum(payload.dailyQty),
-        delivery_days: JSON.stringify(
-          payload.deliveryDays || [0, 1, 2, 3, 4, 5, 6],
-        ),
       },
     ])
     .select()
@@ -35,6 +30,9 @@ export async function addCustomer(payload) {
 }
 
 export async function updateCustomer(payload) {
+  // Subscription-centric model: only identity fields are written. The legacy
+  // product/daily_qty/delivery_days columns are deprecated (DB defaults fill
+  // them); status remains writable here (activate/deactivate lifecycle).
   const data = await updateWithVersion(
     "customers",
     payload.customerId,
@@ -43,9 +41,6 @@ export async function updateCustomer(payload) {
       name: payload.name,
       delivery_address: payload.deliveryAddress,
       phone: payload.phone,
-      product: payload.product,
-      daily_qty: toNum(payload.dailyQty),
-      delivery_days: JSON.stringify(payload.deliveryDays),
       status: payload.status,
     },
   );

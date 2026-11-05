@@ -41,18 +41,44 @@ export async function getSubscriptions(/* payload */) {
 }
 
 export async function saveSubscription(payload) {
+  // Validate at the API boundary — the DB has no CHECK on qty and a missing
+  // customer_id would create an orphan subscription (column is nullable).
+  if (!payload.id && !payload.customerId) {
+    throw new Error("customerId is required");
+  }
+  const qty = toNum(payload.qty);
+  if (!(qty > 0)) throw new Error("Quantity must be greater than 0");
+
+  // Friendly surface for the DB's partial unique index
+  // uniq_sub_customer_brand_type_active (one active sub per customer +
+  // brand + milk type; a different brand of the same type IS allowed).
+  const friendlyUnique = (err) => {
+    if (err?.code === "23505") {
+      throw new Error(
+        "This customer already has an active subscription for this brand and milk type",
+      );
+    }
+    throw err;
+  };
+
   if (payload.id) {
-    const data = await updateWithVersion(
-      "subscriptions",
-      payload.id,
-      payload.expectedVersion ?? payload.version,
-      {
-        milk_type: payload.milkType,
-        qty: toNum(payload.qty),
-        delivery_days: JSON.stringify(payload.deliveryDays),
-        is_active: payload.isActive,
-      },
-    );
+    let data;
+    try {
+      data = await updateWithVersion(
+        "subscriptions",
+        payload.id,
+        payload.expectedVersion ?? payload.version,
+        {
+          brand_id: payload.brandId || null,
+          milk_type: payload.milkType,
+          qty,
+          delivery_days: JSON.stringify(payload.deliveryDays),
+          is_active: payload.isActive,
+        },
+      );
+    } catch (err) {
+      friendlyUnique(err);
+    }
     return { subscriptionId: data.id, newVersion: data.version };
   }
   const { data, error } = await supabase
@@ -60,15 +86,16 @@ export async function saveSubscription(payload) {
     .insert([
       {
         customer_id: payload.customerId,
-        milk_type: payload.milkType,
-        qty: toNum(payload.qty),
+        brand_id: payload.brandId || null,
+        milk_type: payload.milkType || "Full Cream",
+        qty,
         delivery_days: JSON.stringify(payload.deliveryDays),
         is_active: payload.isActive !== undefined ? payload.isActive : true,
       },
     ])
     .select()
     .single();
-  must(error);
+  if (error) friendlyUnique(error);
   return { subscriptionId: data.id };
 }
 

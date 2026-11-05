@@ -14,11 +14,13 @@ import {
   mapAdjustmentFromApi,
   mapPauseFromApi,
   mapBrandFromApi,
+  mapBrandToApi,
   mapSubscriptionFromApi,
   mapCreditNoteFromApi,
   mapCustomerToApi,
   mapImportToApi,
   mapPaymentToApi,
+  mapSubscriptionToApi,
 } from "./api/mappers.js";
 import { isAuthError } from "./api/shared.js";
 
@@ -65,7 +67,7 @@ import {
   confirmMilkImport,
   deleteMilkImport,
   getBrands,
-  addMilkBrand,
+  saveBrand,
   getDailyInventory,
 } from "./api/imports.js";
 import {
@@ -86,11 +88,13 @@ export {
   mapAdjustmentFromApi,
   mapPauseFromApi,
   mapBrandFromApi,
+  mapBrandToApi,
   mapSubscriptionFromApi,
   mapCreditNoteFromApi,
   mapCustomerToApi,
   mapImportToApi,
   mapPaymentToApi,
+  mapSubscriptionToApi,
 };
 
 // Per-action dispatch table. Keeping this as a plain object (instead of a
@@ -105,7 +109,7 @@ const DISPATCH = {
   deactivateCustomer,
 
   // Subscriptions / rollover
-  // NOTE: rolloverMonth is registered but intentionally unwired — future feature
+  // NOTE: rolloverMonth is registered but intentionally not wired up — future feature
   rolloverMonth,
   getSubscriptions,
   saveSubscription,
@@ -142,8 +146,10 @@ const DISPATCH = {
   confirmMilkImport,
   deleteMilkImport,
   getBrands,
-  addMilkBrand,
-  // NOTE: getDailyInventory is registered but intentionally unwired — future feature
+  // saveBrand: atomic brand + per-type rates via save_brand_rpc (replaces
+  // the old addMilkBrand plain insert).
+  saveBrand,
+  // NOTE: getDailyInventory is registered but intentionally not wired up — future feature
   getDailyInventory,
 
   // Admin

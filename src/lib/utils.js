@@ -1,6 +1,8 @@
 // ── src/lib/utils.js ─────────────────────────────────────────────────────────
 // Pure helpers — no React, no DOM. Safe to import anywhere.
 
+import { DAYS } from "./constants.js";
+
 export const toNum = (val) => {
   if (val === null || val === undefined || val === "") return 0;
   const n = Number(val);
@@ -48,12 +50,33 @@ export const getDaysAgoIST = (days) => {
 
 export const cleanPhone = (p) => String(p || "").replace(/\D/g, "");
 
+// Human-readable delivery-day labels for a subscription's delivery_days
+// array ([0..6] = Sun..Sat). Shared by the Customers and Subscriptions pages
+// so both render the same schedule string.
+export const dayLabels = (deliveryDays) =>
+  (Array.isArray(deliveryDays) ? deliveryDays : [])
+    .slice()
+    .sort((a, b) => a - b)
+    .map((d) => DAYS[d] || d)
+    .join(", ") || "No days set";
+
 export const matchBrandByMilkType = (log, brands) => {
   const milkType = log.product || "Milk";
   const matchedBrand = (brands || []).find(
     (b) => b.defaultMilkType && b.defaultMilkType === milkType,
   );
   return matchedBrand?.name || "Unknown brand";
+};
+
+// Brand name for a log/subscription carrying brandId — resolves directly by
+// id (the brand-aware identity) and falls back to the milk-type heuristic
+// for legacy/unbranded rows. Shared by Delivery/Subscriptions/Customers.
+export const brandLabel = (record, brands) => {
+  if (record?.brandId) {
+    return (brands || []).find((b) => b.id === record.brandId)?.name || "Unknown brand";
+  }
+  if (record?.product) return matchBrandByMilkType(record, brands);
+  return "Unknown brand";
 };
 
 export const generateKey = () => {
