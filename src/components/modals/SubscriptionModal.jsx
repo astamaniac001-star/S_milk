@@ -1,4 +1,4 @@
-import { Field, Modal, Btn, IS, ActiveCustomerOptions } from "../ui.jsx";
+import { Field, Modal, Btn, IS, ActiveCustomerOptions, ActiveBrandOptions } from "../ui.jsx";
 import { useBusy } from "../../hooks/useBusy.js";
 import { DAYS_OF_WEEK } from "./shared";
 
@@ -10,6 +10,7 @@ export function SubscriptionModal({
   onSave,
   onClose,
   customers,
+  brands = [],
   milkTypes = [],
 }) {
   const [busy, save] = useBusy(onSave);
@@ -31,11 +32,12 @@ export function SubscriptionModal({
   const renderDayButton = (d) => {
     const isSelected = currentDays.includes(d.value);
     return (
-      <button
-        key={d.value}
-        type="button"
-        onClick={() => toggleDay(d.value)}
-        style={{
+            <button
+              key={d.value}
+              type="button"
+              onClick={() => toggleDay(d.value)}
+              aria-pressed={isSelected}
+              style={{
           padding: "6px 10px",
           borderRadius: 6,
           border: isSelected ? "1px solid #1e40af" : "1px solid #d1d5db",
@@ -61,9 +63,24 @@ export function SubscriptionModal({
           style={IS()}
           value={form?.customerId ?? data?.customerId ?? ""}
           onChange={onChange("customerId")}
+          // A subscription's customer cannot be reassigned — the update path
+          // only writes brand_id/milk_type/qty/delivery_days/is_active. Keep
+          // the field read-only in edit mode so the operator is not misled.
+          disabled={!!data?.id}
         >
           <option value="">Select Customer</option>
           <ActiveCustomerOptions customers={customers} />
+        </select>
+      </Field>
+      <Field label="Brand *">
+        <select
+          style={IS()}
+          value={form?.brandId ?? data?.brandId ?? ""}
+          onChange={onChange("brandId")}
+        >
+          <option value="">Select Brand</option>
+          {/* value = brand id — subscriptions persist the brand FK */}
+          <ActiveBrandOptions brands={brands} valueKey="id" />
         </select>
       </Field>
       <Field label="Milk Type *">

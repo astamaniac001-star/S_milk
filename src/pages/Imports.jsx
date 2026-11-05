@@ -1,6 +1,6 @@
 // ── Imports.jsx ───────────────────────────────────────────────────────────────
 import { useRef, useState, useMemo } from "react";
-import { fmt, getToday, toNum, matchBrandByMilkType } from "../lib/utils.js";
+import { fmt, getToday, toNum, brandLabel } from "../lib/utils.js";
 import { Card, Btn, IS, Section, StatGrid, Empty, Badge, Modal } from "../components/ui.jsx";
 
 const STATUS_FILTERS = ["Draft", "Confirmed", "Reconciled"];
@@ -42,7 +42,9 @@ function buildImportDeliveryBreakdown(imports, logs, brands, logDate, today) {
 
   deliveredLogs.forEach((l) => {
     const milkType = l.product || "Milk";
-    const brandName = matchBrandByMilkType(l, brands);
+    // Brand-aware: log.brandId resolves directly; legacy rows fall back to
+    // the milk-type heuristic.
+    const brandName = brandLabel(l, brands);
     const r = ensure(brandName, milkType);
     r.delivered += toNum(l.qty);
   });
@@ -108,7 +110,7 @@ function DeliveryBreakdownModal({ rows, onClose }) {
   );
 }
 
-function BrandImportRow({ brand, today, onSaveImport }) {
+function BrandImportRow({ brand, today, onSaveImport, onOpenModal }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({
@@ -175,6 +177,9 @@ function BrandImportRow({ brand, today, onSaveImport }) {
           </div>
         </div>
         <Badge label={brand.status} />
+        <Btn small variant="secondary" onClick={() => onOpenModal?.("editBrand", brand)}>
+          Edit
+        </Btn>
         <Btn small variant="secondary" onClick={() => setOpen((o) => !o)}>
           {open ? "Close" : "Add"}
         </Btn>
@@ -390,7 +395,13 @@ export default function Imports({
         <Empty msg="No brands yet. Tap + Brand to add one." />
       ) : (
         (brands || []).map((b) => (
-          <BrandImportRow key={b.id} brand={b} today={today} onSaveImport={onSaveImport} />
+          <BrandImportRow
+            key={b.id}
+            brand={b}
+            today={today}
+            onSaveImport={onSaveImport}
+            onOpenModal={onOpenModal}
+          />
         ))
       )}
 

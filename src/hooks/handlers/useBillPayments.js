@@ -24,12 +24,12 @@ export function useBillPayments(state) {
 
   // Per-attempt idempotency key (AGENTS §14). Scoped to a (billId, amount)
   // attempt: reused on a retry of the SAME submit (network blip recovery, so
-  // the `payments_idempotency_key` UNIQUE guard dedupes a successful-but-
-  // unacked RPC instead of double-charging), and re-minted when the operator
-  // switches to a different bill or amount. Without the scoping, a key left
-  // over from a failed attempt on bill A would be replayed for bill B — the
-  // RPC would return idempotent success WITHOUT applying any payment, while
-  // the UI showed "₹X recorded".
+  // the `payments_idempotency_key` UNIQUE guard deduplicates a successful-
+  // but-unacknowledged RPC instead of double-charging), and re-minted when the
+  // operator switches to a different bill or amount. Without the scoping, a key
+  // left over from a failed attempt on bill A would be replayed for bill B —
+  // the RPC would return idempotent success WITHOUT applying any payment,
+  // while the UI showed "₹X recorded".
   const paymentIdemRef = useRef(null); // { key, billId, amount }
   // Ref-only helpers — stable identities via useCallback so recordPayment's
   // dependency array stays honest.

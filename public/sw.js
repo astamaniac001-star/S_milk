@@ -15,7 +15,18 @@
 // the SW and precache the new `/apply-dark-mode.js` shell asset (added to
 // eliminate the dark-mode FOUC). Without the bump, returning operators on
 // v21 would serve the old shell and miss the dark-mode early-strip script.
-const CACHE = "milk-v22"; // Bumped from v21 to force cache eviction on client devices
+//
+// Bumped v22→v23 for the subscription-centric release (Subscriptions nav
+// tab + customer/subscription UI). The shell handler is strictly
+// cache-first: the cached `/index.html` still points at the OLD
+// content-hashed bundles, so without a CACHE bump returning operators would
+// keep running the previous build indefinitely.
+// Bumped v23→v24 for the brand-aware release (brand rates editor, brand on
+// subscriptions, brand-aware daily logs and billing). Same reason as every
+// previous bump: the shell handler is strictly cache-first, so the cached
+// `/index.html` still points at the OLD content-hashed bundles and returning
+// operators would keep running the previous build until the cache is evicted.
+const CACHE = "milk-v24"; // Bumped from v23 to force cache eviction on client devices
 const SHELL = [
   "/",
   "/index.html",

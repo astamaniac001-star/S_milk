@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import {
   Home,
   Users,
+  Repeat,
   Truck,
   Milk,
   Receipt,
@@ -15,6 +16,7 @@ import {
 const TABS = [
   { id: "dashboard", icon: Home, label: "Home" },
   { id: "customers", icon: Users, label: "Customers" },
+  { id: "subscriptions", icon: Repeat, label: "Subs" },
   { id: "delivery", icon: Truck, label: "Delivery" },
   { id: "imports", icon: Milk, label: "Imports" },
   { id: "billing", icon: Receipt, label: "Billing" },
@@ -24,6 +26,7 @@ const TABS = [
 const TAB_TITLES = {
   dashboard: "Dashboard",
   customers: "Customers",
+  subscriptions: "Subscriptions",
   delivery: "Daily Delivery",
   imports: "Milk Imports",
   billing: "Billing",

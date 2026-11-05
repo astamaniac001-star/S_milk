@@ -1,5 +1,10 @@
 import { useMemo, useCallback } from "react";
-import { mapPauseFromApi, mapBrandFromApi, callApi } from "../../lib/api.js";
+import {
+  mapPauseFromApi,
+  mapBrandFromApi,
+  mapBrandToApi,
+  callApi,
+} from "../../lib/api.js";
 import { getToday } from "../../lib/utils.js";
 import { useHelpers } from "./shared.js";
 import { useBusy } from "../useBusy.js";
@@ -76,23 +81,36 @@ export function useAdminHandlers(state) {
         showToast("Brand name is required", "error");
         return;
       }
+      // Rates: BrandModal sends a rates array ({milkType, rate} rows). A
+      // legacy single {defaultType, rate} form shape is mapped into one row
+      // so both contracts land on save_brand_rpc's replace-all semantics.
+      const rates =
+        Array.isArray(f.rates) && f.rates.length > 0
+          ? f.rates
+          : [
+              {
+                milkType: f.defaultType || "Full Cream",
+                rate: f.rate !== undefined && f.rate !== "" ? Number(f.rate) : 0,
+              },
+            ];
       try {
-        await callApi("addMilkBrand", {
-          brandName: brandName.trim(),
-          supplierName: f.supplier,
-          supplierPhone: f.phone,
-          // FIX (audit 2026-07-24, rule §16): canonical default "Full Cream" —
-          // matches the modal's UI default and the customer default column.
-          defaultMilkType: f.defaultType || "Full Cream",
-          ratePerLiter:
-            f.rate !== undefined && f.rate !== "" ? Number(f.rate) : undefined,
-        });
-        showToast("Brand added", "success");
+        await callApi(
+          "saveBrand",
+          mapBrandToApi({
+            id: f.id ?? modal.data?.id,
+            name: String(brandName).trim(),
+            supplier: f.supplier ?? modal.data?.supplier,
+            phone: f.phone ?? modal.data?.phone,
+            status: f.status ?? modal.data?.status,
+            rates,
+          }),
+        );
+        showToast("Brand saved", "success");
         if (closeModal) closeModal();
         const res = await callApi("getBrands", {});
         setBrands((res.brands || []).map(mapBrandFromApi));
       } catch (err) {
-        showToast(err.message, "error");
+        showToast(err.message || "Failed to save brand", "error");
       }
     },
     [setBrands, showToast, closeModal, form, modal],

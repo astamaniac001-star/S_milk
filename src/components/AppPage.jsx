@@ -1,5 +1,6 @@
 import Dashboard from "../pages/Dashboard.jsx";
 import Customers from "../pages/Customers.jsx";
+import Subscriptions from "../pages/Subscriptions.jsx";
 import Delivery from "../pages/Delivery.jsx";
 import Imports from "../pages/Imports.jsx";
 import Billing from "../pages/Billing.jsx";
@@ -33,6 +34,8 @@ function renderCustomers(state, handlers, _derived) {
       filtered={state.filteredC || []}
       total={(state.filteredC || []).length}
       bills={state.bills || []}
+      subsByCustomer={state.subsByCustomer || {}}
+      brands={state.brands || []}
       search={state.custSearch || ""}
       onSearchChange={state.setCustSearch}
       filter={state.custFilter || "All"}
@@ -40,6 +43,22 @@ function renderCustomers(state, handlers, _derived) {
       onOpenModal={state.openModal}
       onWhatsapp={handlers.whatsapp}
       onDeactivate={handlers.deactivateCustomer}
+    />
+  );
+}
+
+function renderSubscriptions(state, handlers, _derived) {
+  return (
+    <Subscriptions
+      subscriptions={state.subscriptions || []}
+      customers={state.customers || []}
+      brands={state.brands || []}
+      search={state.subSearch || ""}
+      onSearchChange={state.setSubSearch}
+      filter={state.subFilter || "All"}
+      onFilterChange={state.setSubFilter}
+      onOpenModal={state.openModal}
+      onDelete={handlers.deleteSubscription}
     />
   );
 }
@@ -125,6 +144,7 @@ function renderMore(state, handlers, _derived) {
 const PAGE_RENDERERS = {
   dashboard: renderDashboard,
   customers: renderCustomers,
+  subscriptions: renderSubscriptions,
   delivery: renderDelivery,
   imports: renderImports,
   billing: renderBilling,

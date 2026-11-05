@@ -135,6 +135,8 @@ export function useEntityStore(token, logDate, billMonth) {
 export function useFilterState() {
   const [custSearch, setCustSearch] = useState("");
   const [custFilter, setCustFilter] = useState("All");
+  const [subSearch, setSubSearch] = useState("");
+  const [subFilter, setSubFilter] = useState("All");
   const [impFilter, setImpFilter] = useState({
     month: "",
     brand: "",
@@ -149,6 +151,10 @@ export function useFilterState() {
     setCustSearch,
     custFilter,
     setCustFilter,
+    subSearch,
+    setSubSearch,
+    subFilter,
+    setSubFilter,
     impFilter,
     setImpFilter,
     billFilter,

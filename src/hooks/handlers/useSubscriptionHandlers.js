@@ -1,5 +1,10 @@
 import { useCallback } from "react";
-import { mapSubscriptionFromApi, callApi } from "../../lib/api.js";
+import {
+  mapSubscriptionFromApi,
+  mapSubscriptionToApi,
+  callApi,
+} from "../../lib/api.js";
+import { validateSubscriptionForm } from "../../lib/validation.js";
 import { useHelpers } from "./shared.js";
 
 export function useSubscriptionHandlers(state) {
@@ -9,19 +14,17 @@ export function useSubscriptionHandlers(state) {
   const saveSubscription = useCallback(
     async (data) => {
       try {
-        const payload = { ...data };
-        if (data.id) {
-          payload.expectedVersion = data.version;
+        // Client-side gate before the mapper: brand + milk type + qty + days
+        // are all required (brand-aware subscriptions). The DB still enforces
+        // uniqueness and qty > 0 — validation is evidence, not the boundary.
+        const validationError = validateSubscriptionForm(data);
+        if (validationError) {
+          showToast(validationError, "error");
+          return;
         }
-        // FIX (audit 2026-07-25, dead code): drop the idempotencyKey generation.
-        // `saveSubscription` in lib/api/subscriptions.js has no idempotency-key
-        // field on writes, and the `subscriptions` table has no such column,
-        // so a generated key was being silently discarded by both the API
-        // wrapper and the database. Rule §14 idempotency requirements apply to
-        // financial mutations (payments, bill generation); subscription writes
-        // are not in that category today. If idempotency is added later, the
-        // column and mapper must agree FIRST, and the key must come from
-        // generateKey() (UUIDv4) — not from `Math.random()`.
+        // Rule §4: the mapper owns the UI→DB shape contract (defaults for
+        // milkType/isActive, qty numeric coercion, id→expectedVersion for OCC).
+        const payload = mapSubscriptionToApi(data);
         await callApi("saveSubscription", payload);
         showToast("Subscription saved", "success");
         if (closeModal) closeModal();

@@ -142,7 +142,7 @@ export default function Dashboard({
                     const currentMonth = (today || "").substring(0, 7);
                     if (
                       window.confirm(
-                        `Generate bills for ${currentMonth}? This will create or update a bill for every active customer.`,
+                        `Generate bills for ${currentMonth}? This will create or update a bill for every customer with active subscriptions.`,
                       )
                     )
                       onGenerateBill();

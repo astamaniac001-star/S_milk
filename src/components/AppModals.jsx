@@ -1,4 +1,4 @@
-import { MILK_TYPES, PRODUCTS, PAY_MODES } from "../lib/constants.js";
+import { MILK_TYPES, PAY_MODES } from "../lib/constants.js";
 import {
   CustomerModal,
   ImportModal,
@@ -8,7 +8,6 @@ import {
   PauseModal,
   BrandModal,
   SubscriptionModal,
-  SubscriptionsListModal,
   SubscriptionHistoryModal,
   AdHocLogModal,
   CreditNoteModal,
@@ -24,7 +23,6 @@ function renderCustomerModal(ctx, isEdit) {
       onSave={ctx.saveCustomer}
       isEdit={isEdit}
       onClose={ctx.closeModal}
-      products={PRODUCTS}
     />
   );
 }
@@ -87,22 +85,40 @@ function renderPauseModal(ctx) {
   );
 }
 
+function renderBrandModal(ctx) {
+  return (
+    <BrandModal
+      form={ctx.form}
+      data={ctx.modal.data}
+      onChange={ctx.setF}
+      onSave={ctx.saveBrand}
+      onClose={ctx.closeModal}
+      milkTypes={MILK_TYPES}
+    />
+  );
+}
+
 function renderSubscriptionModal(ctx) {
   return (
     <SubscriptionModal
       form={ctx.form}
       data={ctx.modal.data}
       onChange={ctx.setF}
-      // Merge form data with ID/Version for Optimistic Concurrency Control if editing
-      onSave={() =>
+      // Merge form data with ID/Version for Optimistic Concurrency Control if
+      // editing. The entity is spread first so a sparse form can't erase the
+      // edit target (rule §16) — explicit form fields win.
+      onSave={() => {
+        const d = ctx.modal.data || {};
         ctx.saveSubscription({
+          ...d,
           ...ctx.form,
-          id: ctx.modal.data?.id,
-          version: ctx.modal.data?.version,
-        })
-      }
+          id: d.id,
+          version: d.version,
+        });
+      }}
       onClose={ctx.closeModal}
       customers={ctx.customers || []}
+      brands={ctx.brands || []}
       milkTypes={MILK_TYPES}
     />
   );
@@ -129,15 +145,10 @@ const MODAL_RENDERERS = {
   ),
   addAdj: renderAdjustmentModal,
   addPause: renderPauseModal,
-  addBrand: (ctx) => (
-    <BrandModal
-      form={ctx.form}
-      onChange={ctx.setF}
-      onSave={ctx.saveBrand}
-      onClose={ctx.closeModal}
-      milkTypes={MILK_TYPES}
-    />
-  ),
+  addBrand: renderBrandModal,
+  // editBrand shares BrandModal — data carries the brand entity incl. rates;
+  // save_brand_rpc upserts rates (replace-all) for the existing brand id.
+  editBrand: renderBrandModal,
   addAdHoc: (ctx) => (
     <AdHocLogModal
       form={ctx.form}
@@ -146,6 +157,7 @@ const MODAL_RENDERERS = {
       onClose={ctx.closeModal}
       today={ctx.today}
       customers={ctx.customers}
+      brands={ctx.brands || []}
     />
   ),
   addCreditNote: (ctx) => (
@@ -165,31 +177,8 @@ const MODAL_RENDERERS = {
       customers={ctx.customers || []}
     />
   ),
-  // ── SUBSCRIPTION MODALS ────────────────────────────────────────────────
-  // ── SUBSCRIPTION MODALS ────────────────────────────────────────────────
-  subscriptionsList: (ctx) => (
-    <SubscriptionsListModal
-      subscriptions={ctx.subscriptions || []}
-      customers={ctx.customers || []}
-      onEdit={(sub) => {
-        const defaultForm = {
-          isActive: true,
-          deliveryDays: [1, 2, 3, 4, 5],
-          qty: 1,
-          milkType: "Full Cream",
-        };
-        if (ctx.openModal) {
-          ctx.openModal(
-            sub ? "editSubscription" : "addSubscription",
-            sub || defaultForm,
-          );
-        }
-      }}
-      onViewHistory={(sub) => ctx.openModal("subscriptionHistory", sub)}
-      onDelete={ctx.deleteSubscription ? (sub) => ctx.deleteSubscription(sub) : undefined}
-      onClose={ctx.closeModal}
-    />
-  ),
+  // addSubscription / editSubscription share renderSubscriptionModal above.
+  // The former subscriptionsList modal is now the Subscriptions tab page.
   addSubscription: renderSubscriptionModal,
   editSubscription: renderSubscriptionModal,
 };

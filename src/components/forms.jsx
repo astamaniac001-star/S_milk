@@ -10,7 +10,6 @@ export { AdjustmentModal } from "./modals/AdjustmentModal";
 export { PauseModal } from "./modals/PauseModal";
 export { BrandModal } from "./modals/BrandModal";
 export { SubscriptionModal } from "./modals/SubscriptionModal";
-export { SubscriptionsListModal } from "./modals/SubscriptionsListModal";
 export { AdHocLogModal } from "./modals/AdHocLogModal";
 export { CreditNoteModal } from "./modals/CreditNoteModal";
 export { SubscriptionHistoryModal } from "./modals/SubscriptionHistoryModal";

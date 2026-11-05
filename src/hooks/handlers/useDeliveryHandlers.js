@@ -48,13 +48,15 @@ export function useDeliveryHandlers(state) {
   const addAdHocLog = useCallback(
     async (data) => {
       try {
-        // 🗺️ MAP 'custId' from the form to 'customerId' expected by the API
+        // 🗺️ MAP 'custId' from the form to 'customerId' expected by the API.
+        // brandId is optional (null → unbranded row, legacy pricing path).
         const payload = {
           customerId: data.custId || data.customerId,
           date: data.date || getToday(),
           qty: data.qty,
           reason: data.reason,
           product: data.product,
+          brandId: data.brandId || null,
         };
 
         await callApi("addAdHocLog", payload);

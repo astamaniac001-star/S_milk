@@ -1,7 +1,7 @@
 // ── Delivery.jsx ──────────────────────────────────────────────────────────────
 import { useMemo, useState } from "react";
 import { useBusy } from "../hooks/useBusy.js";
-import { matchBrandByMilkType } from "../lib/utils.js";
+import { brandLabel } from "../lib/utils.js";
 import { Card, Field, IS, Empty, Btn } from "../components/ui.jsx";
 
 function calculateDeliveryStats(logs) {
@@ -126,14 +126,13 @@ function buildTotalBreakdown(imports, logs, brands, logDate) {
     m.imported += Number(imp.qty || 0);
   });
 
-  // 2. Delivered logs — milk_type comes from log.product; we don't know the
-  // brand directly, so we look up the customer's product via the brand's
-  // defaultMilkType when possible. If we can't find a brand for the product,
-  // we aggregate under "Unknown brand".
+  // 2. Delivered logs — brand-aware: a log's brandId resolves the brand
+  // directly; legacy/unbranded rows fall back to the milk-type heuristic
+  // (matchBrandByMilkType inside brandLabel). Unresolvable → "Unknown brand".
   const deliveredLogs = (logs || []).filter((l) => l.delivered);
   deliveredLogs.forEach((l) => {
     const milkType = l.product || "Milk";
-    const brandName = matchBrandByMilkType(l, brands);
+    const brandName = brandLabel(l, brands);
     const m = ensureMilk(ensureBrand(brandName), milkType);
     m.delivered += Number(l.qty || 0);
   });

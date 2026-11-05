@@ -12,13 +12,26 @@ export function useBillOperations(state) {
   // tiles at Billing.jsx:203-225 sum over `state.bills` directly), leaking
   // other months' totals into the current view until the operator manually
   // re-picked the month.
-  const { customers, setBills, billMonth } = state;
+  const { customers, subscriptions, setBills, billMonth } = state;
   const { showToast } = useHelpers(state);
 
   const generateMonthlyBills = useCallback(
     async (month) => {
       try {
-        const activeCustomers = customers.filter((c) => c.status === "Active");
+        // Subscription-centric model: a customer is billable only when they
+        // have at least one ACTIVE subscription. Billing every Active
+        // customer would create ₹0 bills for customers who never receive
+        // milk. This mirrors `rollover_month_rpc`, which seeds bills from
+        // active subscriptions, and `generate_month_bill_rpc`, which prices
+        // the delivered logs of those subscriptions.
+        const billableCustomerIds = new Set(
+          (subscriptions || [])
+            .filter((s) => s.isActive)
+            .map((s) => s.customerId),
+        );
+        const activeCustomers = customers.filter(
+          (c) => c.status === "Active" && billableCustomerIds.has(c.id),
+        );
 
         // FIX (audit 2026-07-25, dead code): drop the dead dynamic-rate
         // lookup. The previous handler computed `rate = sub?.ratePerLiter ||
@@ -60,7 +73,7 @@ export function useBillOperations(state) {
         showToast(e.message, "error");
       }
     },
-    [customers, setBills, showToast, billMonth],
+    [customers, subscriptions, setBills, showToast, billMonth],
   );
 
   const lockBill = useCallback(

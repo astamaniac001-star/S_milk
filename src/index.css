@@ -445,6 +445,16 @@ textarea:focus {
   font-weight: 500;
 }
 
+/* 7 tabs (Subscriptions added): tighten on narrow phones so labels fit */
+@media (max-width: 420px) {
+  .nav-item {
+    padding: 8px 6px;
+  }
+  .nav-item span {
+    font-size: 10px;
+  }
+}
+
 /* =========================================
    6. DASHBOARD SPECIFICS
    ========================================= */

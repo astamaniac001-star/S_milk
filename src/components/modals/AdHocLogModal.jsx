@@ -1,4 +1,4 @@
-import { Field, Modal, Btn, IS } from "../ui.jsx";
+import { Field, Modal, Btn, IS, ActiveBrandOptions } from "../ui.jsx";
 import { useBusy } from "../../hooks/useBusy.js";
 import { MILK_TYPES } from "../../lib/constants.js";
 import { CustomerDateFields } from "./shared";
@@ -12,6 +12,7 @@ export function AdHocLogModal({
   onClose,
   today,
   customers,
+  brands = [],
 }) {
   const [busy, save] = useBusy(onSave);
   return (
@@ -23,6 +24,17 @@ export function AdHocLogModal({
         customers={customers}
         onChange={onChange}
       />
+      <Field label="Brand">
+        <select
+          style={IS()}
+          value={form?.brandId ?? data?.brandId ?? ""}
+          onChange={onChange("brandId")}
+        >
+          <option value="">Select Brand</option>
+          {/* value = brand id — ad-hoc logs persist the brand FK */}
+          <ActiveBrandOptions brands={brands} valueKey="id" />
+        </select>
+      </Field>
       <Field label="Product">
         <select
           style={IS()}

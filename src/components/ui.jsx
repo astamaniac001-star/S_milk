@@ -155,6 +155,7 @@ export function Btn({
   disabled,
   style,
   type = "button",
+  ...rest
 }) {
   return (
     <button
@@ -163,6 +164,9 @@ export function Btn({
       onClick={onClick}
       disabled={disabled}
       style={style}
+      // Pass-through for aria-label etc. (brand rate rows label their
+      // remove/add controls for a11y + tests).
+      {...rest}
     >
       {children}
     </button>
@@ -338,11 +342,14 @@ export function StatGrid({ items, stats, action }) {
   );
 }
 
-export function ActiveBrandOptions({ brands }) {
+// Active brand <option>s. Default value is the brand NAME (imports persist
+// brand_name text); pass valueKey="id" for brand-aware forms that store the
+// FK (subscriptions, ad-hoc logs).
+export function ActiveBrandOptions({ brands, valueKey = "name" }) {
   return brands
     .filter((b) => b.status === "Active")
     .map((b) => (
-      <option key={b.id} value={b.name}>
+      <option key={b.id} value={b[valueKey]}>
         {b.name}
       </option>
     ));

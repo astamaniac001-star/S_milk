@@ -2,13 +2,19 @@ import { useMemo } from "react";
 import { filterCustomers, filterImports, filterBills } from "../lib/filters.js";
 import { getToday, toNum } from "../lib/utils.js";
 
+// Stable empty-array defaults. A fresh `[]` literal in the destructuring
+// default would be a NEW reference on every render, invalidating the useMemo
+// below and breaking derived-object memo stability (rule §2).
+const EMPTY_ARRAY = [];
+
 export function useAppDerived(state) {
   const {
-    customers = [],
-    imports = [],
-    bills = [],
-    brands = [],
-    logs = [],
+    customers = EMPTY_ARRAY,
+    imports = EMPTY_ARRAY,
+    bills = EMPTY_ARRAY,
+    brands = EMPTY_ARRAY,
+    logs = EMPTY_ARRAY,
+    subscriptions = EMPTY_ARRAY,
     custSearch,
     custFilter,
     impFilter,
@@ -35,6 +41,17 @@ export function useAppDerived(state) {
 
     const activeC = customers.filter((c) => c.status === "Active");
 
+    // Subscription-centric model: subscriptions grouped per customer so the
+    // Customers page (and the Subscriptions page) can render each customer's
+    // subscriptions without re-filtering (rule §2 — derived state is computed
+    // once here, never in page components).
+    const subsByCustomer = {};
+    for (const s of subscriptions) {
+      if (!subsByCustomer[s.customerId]) subsByCustomer[s.customerId] = [];
+      subsByCustomer[s.customerId].push(s);
+    }
+    const activeSubs = subscriptions.filter((s) => s.isActive);
+
     const totalRevenue = bills
       .filter((b) => b.status === "Paid" || b.status === "Partial")
       .reduce((sum, b) => sum + toNum(b.paid), 0);
@@ -60,6 +77,8 @@ export function useAppDerived(state) {
 
     return {
       activeC,
+      subsByCustomer,
+      activeSubs,
       totalRevenue,
       pendingDues,
       filteredC,
@@ -76,6 +95,7 @@ export function useAppDerived(state) {
     bills,
     brands,
     logs,
+    subscriptions,
     custSearch,
     custFilter,
     impFilter,
