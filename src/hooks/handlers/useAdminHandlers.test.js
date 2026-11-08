@@ -2,12 +2,17 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { useAdminHandlers } from "./useAdminHandlers";
 
-// Mock callApi so the handler tests are unit-level (no Supabase).
-vi.mock("../../lib/api", () => ({
-  callApi: vi.fn(),
-  mapPauseFromApi: vi.fn((x) => x),
-  mapBrandFromApi: vi.fn((x) => x),
-}));
+// Mock callApi so the handler tests are unit-level (no Supabase). The real
+// mappers are kept — saveBrand builds its payload through mapBrandToApi.
+vi.mock("../../lib/api", async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    callApi: vi.fn(),
+    mapPauseFromApi: vi.fn((x) => x),
+    mapBrandFromApi: vi.fn((x) => x),
+  };
+});
 
 import { callApi } from "../../lib/api";
 
@@ -160,5 +165,115 @@ describe("useAdminHandlers — diagnostics + health + rotatePin (audit 2026-07-2
     expect(callApi).toHaveBeenCalledTimes(1);
     resolve({ success: true });
     await first;
+  });
+});
+
+describe("useAdminHandlers — saveBrand (brand-aware rates)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("saves the brand with its per-type rates and refetches the brand list", async () => {
+    callApi.mockResolvedValue({ brandId: "B1", rates: 2 });
+    const s = baseState({ form: { name: "Amul" } });
+    const { result } = renderHook(() => useAdminHandlers(s));
+    await act(async () => {
+      await result.current.saveBrand({
+        name: "Amul",
+        rates: [
+          { milkType: "Full Cream", rate: 60 },
+          { milkType: "Toned", rate: 55 },
+        ],
+      });
+    });
+    expect(callApi).toHaveBeenCalledWith("saveBrand", {
+      brand: {
+        brand_name: "Amul",
+        supplier_name: null,
+        supplier_phone: null,
+        status: "Active",
+      },
+      rates: [
+        { milk_type: "Full Cream", rate_per_liter: 60 },
+        { milk_type: "Toned", rate_per_liter: 55 },
+      ],
+    });
+    expect(s.toast$).toHaveBeenCalledWith("Brand saved", "success");
+    expect(s.closeModal).toHaveBeenCalled();
+  });
+
+  it("rejects a duplicate milk type before calling the API", async () => {
+    const s = baseState({ form: { name: "Amul" } });
+    const { result } = renderHook(() => useAdminHandlers(s));
+    await act(async () => {
+      await result.current.saveBrand({
+        name: "Amul",
+        rates: [
+          { milkType: "Full Cream", rate: 60 },
+          { milkType: "Full Cream", rate: 70 },
+        ],
+      });
+    });
+    expect(callApi).not.toHaveBeenCalled();
+    expect(s.toast$).toHaveBeenCalledWith(
+      '"Full Cream" already has a rate for this brand',
+      "error",
+    );
+    expect(s.closeModal).not.toHaveBeenCalled();
+  });
+
+  it("requires a brand name", async () => {
+    const s = baseState({ form: {} });
+    const { result } = renderHook(() => useAdminHandlers(s));
+    await act(async () => {
+      await result.current.saveBrand({ name: "  " });
+    });
+    expect(callApi).not.toHaveBeenCalled();
+    expect(s.toast$).toHaveBeenCalledWith("Brand name is required", "error");
+  });
+
+  it("refuses to save a brand with no rate (a 0 rate would price deliveries at ₹0)", async () => {
+    const s = baseState({ form: { name: "Amul" } });
+    const { result } = renderHook(() => useAdminHandlers(s));
+    await act(async () => {
+      await result.current.saveBrand({ name: "Amul", rates: [] });
+    });
+    expect(callApi).not.toHaveBeenCalled();
+    expect(s.toast$).toHaveBeenCalledWith(
+      "Enter a rate for at least one milk type",
+      "error",
+    );
+  });
+
+  it("refuses a rate row with an empty rate", async () => {
+    const s = baseState({ form: { name: "Amul" } });
+    const { result } = renderHook(() => useAdminHandlers(s));
+    await act(async () => {
+      await result.current.saveBrand({
+        name: "Amul",
+        rates: [{ milkType: "Full Cream", rate: "" }],
+      });
+    });
+    expect(callApi).not.toHaveBeenCalled();
+    expect(s.toast$).toHaveBeenCalledWith(
+      'Enter a rate for "Full Cream"',
+      "error",
+    );
+  });
+
+  it("refuses a negative rate", async () => {
+    const s = baseState({ form: { name: "Amul" } });
+    const { result } = renderHook(() => useAdminHandlers(s));
+    await act(async () => {
+      await result.current.saveBrand({
+        name: "Amul",
+        rates: [{ milkType: "Full Cream", rate: -5 }],
+      });
+    });
+    expect(callApi).not.toHaveBeenCalled();
+    expect(s.toast$).toHaveBeenCalledWith(
+      'Enter a valid rate for "Full Cream"',
+      "error",
+    );
   });
 });

@@ -152,6 +152,9 @@ export async function saveBrand(payload) {
     if (rpcError.message.includes("duplicate key")) {
       throw new Error("This brand already has a rate for this milk type");
     }
+    if (rpcError.message.includes("duplicate milk type")) {
+      throw new Error("This brand already has a rate for this milk type");
+    }
     throw rpcError;
   }
   return {

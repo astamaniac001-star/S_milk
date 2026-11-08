@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Milk } from "lucide-react";
 import { Btn } from "./ui.jsx";
 
 export default function Login({ onLogin, error, loading }) {
@@ -34,6 +35,22 @@ export default function Login({ onLogin, error, loading }) {
             textAlign: "left",
           }}
         >
+          <div
+            style={{
+              width: 56,
+              height: 56,
+              margin: "0 auto 20px",
+              borderRadius: 16,
+              background: "var(--brand-50, #eef2ff)",
+              color: "var(--brand-600, #4f46e5)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+            aria-hidden="true"
+          >
+            <Milk size={28} strokeWidth={2} />
+          </div>
           <h2>Milk Delivery Admin</h2>
           <p>Enter your 6-digit PIN to continue.</p>
 

@@ -237,21 +237,21 @@ export default function Delivery({
       label: "Delivered",
       value: stats.deliveredCount,
       icon: "✅",
-      bg: "#dcfce7",
+      bg: "var(--success-bg, #ecfdf5)",
     },
     {
       key: "skipped",
       label: "Skipped",
       value: stats.skippedCount,
       icon: "❌",
-      bg: "#fee2e2",
+      bg: "var(--danger-bg, #fef2f2)",
     },
     {
       key: "total",
       label: "Total",
       value: stats.totalLiters,
       icon: "🥛",
-      bg: "#dbeafe",
+      bg: "var(--info-bg, #eef2ff)",
     },
   ];
 
@@ -322,10 +322,12 @@ export default function Delivery({
               style={{
                 background: tile.bg || "var(--bg-surface)",
                 border: isActive
-                  ? "2px solid #1e40af"
+                  ? "2px solid var(--brand-600, #4f46e5)"
                   : "1px solid var(--border-color)",
                 cursor: "pointer",
-                boxShadow: isActive ? "0 0 0 2px rgba(30,64,175,0.25)" : "none",
+                boxShadow: isActive
+                  ? "0 0 0 2px rgb(99 102 241 / 0.25)"
+                  : "none",
                 textAlign: "left",
               }}
             >

@@ -121,34 +121,42 @@ export function AppShell({
           <h1>Milk Delivery Admin</h1>
           <h2>{TAB_TITLES[tab]}</h2>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-          <button
-            onClick={() => setDarkMode(!darkMode)}
-            style={{
-              background: "none",
-              border: "none",
-              color: "var(--text-muted)",
-              cursor: "pointer",
-              padding: 4,
-              display: "flex",
-              alignItems: "center",
-            }}
-            title="Toggle Dark Mode"
-          >
-            {darkMode ? <Sun size={20} /> : <Moon size={20} />}
-          </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <div
             style={{
               display: "flex",
               alignItems: "center",
               gap: 6,
-              fontSize: 13,
-              color: "var(--text-muted)",
+              fontSize: 12,
+              fontWeight: 500,
+              color: "var(--text-secondary)",
+              background: "var(--bg-muted)",
+              border: "1px solid var(--border-color)",
+              borderRadius: 999,
+              padding: "6px 12px",
             }}
+            title="Today's date"
           >
-            <Wifi size={14} color="#16a34a" />
+            <Wifi size={13} color="var(--success-solid, #059669)" />
             <span>{today}</span>
           </div>
+          <button
+            onClick={() => setDarkMode(!darkMode)}
+            style={{
+              background: "none",
+              border: "1px solid var(--border-color)",
+              borderRadius: 999,
+              color: "var(--text-muted)",
+              cursor: "pointer",
+              padding: 10,
+              display: "flex",
+              alignItems: "center",
+            }}
+            title="Toggle Dark Mode"
+            aria-label="Toggle dark mode"
+          >
+            {darkMode ? <Sun size={16} /> : <Moon size={16} />}
+          </button>
           {onLogout && (
             <button
               onClick={onLogout}
@@ -157,14 +165,17 @@ export function AppShell({
                 alignItems: "center",
                 gap: 6,
                 background: "none",
-                border: "none",
-                color: "var(--text-muted)",
+                border: "1px solid var(--border-color)",
+                borderRadius: 999,
+                color: "var(--text-secondary)",
                 fontSize: 13,
                 fontWeight: 500,
                 cursor: "pointer",
+                padding: "0 14px",
               }}
+              title="Sign out"
             >
-              <LogOut size={14} /> SIGN OUT
+              <LogOut size={14} /> Sign out
             </button>
           )}
         </div>
@@ -187,11 +198,11 @@ export function AppShell({
       <main
         style={{
           flex: 1,
-          padding: "24px",
+          padding: "24px 20px",
           maxWidth: 1024,
           margin: "0 auto",
           width: "100%",
-          paddingBottom: 100,
+          paddingBottom: 128, /* clearance for the floating pill nav */
         }}
       >
         {children}

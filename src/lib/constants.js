@@ -1,9 +1,10 @@
 // ── constants.js ──────────────────────────────────────────────────────────────
 // Brand + palette constants shared across UI primitives and pages.
 
-// Primary palette
-export const BLUE = "#1e40af";
-export const BLUE_L = "#dbeafe";
+// Primary palette — indigo accent for the modern-minimal refresh.
+// (Legacy name `BLUE` kept to avoid churn across importers.)
+export const BLUE = "#4f46e5";
+export const BLUE_L = "#eef2ff";
 
 // Status → badge colors. Used by <Badge> to pick background/text.
 export const SC = {

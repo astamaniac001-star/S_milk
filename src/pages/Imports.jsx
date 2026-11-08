@@ -1,6 +1,7 @@
 // ── Imports.jsx ───────────────────────────────────────────────────────────────
 import { useRef, useState, useMemo } from "react";
 import { fmt, getToday, toNum, brandLabel } from "../lib/utils.js";
+import { buildMonthOptions } from "../lib/filters.js";
 import { Card, Btn, IS, Section, StatGrid, Empty, Badge, Modal } from "../components/ui.jsx";
 
 const STATUS_FILTERS = ["Draft", "Confirmed", "Reconciled"];
@@ -83,9 +84,13 @@ function QtyBreakdownModal({ rows, onClose }) {
   );
 }
 
-function DeliveryBreakdownModal({ rows, onClose }) {
+function DeliveryBreakdownModal({ rows, dateLabel, onClose }) {
   return (
-    <Modal title="Today's Delivery Logs by Brand / Type" onClose={onClose} wide>
+    <Modal
+      title={`Imported vs Delivered · ${dateLabel}`}
+      onClose={onClose}
+      wide
+    >
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
         <thead>
           <tr style={{ borderBottom: "2px solid var(--border-color)" }}>
@@ -131,13 +136,17 @@ function BrandImportRow({ brand, today, onSaveImport, onOpenModal }) {
     if (!form.date || !form.qty || !form.rate) return;
     setBusy(true);
     try {
-      await onSaveImport({
+      // saveImport resolves `false` on validation/API failure (the error toast
+      // is shown upstream) — keep the form open with the entries intact so
+      // the operator can correct instead of retyping.
+      const ok = await onSaveImport({
         ...form,
         brand: brand.name,
         type: brand.defaultMilkType || "Full Cream",
         qty: parseFloat(form.qty),
         rate: parseFloat(form.rate),
       });
+      if (ok === false) return;
       setOpen(false);
       setForm((f) => ({
         ...f,
@@ -303,14 +312,19 @@ export default function Imports({
           }
        />
       <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
-        <input
+        <select
           id="import-month"
           name="import-month"
-          type="month"
+          aria-label="Filter imports by month"
           value={impFilter.month}
           onChange={(e) => onImpFilterChange({ ...impFilter, month: e.target.value })}
           style={{ ...IS(), flex: 1 }}
-        />
+        >
+          <option value="">All months</option>
+          {buildMonthOptions(allImports).map((m) => (
+            <option key={m.value} value={m.value}>{m.label}</option>
+          ))}
+        </select>
         <select
           id="import-brand"
           name="import-brand"
@@ -343,12 +357,25 @@ export default function Imports({
               label: "Total Qty & Cost",
               value: `${totalQty} L · ${fmt(totalCost)}`,
               icon: "🥛",
-              bg: "#eff6ff",
-              tx: "#1e40af",
+              bg: "var(--info-bg)",
+              tx: "var(--info-text)",
             },
             { label: "Imports", value: safeFiltered.length, icon: "📦" },
           ]}
         />
+      </div>
+
+      {/* Imported stock vs delivered milk for the selected delivery date */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "flex-end",
+          margin: "8px 0 4px",
+        }}
+      >
+        <Btn small variant="ghost" onClick={() => setModal("deliveryBreakdown")}>
+          Imported vs Delivered
+        </Btn>
       </div>
 
       {safeFiltered.length === 0 ? (
@@ -409,7 +436,11 @@ export default function Imports({
         <QtyBreakdownModal rows={qtyBreakdown} onClose={() => setModal(null)} />
       )}
       {modal === "deliveryBreakdown" && (
-        <DeliveryBreakdownModal rows={deliveryBreakdown} onClose={() => setModal(null)} />
+        <DeliveryBreakdownModal
+          rows={deliveryBreakdown}
+          dateLabel={logDate || today}
+          onClose={() => setModal(null)}
+        />
       )}
     </div>
   );

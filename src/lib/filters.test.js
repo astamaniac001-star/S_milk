@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { filterCustomers, filterImports, filterBills } from "./filters.js";
+import {
+  filterCustomers,
+  filterImports,
+  filterBills,
+  buildMonthOptions,
+} from "./filters.js";
 
 const customers = [
   {
@@ -102,5 +107,40 @@ describe("filterBills", () => {
     expect(filterBills(bills, "Paid")).toEqual([bills[0]]);
     expect(filterBills(bills, "Unpaid")).toEqual([bills[1]]);
     expect(filterBills(bills, "Partial")).toEqual([bills[2]]);
+  });
+});
+
+describe("buildMonthOptions", () => {
+  it("returns unique months, newest first, with human labels", () => {
+    expect(buildMonthOptions(imports)).toEqual([
+      { value: "2025-02", label: "Feb 2025" },
+      { value: "2025-01", label: "Jan 2025" },
+    ]);
+  });
+
+  it("deduplicates repeated months and sorts correctly across years", () => {
+    const rows = [
+      { date: "2025-01-05" },
+      { date: "2025-01-25" },
+      { date: "2024-12-30" },
+      { date: "2025-03-02" },
+    ];
+    expect(buildMonthOptions(rows).map((m) => m.value)).toEqual([
+      "2025-03",
+      "2025-01",
+      "2024-12",
+    ]);
+  });
+
+  it("ignores rows with malformed or missing dates", () => {
+    const rows = [{ date: "2025-01-15" }, { date: "garbage" }, {}, null];
+    expect(buildMonthOptions(rows)).toEqual([
+      { value: "2025-01", label: "Jan 2025" },
+    ]);
+  });
+
+  it("returns empty for no imports", () => {
+    expect(buildMonthOptions([])).toEqual([]);
+    expect(buildMonthOptions(undefined)).toEqual([]);
   });
 });

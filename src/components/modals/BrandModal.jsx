@@ -11,10 +11,11 @@ export function BrandModal({ data, form, onChange, onSave, onClose, milkTypes })
   // with a single Full Cream row. Written back via the curried-event
   // contract — setF(k)(e) reads e.target.value.
   const rows =
-    form?.rates ??
-    (data?.rates?.length
-      ? data.rates
-      : [{ milkType: data?.defaultMilkType || "Full Cream", rate: data?.rate ?? "" }]);
+    form?.rates?.length
+      ? form.rates
+      : data?.rates?.length
+        ? data.rates
+        : [{ milkType: data?.defaultMilkType || "Full Cream", rate: data?.rate ?? "" }];
 
   const setRows = (next) => onChange("rates")({ target: { value: next } });
   const updateRow = (i, patch) =>
@@ -22,6 +23,15 @@ export function BrandModal({ data, form, onChange, onSave, onClose, milkTypes })
   const addRow = () => setRows([...rows, { milkType: "", rate: "" }]);
   const removeRow = (i) =>
     setRows(rows.length > 1 ? rows.filter((_, idx) => idx !== i) : rows);
+  // One rate per milk type: types already used by another row are not
+  // selectable here (brand_rates is UNIQUE (brand_id, milk_type)).
+  const usedByOtherRows = (i) =>
+    new Set(
+      rows
+        .filter((_, idx) => idx !== i)
+        .map((r) => String(r?.milkType ?? "").trim())
+        .filter(Boolean),
+    );
 
   return (
     <Modal title={data?.id ? "Edit Brand" : "Add Milk Brand"} onClose={onClose}>
@@ -51,7 +61,9 @@ export function BrandModal({ data, form, onChange, onSave, onClose, milkTypes })
       </Field>
       <Field label="Rates per Milk Type *">
         <div style={{ display: "grid", gap: 8 }}>
-          {rows.map((row, i) => (
+          {rows.map((row, i) => {
+            const taken = usedByOtherRows(i);
+            return (
             <div key={i} style={{ display: "flex", gap: 8, alignItems: "center" }}>
               <select
                 style={{ ...IS(), flex: 1 }}
@@ -61,7 +73,7 @@ export function BrandModal({ data, form, onChange, onSave, onClose, milkTypes })
               >
                 <option value="">Type…</option>
                 {types.map((t) => (
-                  <option key={t} value={t}>
+                  <option key={t} value={t} disabled={taken.has(t)}>
                     {t}
                   </option>
                 ))}
@@ -86,7 +98,8 @@ export function BrandModal({ data, form, onChange, onSave, onClose, milkTypes })
                 ✕
               </Btn>
             </div>
-          ))}
+            );
+          })}
           <Btn variant="secondary" onClick={addRow} disabled={busy}>
             + Add type rate
           </Btn>

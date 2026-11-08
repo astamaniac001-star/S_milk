@@ -1,72 +1,87 @@
 @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
 
 /* =========================================
-   1. LIGHT MODE (Default Premium Design)
+   1. DESIGN TOKENS — LIGHT MODE (Modern & Minimal)
+   Neutral zinc canvas, white surfaces, indigo accent.
    ========================================= */
 :root {
-  --bg-primary: #f8fafc;
+  --bg-primary: #fafafa;
   --bg-surface: #ffffff;
-  --bg-muted: #f1f5f9;
+  --bg-muted: #f4f4f5;
 
-  --text-primary: #0f172a;
-  --text-secondary: #475569;
-  --text-muted: #94a3b8;
+  /* Aliases for legacy var() references in pages/components */
+  --bg-card: #f4f4f5;
+  --bg-main: #ffffff;
+  --text-main: #18181b;
+  --border-strong: #d4d4d8;
 
-  --brand-50: #eff6ff;
-  --brand-100: #dbeafe;
-  --brand-500: #3b82f6;
-  --brand-600: #2563eb;
-  --brand-700: #1d4ed8;
+  --text-primary: #18181b;
+  --text-secondary: #52525b;
+  --text-muted: #a1a1aa;
 
-  --border-color: #e2e8f0;
+  --brand-50: #eef2ff;
+  --brand-100: #e0e7ff;
+  --brand-500: #6366f1;
+  --brand-600: #4f46e5;
+  --brand-700: #4338ca;
 
-  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --border-color: #e4e4e7;
+
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.04);
+  --shadow-md:
+    0 2px 8px -2px rgb(0 0 0 / 0.08), 0 1px 3px 0 rgb(0 0 0 / 0.04);
   --shadow-lg:
-    0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+    0 12px 32px -8px rgb(0 0 0 / 0.14), 0 4px 12px -4px rgb(0 0 0 / 0.06);
 
-  --radius-sm: 6px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-  --radius-xl: 16px;
-  --success-bg: #dcfce7;
-  --success-text: #166534;
-  --danger-bg: #fee2e2;
-  --danger-text: #991b1b;
-  --warning-bg: #fef9c3;
-  --warning-text: #854d0e;
-  --info-bg: #dbeafe;
-  --info-text: #1e40af;
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+
+  --success-bg: #ecfdf5;
+  --success-text: #047857;
+  --success-solid: #059669;
+  --success-solid-hover: #047857;
+  --danger-bg: #fef2f2;
+  --danger-text: #b91c1c;
+  --warning-bg: #fffbeb;
+  --warning-text: #b45309;
+  --info-bg: #eef2ff;
+  --info-text: #4338ca;
 }
 
 /* =========================================
-   2. DARK MODE (Properly Overrides the Top)
+   2. DESIGN TOKENS — DARK MODE
    ========================================= */
 .dark {
-  --bg-primary: #0f172a;
-  /* Slate 900 */
-  --bg-surface: #1e293b;
-  /* Slate 800 (Cards) */
-  --bg-muted: #334155;
-  /* Slate 700 (Hover states) */
+  --bg-primary: #09090b;
+  /* Zinc 950 */
+  --bg-surface: #18181b;
+  /* Zinc 900 (Cards) */
+  --bg-muted: #27272a;
+  /* Zinc 800 (Hover states) */
 
-  --text-primary: #f8fafc;
-  /* Slate 50 */
-  --text-secondary: #cbd5e1;
-  /* Slate 300 */
-  --text-muted: #94a3b8;
-  /* Slate 400 */
+  --bg-card: #27272a;
+  --bg-main: #18181b;
+  --text-main: #fafafa;
+  --border-strong: #3f3f46;
 
-  --border-color: #334155;
-  /* Slate 700 */
-  --success-bg: #064e3b;
-  --success-text: #6ee7b7;
-  --danger-bg: #7f1d1d;
-  --danger-text: #fca5a5;
-  --warning-bg: #713f12;
-  --warning-text: #fde047;
-  --info-bg: #1e3a8a;
-  --info-text: #93c5fd;
+  --text-primary: #fafafa;
+  --text-secondary: #d4d4d8;
+  --text-muted: #71717a;
+
+  --border-color: #27272a;
+
+  --success-bg: #022c22;
+  --success-text: #34d399;
+  --success-solid: #059669;
+  --success-solid-hover: #10b981;
+  --danger-bg: #450a0a;
+  --danger-text: #f87171;
+  --warning-bg: #451a03;
+  --warning-text: #fbbf24;
+  --info-bg: #312e81;
+  --info-text: #a5b4fc;
 }
 
 /* =========================================
@@ -109,15 +124,15 @@ select,
 textarea {
   font-size: 16px !important;
   /* 16px is the magic number to prevent iOS auto-zoom */
-  color: var(--text-muted, #94a3b8);
+  color: var(--text-muted, #a1a1aa);
   font-weight: 400;
 }
 
 input:focus,
 select:focus,
 textarea:focus {
-  color: var(--text-primary, #0f172a);
-  font-weight: 600;
+  color: var(--text-primary, #18181b);
+  font-weight: 500;
 }
 
 /* =========================================
@@ -132,14 +147,19 @@ textarea:focus {
   gap: 8px;
   font-weight: 500;
   border-radius: var(--radius-md);
-  transition: all 0.2s ease;
+  transition: all 0.15s ease;
   cursor: pointer;
   border: 1px solid transparent;
   white-space: nowrap;
 }
 
+.btn:focus-visible {
+  outline: 2px solid var(--brand-500);
+  outline-offset: 2px;
+}
+
 .btn:disabled {
-  opacity: 0.6;
+  opacity: 0.5;
   cursor: not-allowed;
 }
 
@@ -151,8 +171,11 @@ textarea:focus {
 
 .btn-primary:hover:not(:disabled) {
   background: var(--brand-700);
-  transform: translateY(-1px);
   box-shadow: var(--shadow-md);
+}
+
+.btn-primary:active:not(:disabled) {
+  transform: scale(0.98);
 }
 
 .btn-secondary {
@@ -163,13 +186,17 @@ textarea:focus {
 
 .btn-secondary:hover:not(:disabled) {
   background: var(--bg-muted);
-  border-color: #cbd5e1;
+  border-color: var(--border-strong);
 }
 
 .btn-danger {
-  background: #fef2f2;
-  color: #dc2626;
-  border-color: #fecaca;
+  background: var(--danger-bg);
+  color: var(--danger-text);
+  border-color: transparent;
+}
+
+.btn-danger:hover:not(:disabled) {
+  filter: brightness(0.96);
 }
 
 .btn-ghost {
@@ -181,13 +208,18 @@ textarea:focus {
   background: var(--brand-50);
 }
 
+.dark .btn-ghost:hover:not(:disabled) {
+  background: var(--brand-100);
+  color: var(--brand-700);
+}
+
 .btn-sm {
   padding: 6px 12px;
   font-size: 13px;
 }
 
 .btn-md {
-  padding: 8px 16px;
+  padding: 9px 16px;
   font-size: 14px;
 }
 
@@ -196,14 +228,13 @@ textarea:focus {
 }
 
 .btn-success {
-  background: #16a34a;
+  background: var(--success-solid);
   color: white;
   box-shadow: var(--shadow-sm);
 }
 
 .btn-success:hover:not(:disabled) {
-  background: #15803d;
-  transform: translateY(-1px);
+  background: var(--success-solid-hover);
   box-shadow: var(--shadow-md);
 }
 
@@ -217,15 +248,17 @@ textarea:focus {
   font-size: 14px;
   color: var(--text-muted);
   font-weight: 400;
-  transition: all 0.2s ease;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
 .input:focus {
   outline: none;
   border-color: var(--brand-500);
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+  box-shadow: 0 0 0 3px rgb(99 102 241 / 0.15);
   color: var(--text-primary);
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .input::placeholder {
@@ -247,7 +280,7 @@ textarea:focus {
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(15, 23, 42, 0.4);
+  background: rgb(24 24 27 / 0.45);
   backdrop-filter: blur(4px);
   display: flex;
   align-items: flex-end;
@@ -277,17 +310,18 @@ textarea:focus {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 20px 24px;
+  padding: 18px 22px;
   border-bottom: 1px solid var(--border-color);
 }
 
 .modal-header h3 {
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
 .modal-body {
-  padding: 24px;
+  padding: 22px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -303,7 +337,7 @@ textarea:focus {
   border-radius: 50%;
   display: flex;
   align-items: center;
-  transition: all 0.2s;
+  transition: all 0.15s;
 }
 
 .close-btn:hover {
@@ -328,10 +362,11 @@ textarea:focus {
 .badge {
   display: inline-flex;
   align-items: center;
-  padding: 2px 10px;
+  padding: 3px 10px;
   border-radius: 999px;
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 600;
+  letter-spacing: 0.01em;
 }
 
 .toast {
@@ -340,7 +375,7 @@ textarea:focus {
   left: 50%;
   transform: translateX(-50%);
   padding: 12px 20px;
-  border-radius: var(--radius-md);
+  border-radius: 999px;
   color: white;
   font-weight: 500;
   font-size: 14px;
@@ -350,16 +385,17 @@ textarea:focus {
   align-items: center;
   gap: 12px;
   animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  max-width: calc(100vw - 32px);
 }
 
 /* =========================================
    5. APP SHELL & NAVIGATION
    ========================================= */
 .app-header {
-  background: rgba(255, 255, 255, 0.8);
+  background: rgb(250 250 250 / 0.85);
   backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border-color);
-  padding: 16px 24px;
+  padding: 14px 20px;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -370,74 +406,70 @@ textarea:focus {
 
 /* Dark mode override for sticky header */
 .dark .app-header {
-  background: rgba(30, 41, 59, 0.8);
-  /* Slate 800 with opacity */
+  background: rgb(9 9 11 / 0.8);
 }
 
 .app-header h1 {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   color: var(--text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.08em;
 }
 
 .app-header h2 {
   font-size: 20px;
   font-weight: 700;
   color: var(--text-primary);
-  margin-top: 2px;
+  margin-top: 1px;
+  letter-spacing: -0.02em;
 }
 
+/* Floating pill bottom nav */
 .bottom-nav {
   position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  background: rgba(255, 255, 255, 0.9);
-  backdrop-filter: blur(12px);
-  border-top: 1px solid var(--border-color);
+  left: 12px;
+  right: 12px;
+  bottom: calc(10px + env(safe-area-inset-bottom));
+  background: rgb(255 255 255 / 0.85);
+  backdrop-filter: blur(16px) saturate(1.4);
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  box-shadow: var(--shadow-lg);
   display: flex;
   justify-content: space-around;
-  padding: 8px 0 calc(8px + env(safe-area-inset-bottom));
+  padding: 6px;
   z-index: 100;
 }
 
-/* Dark mode override for bottom nav */
+/* Dark mode override for floating nav */
 .dark .bottom-nav {
-  background: rgba(30, 41, 59, 0.9);
-  /* Slate 800 with opacity */
+  background: rgb(24 24 27 / 0.85);
 }
 
 .nav-item {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
-  padding: 8px 16px;
+  gap: 3px;
+  padding: 7px 14px;
   background: none;
   border: none;
   cursor: pointer;
   color: var(--text-muted);
-  transition: all 0.2s;
-  border-radius: var(--radius-md);
+  transition: all 0.15s;
+  border-radius: 999px;
   position: relative;
 }
 
 .nav-item.active {
   color: var(--brand-600);
+  background: var(--brand-50);
 }
 
-.nav-item.active::before {
-  content: "";
-  position: absolute;
-  top: -8px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 20px;
-  height: 3px;
-  background: var(--brand-600);
-  border-radius: 0 0 4px 4px;
+.dark .nav-item.active {
+  color: var(--brand-500);
+  background: var(--info-bg);
 }
 
 .nav-item span {
@@ -447,11 +479,15 @@ textarea:focus {
 
 /* 7 tabs (Subscriptions added): tighten on narrow phones so labels fit */
 @media (max-width: 420px) {
+  .bottom-nav {
+    left: 8px;
+    right: 8px;
+  }
   .nav-item {
-    padding: 8px 6px;
+    padding: 7px 5px;
   }
   .nav-item span {
-    font-size: 10px;
+    font-size: 9.5px;
   }
 }
 
@@ -475,16 +511,18 @@ textarea:focus {
 }
 
 .stat-tile .stat-label {
-  font-size: 12px;
-  font-weight: 500;
+  font-size: 11px;
+  font-weight: 600;
   color: var(--text-muted);
   display: flex;
   align-items: center;
   gap: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 .stat-tile .stat-value {
-  font-size: 24px;
+  font-size: 22px;
   font-weight: 700;
   color: var(--text-primary);
   letter-spacing: -0.02em;
@@ -506,16 +544,20 @@ textarea:focus {
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.15s;
   color: var(--text-secondary);
 }
 
 .quick-action-btn:hover {
-  border-color: var(--brand-500);
+  border-color: var(--brand-100);
   background: var(--brand-50);
   color: var(--brand-700);
-  transform: translateY(-2px);
   box-shadow: var(--shadow-sm);
+}
+
+.dark .quick-action-btn:hover {
+  background: var(--info-bg);
+  color: var(--info-text);
 }
 
 .quick-action-btn span {
@@ -532,17 +574,17 @@ textarea:focus {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+  background: radial-gradient(circle at 50% 0%, #eef2ff 0%, #fafafa 55%);
   padding: 20px;
 }
 
 .dark .login-container {
-  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+  background: radial-gradient(circle at 50% 0%, #1e1b4b 0%, #09090b 60%);
 }
 
 .login-card {
   background: var(--bg-surface);
-  padding: 40px;
+  padding: 36px 28px;
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-lg);
   width: 100%;
@@ -552,9 +594,10 @@ textarea:focus {
 }
 
 .login-card h2 {
-  font-size: 24px;
+  font-size: 22px;
   font-weight: 700;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
+  letter-spacing: -0.02em;
 }
 
 .login-card p {

@@ -33,6 +33,34 @@ export function filterImports(imports, { month, brand, status }) {
   );
 }
 
+// Month options for the Imports page filter, derived from the data itself.
+// A native <select> works on every browser, unlike <input type="month">
+// which falls back to a bare text field on Firefox and several Android
+// WebViews — the operator could not reach previous imports at all.
+// Returns [{ value: "YYYY-MM", label: "Nov 2026" }], newest first.
+const MONTH_SHORT = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
+
+export function buildMonthOptions(imports) {
+  const months = new Set();
+  for (const i of imports || []) {
+    if (typeof i?.date === "string" && /^\d{4}-\d{2}/.test(i.date)) {
+      months.add(i.date.slice(0, 7));
+    }
+  }
+  return Array.from(months)
+    .sort()
+    .reverse()
+    .map((ym) => {
+      const mIdx = Number(ym.slice(5, 7)) - 1;
+      const label =
+        mIdx >= 0 && mIdx < 12 ? `${MONTH_SHORT[mIdx]} ${ym.slice(0, 4)}` : ym;
+      return { value: ym, label };
+    });
+}
+
 export function filterBills(bills, billFilter) {
   return billFilter === "All"
     ? bills

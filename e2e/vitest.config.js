@@ -20,5 +20,11 @@ export default defineConfig({
     singleFork: true,
     fileParallelism: false,
     retry: 0,
+    // Live-network hooks (operator login + probe seeding) chain ~10
+    // sequential Supabase round-trips; the 10s default hook timeout timed
+    // out on a healthy suite when latency spiked (2026-11-06: beforeAll at
+    // 10.02s). Timeouts here only guard against hangs, not assertions.
+    hookTimeout: 30_000,
+    testTimeout: 30_000,
   },
 });

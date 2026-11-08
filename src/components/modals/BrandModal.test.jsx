@@ -122,4 +122,30 @@ describe("BrandModal — brand + per-type rates editor", () => {
     renderModal({ data: { id: "B1", name: "Amul", rates: [] } });
     expect(screen.getByText("Edit Brand")).toBeTruthy();
   });
+
+  it("shows one editable row for a brand that has no rates yet", () => {
+    renderModal({
+      initialForm: { rates: [] },
+      data: { id: "B1", name: "Amul", rates: [] },
+    });
+    expect(screen.getByLabelText(/^Type 1$/).value).toBe("Full Cream");
+    expect(screen.getByLabelText(/^Rate 1$/).value).toBe("");
+  });
+
+  it("disables a milk type already used by another row (one rate per type)", () => {
+    renderModal({
+      initialForm: {
+        rates: [
+          { milkType: "Full Cream", rate: 60 },
+          { milkType: "", rate: "" },
+        ],
+      },
+    });
+    const row2 = screen.getByLabelText(/^Type 2$/);
+    const fullCreamInRow2 = [...row2.options].find((o) => o.value === "Full Cream");
+    expect(fullCreamInRow2.disabled).toBe(true);
+    const row1 = screen.getByLabelText(/^Type 1$/);
+    const tonedInRow1 = [...row1.options].find((o) => o.value === "Toned");
+    expect(tonedInRow1.disabled).toBe(false);
+  });
 });

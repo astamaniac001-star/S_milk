@@ -84,15 +84,47 @@ export function useAdminHandlers(state) {
       // Rates: BrandModal sends a rates array ({milkType, rate} rows). A
       // legacy single {defaultType, rate} form shape is mapped into one row
       // so both contracts land on save_brand_rpc's replace-all semantics.
-      const rates =
-        Array.isArray(f.rates) && f.rates.length > 0
-          ? f.rates
-          : [
+      // A brand with NO rate is rejected — saving a 0 rate would price that
+      // brand's deliveries at ₹0 without the operator asking for it.
+      const rawRates = Array.isArray(f.rates)
+        ? f.rates
+        : f.rate !== undefined && f.rate !== ""
+          ? [
               {
                 milkType: f.defaultType || "Full Cream",
-                rate: f.rate !== undefined && f.rate !== "" ? Number(f.rate) : 0,
+                rate: Number(f.rate),
               },
-            ];
+            ]
+          : [];
+      const rates = rawRates.filter(
+        (r) => String(r?.milkType ?? "").trim() !== "",
+      );
+      if (rates.length === 0) {
+        showToast("Enter a rate for at least one milk type", "error");
+        return;
+      }
+      // One rate per milk type per brand (brand_rates UNIQUE
+      // (brand_id, milk_type)). The RPC rejects duplicates, but failing here
+      // keeps the operator in the editor with an actionable message instead of
+      // a server-side "duplicate milk type" error.
+      const seenTypes = new Set();
+      for (const r of rates) {
+        const type = String(r.milkType).trim();
+        if (seenTypes.has(type)) {
+          showToast(`"${type}" already has a rate for this brand`, "error");
+          return;
+        }
+        seenTypes.add(type);
+        if (r.rate === "" || r.rate === undefined || r.rate === null) {
+          showToast(`Enter a rate for "${type}"`, "error");
+          return;
+        }
+        const rate = Number(r.rate);
+        if (!Number.isFinite(rate) || rate < 0) {
+          showToast(`Enter a valid rate for "${type}"`, "error");
+          return;
+        }
+      }
       try {
         await callApi(
           "saveBrand",

@@ -57,9 +57,11 @@ export function useHelpers(state) {
         if (import.meta.env.DEV) console.warn("✨ MAPPED DATA:", mappedData);
 
         setList(mappedData);
+        return true; // success signal for callers that manage their own UI state
       } catch (e) {
         if (import.meta.env.DEV) console.error("❌ EXECUTE API ERROR:", e);
         showToast(e.message || "Unknown error", "error");
+        return false;
       }
     },
     [showToast, closeModal],
@@ -137,7 +139,7 @@ export function useHelpers(state) {
       if (!f || Object.keys(f).length === 0) {
         if (import.meta.env.DEV)
           console.warn("⚠️ Form is empty! Aborting save.");
-        return;
+        return false;
       }
 
       const validationError = validateFn(f);
@@ -146,7 +148,7 @@ export function useHelpers(state) {
 
       if (validationError) {
         showToast(validationError, "error");
-        return;
+        return false;
       }
 
       if (import.meta.env.DEV)
