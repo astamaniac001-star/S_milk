@@ -159,14 +159,22 @@ export async function saveBrand(payload) {
   }
   return {
     brandId: rpcResult?.brandId,
-    rates: toNum(rpcResult?.rates) || 0,
+    // save_brand_rpc returns the number of rate rows written (not an array)
+    // — named ratesCount so the shape can't be mistaken for the rates list.
+    ratesCount: toNum(rpcResult?.rates) || 0,
   };
 }
 
 export async function getDailyInventory(payload) {
   const date = payload.date || getToday();
   const [impRes, logRes] = await Promise.all([
-    supabase.from("milk_imports").select("quantity").eq("date", date),
+    // Confirmed-only imports (operator decision 2026-11-10): a Draft import
+    // is not verified stock yet and must not inflate the Remaining number.
+    supabase
+      .from("milk_imports")
+      .select("quantity")
+      .eq("date", date)
+      .eq("status", "Confirmed"),
     supabase.from("daily_logs").select("qty, delivered").eq("date", date),
   ]);
   must(impRes.error);

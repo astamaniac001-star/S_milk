@@ -52,14 +52,18 @@ test.beforeEach(async ({ page }) => {
   await loginOnce(page);
 });
 
-test("login gates unauthenticated access and authenticates with the operator PIN", async ({ page }) => {
+test("login gates unauthenticated access and authenticates with the operator PIN", async ({
+  page,
+}) => {
   // We already logged in in beforeEach — verify the shell is the dashboard.
   await expect(page.getByRole("heading", { name: /Dashboard/ })).toBeVisible();
   // Pin input must no longer be visible.
   await expect(page.locator("#pin-input")).toHaveCount(0);
 });
 
-test("all six bottom-nav tabs are visible and switch pages", async ({ page }) => {
+test("all six bottom-nav tabs are visible and switch pages", async ({
+  page,
+}) => {
   const tabs = [
     { label: "Home", heading: "Dashboard" },
     { label: "Customers", heading: "Customers" },
@@ -74,20 +78,28 @@ test("all six bottom-nav tabs are visible and switch pages", async ({ page }) =>
     await expect(navBtn).toBeVisible();
     await navBtn.click();
     // Each page renders a heading matching the tab title per AppShell.jsx:24.
-    await expect(page.getByRole("heading", { name: t.heading, exact: false }).first()).toBeVisible({ timeout: 10_000 });
+    await expect(
+      page.getByRole("heading", { name: t.heading, exact: false }).first(),
+    ).toBeVisible({ timeout: 10_000 });
   }
 });
 
-test("dashboard renders Today's Delivery stats and quick actions", async ({ page }) => {
+test("dashboard renders Today's Delivery stats and quick actions", async ({
+  page,
+}) => {
   // Two h2-level blocks: "Today's Delivery (...)" and "Recent Bills".
   await expect(
     page.getByRole("heading", { name: /Today's Delivery/ }),
   ).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Quick Actions" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Quick Actions" }),
+  ).toBeVisible();
 
   // The Delivery stat grid renders three labels per StatGrid (ui.jsx:282).
   for (const label of ["Delivered", "Skipped", /Total \(L\)/]) {
-    await expect(page.locator(".stat-label").filter({ hasText: label }).first()).toBeVisible();
+    await expect(
+      page.locator(".stat-label").filter({ hasText: label }).first(),
+    ).toBeVisible();
   }
 
   // Quick Actions: each entry is a <button> with a text label.
@@ -99,17 +111,23 @@ test("dashboard renders Today's Delivery stats and quick actions", async ({ page
     "Add Pause",
     "Add Brand",
   ]) {
-    await expect(page.getByRole("button", { name: action }).first()).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: action }).first(),
+    ).toBeVisible();
   }
 });
 
-test("Customers page renders the Add control and at least one card or an Empty state", async ({ page }) => {
+test("Customers page renders the Add control and at least one card or an Empty state", async ({
+  page,
+}) => {
   await page.getByRole("button", { name: "Customers" }).click();
   // AppShell renders <h2>Customers</h2> (TAB_TITLES) AND Customers.jsx
   // renders <h3>Customers</h3> via <Section title="Customers">. Both match
   // `name: "Customers"` and strict mode would error on multiple matches —
   // use .first() to disambiguate. Both being visible is itself the contract.
-  await expect(page.getByRole("heading", { name: "Customers", exact: true }).first()).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Customers", exact: true }).first(),
+  ).toBeVisible();
 
   // The section header carries the Add control. Subscriptions moved to their
   // own nav tab (bottom-nav "Subs"), so there is no Subscriptions button
@@ -122,15 +140,18 @@ test("Customers page renders the Add control and at least one card or an Empty s
   const cards = page.locator(".card");
   const empty = page.getByText("No customers found");
   // At least one must be present.
-  await expect(
-    async () => {
-      const n = (await cards.count()) + (await empty.count());
-      expect(n, "no cards and no empty state — page failed to render").toBeGreaterThan(0);
-    },
-  ).toPass();
+  await expect(async () => {
+    const n = (await cards.count()) + (await empty.count());
+    expect(
+      n,
+      "no cards and no empty state — page failed to render",
+    ).toBeGreaterThan(0);
+  }).toPass();
 });
 
-test("Bottom nav renders the Subscriptions tab and it opens the Subscriptions page", async ({ page }) => {
+test("Bottom nav renders the Subscriptions tab and it opens the Subscriptions page", async ({
+  page,
+}) => {
   // The Subscriptions tab sits between Customers and Delivery (AppShell TABS).
   await page.getByRole("button", { name: "Subs", exact: true }).click();
   await expect(
@@ -139,33 +160,49 @@ test("Bottom nav renders the Subscriptions tab and it opens the Subscriptions pa
   await expect(page.getByRole("button", { name: "+ Add" })).toBeVisible();
 });
 
-test("Delivery page reveals Generate Deliveries + Extra Delivery and stats", async ({ page }) => {
+test("Delivery page reveals Generate Deliveries + Extra Delivery and stats", async ({
+  page,
+}) => {
   await page.getByRole("button", { name: "Delivery" }).click();
   // AppShell renders <h2>Daily Delivery</h2> as the tab title — Delivery.jsx
   // has no second heading with this text, so this remains a single match.
-  await expect(page.getByRole("heading", { name: "Daily Delivery" })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Generate Deliveries/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: "+ Extra Delivery" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Daily Delivery" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: /Generate Deliveries/ }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "+ Extra Delivery" }),
+  ).toBeVisible();
 
   // Date picker exists.
   await expect(page.locator('input[type="date"]').first()).toBeVisible();
 
   // StatGrid labels (Delivery.jsx:113-118).
   for (const label of ["Scheduled", "Delivered", "Skipped", "Total"]) {
-    await expect(page.locator(".stat-label").filter({ hasText: label }).first()).toBeVisible();
+    await expect(
+      page.locator(".stat-label").filter({ hasText: label }).first(),
+    ).toBeVisible();
   }
 });
 
-test("Imports page shows Brand + Import actions, filters, and the Brands list", async ({ page }) => {
+test("Imports page shows Brand + Import actions, filters, and the Brands list", async ({
+  page,
+}) => {
   await page.getByRole("button", { name: "Imports" }).click();
   // AppShell h2 "Milk Imports" + Imports.jsx:62 <Section title="Milk Imports">
   // → <h3>. Both match — use .first() for strict-mode safety.
-  await expect(page.getByRole("heading", { name: "Milk Imports" }).first()).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Milk Imports" }).first(),
+  ).toBeVisible();
   await expect(page.getByRole("button", { name: "+ Brand" })).toBeVisible();
   await expect(page.getByRole("button", { name: "+ Import" })).toBeVisible();
 
-  // Two filter <select> + one month <input>.
-  await expect(page.locator('input[type="month"]')).toBeVisible();
+  // All three filters are native <select>s — the old month
+  // <input type="month"> was replaced for Firefox/Android-WebView support
+  // (see filters.js#buildMonthOptions rationale).
+  await expect(page.locator("#import-month")).toBeVisible();
   // The "All Status" / "All Brands" options must exist. Note: <option>
   // elements in a collapsed <select> are always layout-hidden, so
   // toBeVisible() fails — assert presence by count instead.
@@ -176,41 +213,71 @@ test("Imports page shows Brand + Import actions, filters, and the Brands list", 
   await expect(page.getByText("Brands", { exact: true }).first()).toBeVisible();
 });
 
-test("Billing page shows Generate Bills + Add Credit Note + filters + KPIs", async ({ page }) => {
+test("Billing page shows Generate Bills + Add Credit Note + filters + KPIs", async ({
+  page,
+}) => {
   await page.getByRole("button", { name: "Billing" }).click();
   // AppShell h2 "Billing" + Billing.jsx:163 <Section title="Billing"> → <h3>.
   // Both match — strict mode would error otherwise; use .first().
-  await expect(page.getByRole("heading", { name: "Billing" }).first()).toBeVisible();
-  await expect(page.getByRole("button", { name: "Add Credit Note" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Generate Bills" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Billing" }).first(),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Add Credit Note" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Generate Bills" }),
+  ).toBeVisible();
 
   // Four status filter chips.
   for (const s of ["All", "Unpaid", "Partial", "Paid"]) {
-    await expect(page.getByRole("button", { name: s, exact: true })).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: s, exact: true }),
+    ).toBeVisible();
   }
 
   // KPI labels (Billing.jsx:205-224).
   for (const label of ["Total Billed", "Collected", "Pending", "Bills"]) {
-    await expect(page.locator(".stat-label").filter({ hasText: label }).first()).toBeVisible();
+    await expect(
+      page.locator(".stat-label").filter({ hasText: label }).first(),
+    ).toBeVisible();
   }
 });
 
-test("More page exposes Security, Adjustments, Pause Periods, Diagnostics, Health", async ({ page }) => {
+test("More page exposes Security, Adjustments, Pause Periods, Diagnostics, Health", async ({
+  page,
+}) => {
   await page.getByRole("button", { name: "More" }).click();
-  await expect(page.getByRole("heading", { name: "Admin Tools" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Admin Tools" }),
+  ).toBeVisible();
   await expect(page.getByRole("heading", { name: "Security" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Adjustments" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Pause Periods" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Diagnostics" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "System Health" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Adjustments" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Pause Periods" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Diagnostics" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "System Health" }),
+  ).toBeVisible();
   await expect(page.getByRole("button", { name: "Change PIN" })).toBeVisible();
   // Use exact:true — `{ name: "Run" }` would substring-match BOTH "Run" and
   // "Run Health Check" (the next line), violating Playwright strict mode.
-  await expect(page.getByRole("button", { name: "Run", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Run Health Check" })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Run", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Run Health Check" }),
+  ).toBeVisible();
 });
 
-test("Quick-action buttons open modal dialogs from the Dashboard", async ({ page }) => {
+test("Quick-action buttons open modal dialogs from the Dashboard", async ({
+  page,
+}) => {
   // Previous tests navigate away from the dashboard — re-home first.
   await page.getByRole("button", { name: "Home" }).click();
   await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();

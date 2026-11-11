@@ -27,7 +27,9 @@ describe("SubscriptionHistoryModal — fetch error handling (audit 2026-07-24)",
 
   it("does NOT hang on Loading forever when the handler rejects", async () => {
     const handlers = {
-      fetchSubscriptionHistory: vi.fn().mockRejectedValue(new Error("rpc down")),
+      fetchSubscriptionHistory: vi
+        .fn()
+        .mockRejectedValue(new Error("rpc down")),
     };
     render(
       <SubscriptionHistoryModal

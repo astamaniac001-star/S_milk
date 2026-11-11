@@ -73,12 +73,12 @@ provisioned operator credentials, the following tests still actually run
 against the live project (not skipped):
 
 - `database-connection.test.js › anon client can reach Supabase but is
-  BLOCKED from reading data` — verifies the public anon key cannot read
+BLOCKED from reading data` — verifies the public anon key cannot read
   customer rows. Verified live 2026-07-27: production gates anon via GRANT
   revocation (PostgREST 42501), not RLS row filtering. The test accepts
   EITHER security model so it stays valid as the deployment hardens.
 - `vitest/api-integration.test.js › anon client is blocked from reading
-  business tables` — same anon check from the Vitest layer.
+business tables` — same anon check from the Vitest layer.
 - `vitest/api-integration.test.js › supabase project is reachable` —
   sanity-check that the URL + anon key reach the project at all.
 
@@ -101,12 +101,12 @@ ffmpeg binaries just to collect the suite.
 
 All values read from `.env` (same shape as the app):
 
-| Var                   | Required for        | Notes                              |
-| --------------------- | ------------------- | ---------------------------------- |
-| `VITE_SUPABASE_URL`   | everything          | already in committed .env          |
-| `VITE_SUPABASE_ANON_KEY` | everything | already in committed .env |
-| `E2E_OPERATOR_PIN`    | all UI + DB tests   | the operator's 6-digit Auth PIN    |
-| `E2E_OPERATOR_EMAIL`  | optional override   | defaults to `astamaniac001@gmail.com` |
+| Var                      | Required for      | Notes                                 |
+| ------------------------ | ----------------- | ------------------------------------- |
+| `VITE_SUPABASE_URL`      | everything        | already in committed .env             |
+| `VITE_SUPABASE_ANON_KEY` | everything        | already in committed .env             |
+| `E2E_OPERATOR_PIN`       | all UI + DB tests | the operator's 6-digit Auth PIN       |
+| `E2E_OPERATOR_EMAIL`     | optional override | defaults to `astamaniac001@gmail.com` |
 
 Add `E2E_OPERATOR_PIN=123456` to your local `.env` (which is git-ignored)
 before running the lifecycle tests — otherwise they self-skip with a clear
@@ -117,5 +117,5 @@ message.
 Every row created by an E2E test is named with the `__e2e__` marker
 (see `helpers/supabase.js`). The integration lifecycle cleans up its own
 rows per FK cascade order documented in `supabase/schema.sql`. No test
- EVER deletes rows whose name does NOT start with `__e2e__` — the
+EVER deletes rows whose name does NOT start with `__e2e__` — the
 operator's real data is safe.

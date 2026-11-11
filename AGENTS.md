@@ -29,17 +29,17 @@ It's **not** a customer-facing app: single-operator, installable PWA, offline-to
 
 ## Tech stack (verified against package.json)
 
-| Layer      | Choice | Notes |
-| :---       | :---   | :---  |
-| UI         | React 19.2 + Vite 8.1 | JSX, no TypeScript; build target es2020, no prod sourcemaps |
-| Icons      | lucide-react 1.24 | |
-| Backend    | **Supabase directly** (no Node server) | `@supabase/supabase-js` 2.110; PostgREST 14.5 |
-| Service Wk | Vanilla `public/sw.js` | Cache-first shell; network-only for `/api` + `/functions` |
-| State      | React hooks (no Redux/Zustand) | Composable custom hooks |
-| Routing    | Tab-based (no react-router) | State field `tab` in `useAppUi` |
-| Tests      | Vitest 4 + jsdom 29 + Testing Library; Playwright 1.62 (browser e2e) | Coverage thresholds enforced separately |
-| Lint       | ESLint 10 flat config + react-hooks + react-refresh | `no-console` warn (warn/error allowed) |
-| Other      | cspell, fallow, madge, prettier, depcheck | Advisory; not all are in `check-all` |
+| Layer      | Choice                                                               | Notes                                                       |
+| :--------- | :------------------------------------------------------------------- | :---------------------------------------------------------- |
+| UI         | React 19.2 + Vite 8.3                                                | JSX, no TypeScript; build target es2020, no prod sourcemaps |
+| Icons      | lucide-react 1.24                                                    |                                                             |
+| Backend    | **Supabase directly** (no Node server)                               | `@supabase/supabase-js` 2.111; PostgREST 14.5               |
+| Service Wk | Vanilla `public/sw.js`                                               | Cache-first shell; network-only for `/api` + `/functions`   |
+| State      | React hooks (no Redux/Zustand)                                       | Composable custom hooks                                     |
+| Routing    | Tab-based (no react-router)                                          | State field `tab` in `useAppUi`                             |
+| Tests      | Vitest 4 + jsdom 29 + Testing Library; Playwright 1.62 (browser e2e) | Coverage thresholds enforced separately                     |
+| Lint       | ESLint 10 flat config + react-hooks + react-refresh                  | `no-console` warn (warn/error allowed)                      |
+| Other      | cspell, fallow, madge, prettier, depcheck                            | Advisory; not all are in `check-all`                        |
 
 ## Repository layout
 
@@ -62,7 +62,8 @@ src/
 │   │   ├── imports.js       # milk_imports CRUD + confirm/delete RPCs + getBrands + saveBrand + getDailyInventory
 │   │   └── admin.js         # getPauses, addPausePeriod, runDiagnostics, healthCheck, rotatePIN
 │   ├── constants.js         # SC (status colors), DAYS, MILK_TYPES (7), PAY_MODES (7), NEW_SUB_DEFAULTS, OPERATOR_EMAIL
-│   ├── filters.js           # Pure filterCustomers/filterImports/filterBills + buildMonthOptions
+│   ├── filters.js           # Pure filters (customers/imports/bills) + month
+│   │                    # options + import day/range modes + defaultImportRange
 │   ├── utils.js             # toNum, fmt, getToday [Asia/Kolkata], getDaysAgoIST, cleanPhone, dayLabels, matchBrandByMilkType, brandLabel, generateKey
 │   ├── validation.js        # Barrel re-exporting validation/*
 │   ├── validation/          # customer.js, import.js, subscription.js (validateSubscriptionForm)
@@ -148,15 +149,15 @@ scripts, Google Fonts, and `*.supabase.co` (HTTP+WSS) only.
 
 **Modal opener map** (who opens what):
 
-| Page | Opens |
-| :--- | :---- |
-| Dashboard | `addCustomer`, `addImport`, `addAdj`, `addPause`, `addBrand`, Generate Bills |
-| Customers | `editCustomer` (full entity), `addSubscription` (prefilled customer id) |
+| Page          | Opens                                                                             |
+| :------------ | :-------------------------------------------------------------------------------- |
+| Dashboard     | `addCustomer`, `addImport`, `addAdj`, `addPause`, `addBrand`, Generate Bills      |
+| Customers     | `editCustomer` (full entity), `addSubscription` (prefilled customer id)           |
 | Subscriptions | `addSubscription` (`NEW_SUB_DEFAULTS`), `editSubscription`, `subscriptionHistory` |
-| Delivery | `addAdHoc` |
-| Imports | `addImport` (add *and* edit via same modal), `addBrand`, `editBrand` |
-| Billing | `payment`, `billDetail`, `addCreditNote` |
-| More | `addAdj`, `addPause`, `changePin` |
+| Delivery      | `addAdHoc`                                                                        |
+| Imports       | `addImport` (add _and_ edit via same modal), `addBrand`, `editBrand`              |
+| Billing       | `payment`, `billDetail`, `addCreditNote`                                          |
+| More          | `addAdj`, `addPause`, `changePin`                                                 |
 
 `MODAL_RENDERERS` keys: `addCustomer`, `editCustomer`, `addImport`, `payment`,
 `changePin`, `billDetail`, `addAdj`, `addPause`, `addBrand`, `editBrand`,
@@ -181,9 +182,10 @@ Action names are CamelCase strings (`getCustomers`, `recordPayment`,
 `generateDailyLogsForDate`, …). Unknown actions throw
 `Unknown action: <name>` (after a console.warn) — silent success is
 impossible. Current table: **39 registered actions** across 7 domains, of
-which `rolloverMonth` and `getDailyInventory` are **registered but
-intentionally not wired to any UI** (future features) — do not assume a
-registered action has a caller.
+which `rolloverMonth` is **registered but intentionally not wired to any UI**
+(future feature) — do not assume a registered action has a caller.
+(`getDailyInventory` was wired to the Imports page "By day" stock card on
+2026-11-10, with Confirmed-only import counting.)
 
 ### 2. State composition pattern (don't break it)
 
@@ -386,7 +388,7 @@ PostgreSQL function per operation, called through one `callApi` action:
   `schema.sql` before creating/calling an RPC. Payload keys must match
   parameter names exactly; dates are `YYYY-MM-DD`; UUIDs are real UUIDs.
 - PostgreSQL functions overload by signature: `CREATE OR REPLACE` with new
-  args creates a *new* function. Drop obsolete overloads in a migration and
+  args creates a _new_ function. Drop obsolete overloads in a migration and
   confirm generated types show only the intended signature (the 5-arg
   `record_ad_hoc_log_rpc` was dropped once already).
 - Don't leave legacy write RPCs callable as alternate paths around
@@ -445,18 +447,19 @@ brand prices each milk type independently.
   matching rate **fails loudly** naming brand + type — never priced with
   another brand's rate. Only NULL-brand deliveries use the legacy heuristic
   (most recent Active brand whose `default_milk_type` matches).
-- **Ad-hoc**: `record_ad_hoc_log_rpc(p_customer_id, p_date, p_qty, p_product,
-  p_brand_id, p_reason)` — 6 args; accumulates onto the same-brand row
+- **Ad-hoc**: `record_ad_hoc_log_rpc` — 6 args, all on one line:
+  `(p_customer_id, p_date, p_qty, p_product, p_brand_id, p_reason)`.
+  Accumulates onto the same-brand row
   (`brand_id IS NOT DISTINCT FROM p_brand_id` — NULL matches NULL). In
   plpgsql, test `FOUND` after `SELECT … INTO` — a record's `IS NOT NULL` is
-  FALSE when *any* field is NULL (this silently broke brandless accumulation
+  FALSE when _any_ field is NULL (this silently broke brandless accumulation
   once).
 - **Brand save**: `save_brand_rpc(p_brand jsonb, p_rates jsonb)` — atomic
   brand upsert + replace-all rates; `BrandModal` is the only writer; the
   frontend never writes `brand_rates` directly; a brand with zero rates is
   rejected client-side (₹0 pricing trap).
-- Frontend: brand selects store the **brand id** (`ActiveBrandOptions
-  valueKey="id"`); `mapSubscriptionFromApi`/`mapLogFromApi` expose `brandId`;
+- Frontend: brand selects store the **brand id** — `ActiveBrandOptions` with
+  `valueKey="id"`; `mapSubscriptionFromApi`/`mapLogFromApi` expose `brandId`;
   `brandLabel(record, brands)` resolves display names (falls back to milk
   type for legacy rows); `matchBrandByMilkType` powers legacy pricing display.
 
@@ -516,10 +519,12 @@ truth for dev and the local Playwright/Vitest suites; production reads the
 same vars from the hosting provider.
 
 Required:
+
 - `VITE_SUPABASE_URL` — e.g. `https://qipvmrgieuvpygjytcpt.supabase.co`
 - `VITE_SUPABASE_ANON_KEY` — public anon JWT; public by design (§9)
 
 Optional:
+
 - `VITE_OPERATOR_EMAIL` — overrides the default operator email
 - `E2E_OPERATOR_PIN` / `E2E_OPERATOR_EMAIL` — e2e + live-DB tests
   (self-skip when unset; see `e2e/README.md`)
@@ -552,10 +557,11 @@ vars without a guard there.
   into the SW; bump `CACHE` per shell change (§19: don't quote the value).
 - **CSP in `index.html`** — new external origins (fonts, APIs) must be
   allowlisted there; scripts stay classic or self-hosted modules.
-- **DEFAULT PRIVILEGES grant TABLES + SEQUENCES to `anon`** (and functions to
-  `authenticated`/`service_role` but not `anon`). A migration that creates a
-  table and forgets RLS exposes it publicly — `REVOKE ALL ON FUTURE TABLES …
-  FROM anon` first, then per-table grants (§13).
+- **DEFAULT PRIVILEGES no longer grant TABLES + SEQUENCES to `anon`** — the
+  20261108185027 migration revoked them (and revoked `update_updated_at_column()`
+  from PUBLIC). New tables start closed: a migration that creates a table must
+  grant explicitly to `authenticated`/`service_role` in the same migration,
+  and RLS must be enabled + forced before any grant lands (§13).
 
 ## 🗄️ Database migrations & schema context
 

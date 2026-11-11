@@ -40,10 +40,7 @@ export default defineConfig({
   workers: 1,
   timeout: 60_000,
   expect: { timeout: 10_000 },
-  reporter: [
-    ["list"],
-    ["html", { outputFolder: REPORT_DIR, open: "never" }],
-  ],
+  reporter: [["list"], ["html", { outputFolder: REPORT_DIR, open: "never" }]],
 
   use: {
     baseURL: "http://localhost:5173",

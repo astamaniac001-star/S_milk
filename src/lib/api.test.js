@@ -84,12 +84,16 @@ describe("api.js - Money Paths", () => {
       expect(payload.idempotencyKey).toBe("stable-key-for-retry");
     });
 
-    it("mints a new key only when the caller omits one", () => {
-      const a = mapPaymentToApi("bill-1", 50);
-      const b = mapPaymentToApi("bill-1", 50);
-      expect(a.idempotencyKey).toBeTruthy();
-      expect(b.idempotencyKey).toBeTruthy();
-      expect(a.idempotencyKey).not.toBe(b.idempotencyKey);
+    it("THROWS when the caller omits one — silent minting defeated dedup", () => {
+      // Audit 2026-11-09 (F6): the old fallback `|| generateKey()` minted a
+      // fresh UUID per call, so a manual retry after a successful-but-
+      // unacknowledged RPC bypassed the uniqueness guard and double-charged.
+      // The mapper now refuses to invent a key — the caller must own the
+      // per-attempt key lifecycle (useBillPayments does).
+      expect(() => mapPaymentToApi("bill-1", 50)).toThrow(/idempotencyKey/i);
+      expect(() => mapPaymentToApi("bill-1", 50, {})).toThrow(
+        /idempotencyKey/i,
+      );
     });
   });
 

@@ -18,9 +18,7 @@ import { ShieldCheck } from "lucide-react";
 // succeeded but the displayed list stayed stale. Now the card starts blank
 // and gets populated from the live `healthCheck` RPC response on click.
 function defaultHealth() {
-  return [
-    { label: "Database", value: "Not checked", ok: null },
-  ];
+  return [{ label: "Database", value: "Not checked", ok: null }];
 }
 
 function buildHealthFromResult(previous, result) {
@@ -140,7 +138,11 @@ function AdjustmentItem({ a, onApplyAdj, resolveCustomer }) {
           applied={!!a.applied}
           onApply={() => {
             if (!a.billId) return;
-            if (window.confirm(`Apply adjustment to this bill? This action is irreversible.`)) {
+            if (
+              window.confirm(
+                `Apply adjustment to this bill? This action is irreversible.`,
+              )
+            ) {
               onApplyAdj(a.adjustmentId || a.id, a.billId, a.version);
             }
           }}
@@ -397,8 +399,8 @@ function SystemHealthCard({ onHealthCheck }) {
             }}
           >
             {x.value}
-         </span>
-       </div>
+          </span>
+        </div>
       ))}
       <Btn
         full
@@ -408,8 +410,8 @@ function SystemHealthCard({ onHealthCheck }) {
         disabled={running}
       >
         {running ? "Checking..." : "Run Health Check"}
-     </Btn>
-   </Card>
+      </Btn>
+    </Card>
   );
 }
 
@@ -453,4 +455,3 @@ export default function More({
     </div>
   );
 }
-

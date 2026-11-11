@@ -6,7 +6,9 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 let _configError = null;
 if (!supabaseUrl || !supabaseAnonKey) {
   console.error("Missing Supabase environment variables. Check .env file.");
-  _configError = new Error("App configuration error: Missing database credentials.");
+  _configError = new Error(
+    "App configuration error: Missing database credentials.",
+  );
 }
 
 // FIX (audit #2): throwing synchronously at module-eval time happens BEFORE

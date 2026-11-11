@@ -98,15 +98,15 @@ Tab-based routing (no react-router): `AppShell` renders 7 bottom-nav tabs,
 modal components in `src/components/modals/`, re-exported by `forms.jsx`
 except `ChangePinModal` which is imported directly).
 
-| Tab | Page | What it does | Opens |
-| :-- | :--- | :----------- | :---- |
-| **Home** | `Dashboard.jsx` | KPI tiles (active customers, collected revenue, pending dues, delivered stock today), today's log list, quick actions | `addCustomer`, `addImport`, **Generate Bills**, `addAdj`, `addPause`, `addBrand` |
-| **Customers** | `Customers.jsx` | Identity-only customer cards (name, address, phone, status, balance) with search + status filter, WhatsApp share, deactivate (OCC-guarded), each card lists that customer's subscriptions | `editCustomer`, `addSubscription` (prefilled with the customer id) |
-| **Subs** | `Subscriptions.jsx` | Full subscription management: search/filter, add / edit / delete (version-checked) / history | `addSubscription` (with `NEW_SUB_DEFAULTS`), `editSubscription`, `subscriptionHistory` |
-| **Delivery** | `Delivery.jsx` | The daily driver page: date picker, **Generate** button, per-log delivered/skipped toggle with brand breakdown, add extra delivery | `addAdHoc` |
-| **Imports** | `Imports.jsx` | Milk purchases from suppliers: draft → **Confirm** / delete (both via OCC RPCs), month/brand/status filters, brand manager (add + edit per-milk-type rates) | `addImport` (add *and* edit — the modal handles both), `addBrand`, `editBrand` |
-| **Billing** | `Billing.jsx` | Monthly bills per customer: month picker, status filter, KPIs, lock/unlock, record payment, bill detail, WhatsApp share, issue credit note | `payment`, `billDetail`, `addCreditNote` |
-| **More** | `More.jsx` | Adjustments ledger + **Apply** buttons, pause periods, live diagnostics, health check, PIN rotation | `addAdj`, `addPause`, `changePin` |
+| Tab           | Page                | What it does                                                                                                                                                                              | Opens                                                                                  |
+| :------------ | :------------------ | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------- |
+| **Home**      | `Dashboard.jsx`     | KPI tiles (active customers, collected revenue, pending dues, delivered stock today), today's log list, quick actions                                                                     | `addCustomer`, `addImport`, **Generate Bills**, `addAdj`, `addPause`, `addBrand`       |
+| **Customers** | `Customers.jsx`     | Identity-only customer cards (name, address, phone, status, balance) with search + status filter, WhatsApp share, deactivate (OCC-guarded), each card lists that customer's subscriptions | `editCustomer`, `addSubscription` (prefilled with the customer id)                     |
+| **Subs**      | `Subscriptions.jsx` | Full subscription management: search/filter, add / edit / delete (version-checked) / history                                                                                              | `addSubscription` (with `NEW_SUB_DEFAULTS`), `editSubscription`, `subscriptionHistory` |
+| **Delivery**  | `Delivery.jsx`      | The daily driver page: date picker, **Generate** button, per-log delivered/skipped toggle with brand breakdown, add extra delivery                                                        | `addAdHoc`                                                                             |
+| **Imports**   | `Imports.jsx`       | Milk purchases from suppliers: draft → **Confirm** / delete (both via OCC RPCs), month/brand/status filters, brand manager (add + edit per-milk-type rates)                               | `addImport` (add _and_ edit — the modal handles both), `addBrand`, `editBrand`         |
+| **Billing**   | `Billing.jsx`       | Monthly bills per customer: month picker, status filter, KPIs, lock/unlock, record payment, bill detail, WhatsApp share, issue credit note                                                | `payment`, `billDetail`, `addCreditNote`                                               |
+| **More**      | `More.jsx`          | Adjustments ledger + **Apply** buttons, pause periods, live diagnostics, health check, PIN rotation                                                                                       | `addAdj`, `addPause`, `changePin`                                                      |
 
 `App.jsx` is the mount point: `useAuth` → `useAppState` → `useAppHandlers` →
 `ErrorBoundary` → `AppShell` → page + modals + `Toast`. The login screen is
@@ -148,7 +148,7 @@ recovery card instead of a white screen.
 - **Toggle** (`updateLogEntry`): sets `delivered` (+qty/note) on one log, then
   refetches the day.
 - **Extra delivery** (`addAdHocLog` → `record_ad_hoc_log_rpc`): a single
-  transactional RPC that accumulates qty onto the row with the *same* brand
+  transactional RPC that accumulates qty onto the row with the _same_ brand
   (`brand_id IS NOT DISTINCT FROM p_brand_id`), locked `FOR UPDATE`. A
   concurrent insert surfaces as a typed `CONFLICT` the operator can retry.
   The brand is recorded (e.g. a substitute during shortage) so billing prices
@@ -237,8 +237,14 @@ Ledger-grade, always via RPC:
   transaction. If the import isn't in memory yet (stale list), the handler
   refetches once to recover the version instead of failing with "version is
   required".
-- `getDailyInventory` (imported vs delivered vs remaining/shortage for a date)
-  is implemented and registered but **not wired to any UI yet**.
+- `getDailyInventory` (imported vs delivered vs remaining/shortage for a
+  date) powers the Imports page **"By day" stock card** (wired 2026-11-10);
+  the imported side counts **Confirmed imports only** — a Draft import is not
+  verified stock and must not inflate Remaining. The Imports page also has
+  **"By day"** and **"By date range"** filter modes (default window: first of
+  the previous month → today) — pure client-side filtering over the unscoped
+  `getMilkImports` fetch; no DB scoping unless row counts ever demand it
+  (`idx_milk_imports_date` already exists for that day).
 
 ### 8. Pauses, diagnostics, PIN (`lib/api/admin.js`)
 
@@ -269,21 +275,21 @@ function (cron) calling this RPC.
 Source of truth for the deployed schema: `supabase/schema.sql` (generated
 snapshot) and `src/lib/database.types.ts` (generated types). **13 tables**:
 
-| Table | Purpose | Notable |
-| :---- | :------ | :------ |
-| `customers` | Identity only (name, phone, `delivery_address`, status, balance) | `version` INT; legacy `product`/`daily_qty`/`delivery_days` deprecated |
-| `subscriptions` | (customer, brand, milk type, qty, delivery_days JSONB, is_active) | `version`; partial unique `(customer, COALESCE(brand), milk_type) WHERE is_active` |
-| `daily_logs` | One row per (customer, date, **brand**, product) | NULL-safe unique expression index; no version (toggled freely) |
-| `milk_brands` | Supplier brands + legacy default type/rate | Legacy columns kept in sync by `save_brand_rpc` |
-| `brand_rates` | The real rate table: `UNIQUE (brand_id, milk_type)`, `rate >= 0` | Written **only** via `save_brand_rpc` |
-| `milk_imports` | Purchases from suppliers | `version`; confirm/delete via RPCs |
-| `bills` | Monthly bill per customer | `version`, `locked`, `status` ∈ Draft/Unpaid/Partial/Paid |
-| `payments` | Payment ledger rows | `idempotency_key` UNIQUE — retries deduplicate |
-| `adjustments` | Amount adjustments pending/`applied` | `version`; applied via RPC only |
-| `credit_notes` | Credit notes; `applied_to_bill_id` traces the bill actually reduced | `version`; applied via RPC only |
-| `pause_periods` | Delivery pauses (start/end/reason) | Consulted by the daily generator |
-| `operators` | Maps `user_id` (Supabase Auth uid) → operator | No client policy (`USING (false)`) — service-role only |
-| `settings` | Key/value (schema version, diagnostics) | Probed by diagnostics |
+| Table           | Purpose                                                             | Notable                                                                            |
+| :-------------- | :------------------------------------------------------------------ | :--------------------------------------------------------------------------------- |
+| `customers`     | Identity only (name, phone, `delivery_address`, status, balance)    | `version` INT; legacy `product`/`daily_qty`/`delivery_days` deprecated             |
+| `subscriptions` | (customer, brand, milk type, qty, delivery_days JSONB, is_active)   | `version`; partial unique `(customer, COALESCE(brand), milk_type) WHERE is_active` |
+| `daily_logs`    | One row per (customer, date, **brand**, product)                    | NULL-safe unique expression index; no version (toggled freely)                     |
+| `milk_brands`   | Supplier brands + legacy default type/rate                          | Legacy columns kept in sync by `save_brand_rpc`                                    |
+| `brand_rates`   | The real rate table: `UNIQUE (brand_id, milk_type)`, `rate >= 0`    | Written **only** via `save_brand_rpc`                                              |
+| `milk_imports`  | Purchases from suppliers                                            | `version`; confirm/delete via RPCs                                                 |
+| `bills`         | Monthly bill per customer                                           | `version`, `locked`, `status` ∈ Draft/Unpaid/Partial/Paid                          |
+| `payments`      | Payment ledger rows                                                 | `idempotency_key` UNIQUE — retries deduplicate                                     |
+| `adjustments`   | Amount adjustments pending/`applied`                                | `version`; applied via RPC only                                                    |
+| `credit_notes`  | Credit notes; `applied_to_bill_id` traces the bill actually reduced | `version`; applied via RPC only                                                    |
+| `pause_periods` | Delivery pauses (start/end/reason)                                  | Consulted by the daily generator                                                   |
+| `operators`     | Maps `user_id` (Supabase Auth uid) → operator                       | No client policy (`USING (false)`) — service-role only                             |
+| `settings`      | Key/value (schema version, diagnostics)                             | Probed by diagnostics                                                              |
 
 **Versioned entities** (frontend OCC): `customers`, `milk_imports`, `bills`,
 `subscriptions`, `adjustments`, `credit_notes`. Every update/lock/unlock/
@@ -294,17 +300,17 @@ affected (`updateWithVersion` throws a typed `CONFLICT` on `PGRST116`).
 retains EXECUTE via `ALTER DEFAULT PRIVILEGES`; each authorizes the caller via
 `is_operator()` and locks rows `FOR UPDATE`):
 
-| RPC | Args | Atomic operation |
-| :-- | :--- | :--------------- |
-| `record_payment_rpc` | bill_id, amount, mode, date, note, idempotency_key | Insert payment + update bill |
-| `generate_month_bill_rpc` | customer_id, month | Price delivered logs by (product, brand) → bill |
-| `apply_adjustment_rpc` | adjustment_id, bill_id, version | Apply adjustment to bill |
-| `apply_credit_note_rpc` | credit_note_id, bill_id, version | Apply credit note to bill |
-| `confirm_milk_import_rpc` | import_id, expected_version | Confirm purchase |
-| `delete_milk_import_rpc` | import_id, expected_version | Delete purchase |
-| `record_ad_hoc_log_rpc` | customer_id, date, qty, product, brand_id, reason | Accumulate extra delivery |
-| `rollover_month_rpc` | month | Seed month bills (not wired to UI; future cron) |
-| `save_brand_rpc` | brand jsonb, rates jsonb | Brand upsert + replace-all rates |
+| RPC                       | Args                                               | Atomic operation                                |
+| :------------------------ | :------------------------------------------------- | :---------------------------------------------- |
+| `record_payment_rpc`      | bill_id, amount, mode, date, note, idempotency_key | Insert payment + update bill                    |
+| `generate_month_bill_rpc` | customer_id, month                                 | Price delivered logs by (product, brand) → bill |
+| `apply_adjustment_rpc`    | adjustment_id, bill_id, version                    | Apply adjustment to bill                        |
+| `apply_credit_note_rpc`   | credit_note_id, bill_id, version                   | Apply credit note to bill                       |
+| `confirm_milk_import_rpc` | import_id, expected_version                        | Confirm purchase                                |
+| `delete_milk_import_rpc`  | import_id, expected_version                        | Delete purchase                                 |
+| `record_ad_hoc_log_rpc`   | customer_id, date, qty, product, brand_id, reason  | Accumulate extra delivery                       |
+| `rollover_month_rpc`      | month                                              | Seed month bills (not wired to UI; future cron) |
+| `save_brand_rpc`          | brand jsonb, rates jsonb                           | Brand upsert + replace-all rates                |
 
 `is_operator()` compares `auth.uid()` against the `operators` table — the
 single gate for RLS and RPC authorization.
@@ -408,6 +414,7 @@ artifacts (`dist/`, `coverage/`, `e2e-test-results/`) are git-ignored.
 ## Getting started
 
 ### Prerequisites
+
 - **Node.js** 20.x or higher, npm
 - A **Supabase** project (cloud or local) with the schema applied
 - Supabase CLI (for the `db:*` scripts)
@@ -465,18 +472,18 @@ npm run dev      # http://localhost:5173
 
 ## npm scripts reference
 
-| Script | What it does |
-| :--- | :--- |
-| `dev` / `build` / `preview` | Vite dev server / production build / local preview |
-| `lint` / `lint:fix` | ESLint (flat config; `no-console` warn with warn/error allowed) |
-| `test` / `test:watch` / `test:coverage` | Vitest (jsdom + Testing Library); coverage has enforced thresholds |
-| `test:e2e` (+`:headed` / `:ui` / `:debug`) | Playwright suite against the live app (system **Edge** channel; boots the dev server on :5173) |
-| `test:db` / `test:db:watch` | Vitest integration tests against the live Supabase project (separate config; self-skips without `E2E_OPERATOR_PIN`) |
-| `check-all` | lint → test:db → test → build |
-| `test:all` | `check-all` + `test:e2e` |
-| `advisor-all` | spellcheck → check-deps → fallow → test:coverage |
-| `audit` / `circular` / `cprettier` / `check-deps` / `spellcheck` / `fallow` | Advisory tools (run individually) |
-| `db:new` / `db:push` / `db:dump` / `db:types` / `db:sync` / `db:baseline` | Supabase schema workflow (see above) |
+| Script                                                                      | What it does                                                                                                        |
+| :-------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------ |
+| `dev` / `build` / `preview`                                                 | Vite dev server / production build / local preview                                                                  |
+| `lint` / `lint:fix`                                                         | ESLint (flat config; `no-console` warn with warn/error allowed)                                                     |
+| `test` / `test:watch` / `test:coverage`                                     | Vitest (jsdom + Testing Library); coverage has enforced thresholds                                                  |
+| `test:e2e` (+`:headed` / `:ui` / `:debug`)                                  | Playwright suite against the live app (system **Edge** channel; boots the dev server on :5173)                      |
+| `test:db` / `test:db:watch`                                                 | Vitest integration tests against the live Supabase project (separate config; self-skips without `E2E_OPERATOR_PIN`) |
+| `check-all`                                                                 | lint → test:db → test → build                                                                                       |
+| `test:all`                                                                  | `check-all` + `test:e2e`                                                                                            |
+| `advisor-all`                                                               | spellcheck → check-deps → fallow → test:coverage                                                                    |
+| `audit` / `circular` / `cprettier` / `check-deps` / `spellcheck` / `fallow` | Advisory tools (run individually)                                                                                   |
+| `db:new` / `db:push` / `db:dump` / `db:types` / `db:sync` / `db:baseline`   | Supabase schema workflow (see above)                                                                                |
 
 Coverage thresholds (`vite.config.js`): global 10% lines/branches/functions/
 statements with per-path floors — `src/lib/api.js` 40/30,
@@ -519,9 +526,9 @@ deliberately thin; don't assume the suite exercises a path you changed.
   WhatsApp.
 - **useHelpers** (shared by all handler hooks, positional contracts):
   `showToast(msg, type)`, `executeApiAction(action, payload, successMsg,
-  getList, setList, mapFromApi, resKey)`, `handleFormAction(…)`,
+getList, setList, mapFromApi, resKey)`, `handleFormAction(…)`,
   `handleIdAction(…)`, and `saveWithValidation(form, validateFn, handlers,
-  entityName)` which routes to `add<Entity>`/`update<Entity>` based on the
+entityName)` which routes to `add<Entity>`/`update<Entity>` based on the
   presence of `form.id`.
 - **One action = one mutation = at most one success toast**; duplicate calls
   from copy/paste leftovers are release blockers.
@@ -534,7 +541,7 @@ deliberately thin; don't assume the suite exercises a path you changed.
 ## Security model
 
 - **RLS is the boundary.** Every table has `strict_auth_only_select/insert/
-  update/delete` policies gated on `is_operator()`; the `operators` table has
+update/delete` policies gated on `is_operator()`; the `operators` table has
   no client policy at all. The anon key is public; a hostile authenticated
   non-operator must be unable to read or write anything.
 - **RPC hardening**: every financial/mutating RPC is `SECURITY DEFINER` with
@@ -542,10 +549,12 @@ deliberately thin; don't assume the suite exercises a path you changed.
   `search_path`, row locks, and state validation. `anon` keeps no EXECUTE on
   functions (default privileges grant functions to `authenticated` and
   `service_role` only).
-- **The `anon` table trap**: `ALTER DEFAULT PRIVILEGES` grants **tables and
-  sequences to `anon`** by default. Any new table created by `postgres` is
-  wide-open until RLS + explicit grants land **in the same migration** —
-  future migrations should `REVOKE ALL ON FUTURE TABLES … FROM anon` first.
+- **The `anon` table trap — now closed**: the 20261108185027 migration
+  revoked the `ALTER DEFAULT PRIVILEGES` grants of **tables and sequences to
+  `anon`** (they were open by default before). New tables therefore start
+  closed: any migration that creates a table must enable + force RLS and
+  grant explicitly to `authenticated`/`service_role` **in the same
+  migration**.
 - **Auth**: the 6-digit PIN is the Supabase Auth password of the operator
   account (`OPERATOR_EMAIL` in `constants.js`, env-overridable). Rotation
   re-authenticates first. Never weaken rate limiting, add bypass paths, log

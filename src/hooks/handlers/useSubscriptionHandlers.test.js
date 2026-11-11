@@ -245,7 +245,10 @@ describe("useSubscriptionHandlers (advisor-all coverage)", () => {
       await result.current.deleteSubscription({ version: 1 });
     });
 
-    expect(s.toast$).toHaveBeenCalledWith("Subscription id is required", "error");
+    expect(s.toast$).toHaveBeenCalledWith(
+      "Subscription id is required",
+      "error",
+    );
     expect(callApi).not.toHaveBeenCalled();
   });
 

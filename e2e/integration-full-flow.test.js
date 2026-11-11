@@ -52,7 +52,9 @@ test.describe("full operator lifecycle", () => {
     await waitForAppReady(page);
   });
 
-  test("create customer, generate log, generate bill, partial payment — DB ↔ UI agree", async ({ page }) => {
+  test("create customer, generate log, generate bill, partial payment — DB ↔ UI agree", async ({
+    page,
+  }) => {
     const supabase = await makeSupabase({ withSession: true });
     const cname = e2eName("Lifecycle Customer");
     const today = new Date().toLocaleDateString("en-CA", {
@@ -76,7 +78,10 @@ test.describe("full operator lifecycle", () => {
       .from("milk_brands")
       .select("id", { count: "exact", head: true })
       .eq("status", "Active");
-    if (brandErr) throw new Error(`preflight milk_brands probe failed: ${brandErr.message}`);
+    if (brandErr)
+      throw new Error(
+        `preflight milk_brands probe failed: ${brandErr.message}`,
+      );
     if (!activeBrandCount || activeBrandCount === 0) {
       // Mid-body skip: Playwright `test.skip()` (no args) marks the current
       // test as "skipped" — no fixtures required to do so.
@@ -88,7 +93,9 @@ test.describe("full operator lifecycle", () => {
     await page.getByRole("button", { name: "Customers" }).click();
     // STRICT-MODE GUARD: AppShell.h2 "Customers" + Customers.jsx:25
     // <Section title="Customers"> → <h3>Customers</h3>. Use .first().
-    await expect(page.getByRole("heading", { name: "Customers", exact: true }).first()).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Customers", exact: true }).first(),
+    ).toBeVisible();
     await page.getByRole("button", { name: "+ Add" }).click();
     await expect(page.getByRole("dialog")).toBeVisible();
 
@@ -174,7 +181,9 @@ test.describe("full operator lifecycle", () => {
 
     await page.getByRole("button", { name: "Subs", exact: true }).click();
     await page.getByRole("button", { name: "+ Add" }).click();
-    await expect(page.getByRole("heading", { name: "Add Subscription" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Add Subscription" }),
+    ).toBeVisible();
     await page.getByLabel(/Customer/i).selectOption({ label: cname });
     await page.getByLabel(/Brand/i).selectOption(probeBrand.id);
     await page.getByLabel(/Milk Type/i).selectOption({ label: "Full Cream" });
@@ -195,7 +204,9 @@ test.describe("full operator lifecycle", () => {
     await page.getByRole("button", { name: "Delivery" }).click();
     // STRICT-MODE: AppShell renders <h2>Daily Delivery</h2>. Delivery.jsx
     // itself has no second heading with this label, so single-match.
-    await expect(page.getByRole("heading", { name: "Daily Delivery" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Daily Delivery" }),
+    ).toBeVisible();
     // Set the date to today (page defaults to today but covers UI contract).
     await page.locator('input[type="date"]').first().fill(today);
 
@@ -217,7 +228,10 @@ test.describe("full operator lifecycle", () => {
         .eq("date", today)
         .maybeSingle();
       expect(error).toBeNull();
-      expect(data, "daily_logs row not created for today's generation").not.toBeNull();
+      expect(
+        data,
+        "daily_logs row not created for today's generation",
+      ).not.toBeNull();
       logRow = data;
     }).toPass({ timeout: 15_000, intervals: [500, 1000, 2000] });
     expect(logRow).not.toBeNull();
@@ -238,13 +252,18 @@ test.describe("full operator lifecycle", () => {
       .eq("id", logRow.id)
       .select()
       .single();
-    expect(markErr, "could not mark the generated daily_log as delivered").toBeNull();
+    expect(
+      markErr,
+      "could not mark the generated daily_log as delivered",
+    ).toBeNull();
 
     // ─── STEP 3: Generate the month bill ───────────────────────────────
     await page.getByRole("button", { name: "Billing" }).click();
     // STRICT-MODE: AppShell <h2>Billing</h2> + Billing.jsx:163
     // <Section title="Billing"> → <h3>Billing</h3>. Use .first().
-    await expect(page.getByRole("heading", { name: "Billing" }).first()).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Billing" }).first(),
+    ).toBeVisible();
     // Set the month picker to current month (typically already there).
     await page.locator('input[type="month"]').first().fill(month);
     await page.getByRole("button", { name: "Generate Bills" }).click();
@@ -276,18 +295,19 @@ test.describe("full operator lifecycle", () => {
     // Billing page re-renders with the newly generated bill. A full-page
     // `page.reload()` here would dump us back to the dashboard tab and
     // wipe the in-memory cache; do NOT reload.
-    await expect(page.getByRole("heading", { name: "Billing" }).first()).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Billing" }).first(),
+    ).toBeVisible();
 
     // Find the bill card for our customer (Billing.jsx renders one Card per
     // bill — BillCard at line 93).
-    const billCard = page
-      .locator(".card")
-      .filter({ hasText: cname })
-      .first();
+    const billCard = page.locator(".card").filter({ hasText: cname }).first();
 
     // "Record Payment" button exists per Billing.jsx:32-35 when the bill
     // is unlocked and status !== "Paid".
-    await expect(billCard.getByRole("button", { name: "Record Payment" })).toBeVisible({ timeout: 15_000 });
+    await expect(
+      billCard.getByRole("button", { name: "Record Payment" }),
+    ).toBeVisible({ timeout: 15_000 });
     await billCard.getByRole("button", { name: "Record Payment" }).click();
     await expect(page.getByRole("dialog")).toBeVisible();
 
@@ -296,7 +316,10 @@ test.describe("full operator lifecycle", () => {
     // Partial state assertion.
     const pending = num(billRow.amount) - num(billRow.amount_paid);
     const halfStr = String(Math.floor((pending / 2) * 100) / 100);
-    await page.getByLabel(/Amount/).first().fill(halfStr);
+    await page
+      .getByLabel(/Amount/)
+      .first()
+      .fill(halfStr);
     await page.getByRole("button", { name: /Record ₹/ }).click();
     await expect(page.getByRole("dialog")).toHaveCount(0, { timeout: 15_000 });
 
@@ -356,7 +379,10 @@ async function preClean(supabase) {
         await supabase.from("payments").delete().eq("bill_id", b.id);
         await supabase.from("adjustments").delete().eq("bill_id", b.id);
         await supabase.from("credit_notes").delete().eq("bill_id", b.id);
-        await supabase.from("credit_notes").delete().eq("applied_to_bill_id", b.id);
+        await supabase
+          .from("credit_notes")
+          .delete()
+          .eq("applied_to_bill_id", b.id);
       }
     }
     await supabase.from("bills").delete().eq("customer_id", c.id);
@@ -381,7 +407,9 @@ async function cleanupAll(supabase, { customerId, billId }) {
   await supabase
     .from("credit_notes")
     .delete()
-    .or(`bill_id.eq.${billId},applied_to_bill_id.eq.${billId},customer_id.eq.${customerId}`);
+    .or(
+      `bill_id.eq.${billId},applied_to_bill_id.eq.${billId},customer_id.eq.${customerId}`,
+    );
   // Daily logs for the customer (today).
   await supabase.from("daily_logs").delete().eq("customer_id", customerId);
   // Subscriptions for the customer (if any created).

@@ -8,7 +8,14 @@ function getCustomerModalButtonText(isEdit) {
   return isEdit ? "Update" : "Save";
 }
 // fallow-ignore-next-line complexity
-export function CustomerModal({ data, form, isEdit, onChange, onSave, onClose }) {
+export function CustomerModal({
+  data,
+  form,
+  isEdit,
+  onChange,
+  onSave,
+  onClose,
+}) {
   const [busy, save] = useBusy(onSave);
   return (
     <Modal title={getCustomerModalTitle(isEdit)} onClose={onClose}>

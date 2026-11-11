@@ -43,15 +43,15 @@ export function useAuth() {
           await supabase.auth.getSession();
         if (sessionError) throw sessionError;
         setSession(sessionData?.session ?? null);
-} catch (err) {
-          if (err?.name === "AuthSessionMissingError") {
-            // Expected on first load / cold start — there is no persisted
-            // session. Silently treat as unauthenticated.
-          } else {
-            console.error("Failed to get initial session:", err);
-          }
-          setSession(null);
-        } finally {
+      } catch (err) {
+        if (err?.name === "AuthSessionMissingError") {
+          // Expected on first load / cold start — there is no persisted
+          // session. Silently treat as unauthenticated.
+        } else {
+          console.error("Failed to get initial session:", err);
+        }
+        setSession(null);
+      } finally {
         setLoading(false); // ✅ GUARANTEED to run, preventing infinite loading
       }
     };

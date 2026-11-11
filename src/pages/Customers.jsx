@@ -114,7 +114,9 @@ export default function Customers({
                   </div>
                   <CustomerSubLines subs={subs} brands={brands} />
                   {c.balance < 0 && (
-                    <div style={{ fontSize: 12, color: "#991b1b", marginTop: 2 }}>
+                    <div
+                      style={{ fontSize: 12, color: "#991b1b", marginTop: 2 }}
+                    >
                       Due: {fmt(Math.abs(c.balance))}
                     </div>
                   )}

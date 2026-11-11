@@ -292,7 +292,9 @@ export function Section({ title, action, children }) {
           marginBottom: 12,
         }}
       >
-        <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--text-main)" }}>
+        <h3
+          style={{ fontSize: 16, fontWeight: 600, color: "var(--text-main)" }}
+        >
           {title}
         </h3>
         {action}

@@ -2,7 +2,13 @@
 // (synthesized) history. Rollover is delegated to a single transactional RPC
 // (`rollover_month_rpc`) per rule §14.
 
-import { supabase, toNum, updateWithVersion, must, AuthzError } from "./shared.js";
+import {
+  supabase,
+  toNum,
+  updateWithVersion,
+  must,
+  AuthzError,
+} from "./shared.js";
 
 export async function rolloverMonth(payload) {
   const { targetMonth } = payload; // YYYY-MM
@@ -27,11 +33,13 @@ export async function rolloverMonth(payload) {
     }
     throw rpcError;
   }
-  return rpcResult || {
-    billsGenerated: 0,
-    skippedExisting: 0,
-    activeSubscriptions: 0,
-  };
+  return (
+    rpcResult || {
+      billsGenerated: 0,
+      skippedExisting: 0,
+      activeSubscriptions: 0,
+    }
+  );
 }
 
 export async function getSubscriptions(/* payload */) {

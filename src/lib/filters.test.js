@@ -4,6 +4,7 @@ import {
   filterImports,
   filterBills,
   buildMonthOptions,
+  defaultImportRange,
 } from "./filters.js";
 
 const customers = [
@@ -142,5 +143,107 @@ describe("buildMonthOptions", () => {
   it("returns empty for no imports", () => {
     expect(buildMonthOptions([])).toEqual([]);
     expect(buildMonthOptions(undefined)).toEqual([]);
+  });
+});
+
+describe("filterImports — day & range modes (Imports Day/Range views)", () => {
+  const rows = [
+    { brand: "Amul", status: "Confirmed", date: "2026-11-03" },
+    { brand: "Amul", status: "Draft", date: "2026-10-20" },
+    { brand: "MD", status: "Confirmed", date: "2026-10-31" },
+    { brand: "MD", status: "Confirmed", date: "2025-12-15" },
+  ];
+
+  it("day mode matches the exact date", () => {
+    const out = filterImports(rows, { mode: "day", day: "2026-10-20" });
+    expect(out.map((r) => r.date)).toEqual(["2026-10-20"]);
+  });
+
+  it("day mode composes with brand/status filters", () => {
+    expect(
+      filterImports(rows, {
+        mode: "day",
+        day: "2026-11-03",
+        brand: "Amul",
+      }).length,
+    ).toBe(1);
+    expect(
+      filterImports(rows, { mode: "day", day: "2026-11-03", brand: "MD" }),
+    ).toEqual([]);
+  });
+
+  it("day mode with an empty day imposes no date constraint", () => {
+    expect(filterImports(rows, { mode: "day", day: "" })).toEqual(rows);
+  });
+
+  it("range mode is inclusive on both bounds", () => {
+    const out = filterImports(rows, {
+      mode: "range",
+      from: "2026-10-01",
+      to: "2026-11-30",
+    });
+    expect(out.map((r) => r.date)).toEqual([
+      "2026-11-03",
+      "2026-10-20",
+      "2026-10-31",
+    ]);
+  });
+
+  it("range mode works with only one bound set", () => {
+    expect(
+      filterImports(rows, { mode: "range", from: "2026-10-01" }).map(
+        (r) => r.date,
+      ),
+    ).toEqual(["2026-11-03", "2026-10-20", "2026-10-31"]);
+    expect(
+      filterImports(rows, { mode: "range", to: "2025-12-31" }).map(
+        (r) => r.date,
+      ),
+    ).toEqual(["2025-12-15"]);
+  });
+
+  it("range mode excludes malformed dates while a bound is active", () => {
+    const bad = [{ date: "garbage" }, { date: "2026-10-05" }];
+    expect(
+      filterImports(bad, {
+        mode: "range",
+        from: "2026-10-01",
+        to: "2026-10-31",
+      }).map((r) => r.date),
+    ).toEqual(["2026-10-05"]);
+  });
+
+  it("month mode is unchanged: empty month shows all, prefix filters otherwise", () => {
+    expect(filterImports(rows, { month: "" })).toEqual(rows);
+    expect(
+      filterImports(rows, { month: "2026-10" }).map((r) => r.date),
+    ).toEqual(["2026-10-20", "2026-10-31"]);
+  });
+
+  it("month mode still guards malformed UI rows", () => {
+    expect(filterImports([{ date: undefined }], { month: "2026-10" })).toEqual(
+      [],
+    );
+  });
+});
+
+describe("defaultImportRange — previous month → today window", () => {
+  it("covers the first of the previous month through today", () => {
+    expect(defaultImportRange("2026-11-10")).toEqual({
+      from: "2026-10-01",
+      to: "2026-11-10",
+    });
+  });
+
+  it("rolls Dec → Jan back across the year boundary", () => {
+    expect(defaultImportRange("2026-01-05")).toEqual({
+      from: "2025-12-01",
+      to: "2026-01-05",
+    });
+  });
+
+  it("tolerates a malformed or absent today", () => {
+    expect(defaultImportRange("garbage")).toEqual({ from: "", to: "" });
+    expect(defaultImportRange(undefined)).toEqual({ from: "", to: "" });
   });
 });

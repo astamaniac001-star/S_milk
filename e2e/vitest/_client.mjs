@@ -11,17 +11,23 @@ const DEFAULT_OPERATOR_EMAIL = "astamaniac001@gmail.com";
 
 export function getEnv() {
   try {
-    const text = readFileSync(".env", "utf8").split(/\r?\n/).reduce((a, l) => {
-      const line = l.trim();
-      if (!line || line.startsWith("#")) return a;
-      const i = line.indexOf("=");
-      if (i < 0) return a;
-      const k = line.slice(0, i).trim();
-      let v = line.slice(i + 1).trim();
-      if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) v = v.slice(1, -1);
-      a[k] = v;
-      return a;
-    }, {});
+    const text = readFileSync(".env", "utf8")
+      .split(/\r?\n/)
+      .reduce((a, l) => {
+        const line = l.trim();
+        if (!line || line.startsWith("#")) return a;
+        const i = line.indexOf("=");
+        if (i < 0) return a;
+        const k = line.slice(0, i).trim();
+        let v = line.slice(i + 1).trim();
+        if (
+          (v.startsWith('"') && v.endsWith('"')) ||
+          (v.startsWith("'") && v.endsWith("'"))
+        )
+          v = v.slice(1, -1);
+        a[k] = v;
+        return a;
+      }, {});
     return { ...text, ...process.env };
   } catch {
     return { ...process.env };

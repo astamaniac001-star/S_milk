@@ -171,7 +171,10 @@ export function useBillOperations(state) {
       // cspell:disable-next-line
       const win = window.open(url, "_blank", "noopener,noreferrer");
       if (!win) {
-        showToast("Popup blocked — allow popups to share via WhatsApp", "error");
+        showToast(
+          "Popup blocked — allow popups to share via WhatsApp",
+          "error",
+        );
       }
     },
     [showToast],

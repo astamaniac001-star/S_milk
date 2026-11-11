@@ -68,9 +68,7 @@ export function useSubscriptionHandlers(state) {
         });
         showToast("Subscription deleted", "success");
         const res = await callApi("getSubscriptions", {});
-        setSubscriptions(
-          (res.subscriptions || []).map(mapSubscriptionFromApi),
-        );
+        setSubscriptions((res.subscriptions || []).map(mapSubscriptionFromApi));
       } catch (err) {
         showToast(err.message || "Failed to delete subscription", "error");
       }

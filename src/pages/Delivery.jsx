@@ -40,7 +40,15 @@ function getToggleButtonText(delivered) {
   return delivered ? "✓ Done" : "✗ Skip";
 }
 
-function DeliveryLogItem({ id, name, product, qty, delivered, onToggle, readOnly }) {
+function DeliveryLogItem({
+  id,
+  name,
+  product,
+  qty,
+  delivered,
+  onToggle,
+  readOnly,
+}) {
   return (
     <div
       style={{
@@ -87,7 +95,10 @@ function resolveLog(l, customerMap) {
   return {
     id: l.id,
     name: c?.name ?? "Unknown Customer",
-    product: l.product ?? c?.product ?? "Milk",
+    // product lives on the log row (subscription-centric model); the legacy
+    // customers.product column is deprecated and never mapped — audit
+    // 2026-11-09 removed the dead `c?.product` reference.
+    product: l.product ?? "Milk",
     qty: Number(l.qty || 0),
     delivered: Boolean(l.delivered),
     custId: l.custId,
@@ -420,9 +431,7 @@ export default function Delivery({
                           padding: "8px 6px",
                           textAlign: "right",
                           color:
-                            r.balance >= 0
-                              ? "var(--text-main)"
-                              : "#991b1b",
+                            r.balance >= 0 ? "var(--text-main)" : "#991b1b",
                           fontWeight: 600,
                         }}
                       >

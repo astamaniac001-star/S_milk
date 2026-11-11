@@ -208,8 +208,16 @@ describe("generateDailyLogsForDate — subscription-centric generation", () => {
     expect(rows).toHaveLength(2);
     expect(rows).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ product: "Full Cream", brand_id: "B1", qty: 1 }),
-        expect.objectContaining({ product: "Full Cream", brand_id: "B2", qty: 2 }),
+        expect.objectContaining({
+          product: "Full Cream",
+          brand_id: "B1",
+          qty: 1,
+        }),
+        expect.objectContaining({
+          product: "Full Cream",
+          brand_id: "B2",
+          qty: 2,
+        }),
       ]),
     );
   });
@@ -357,7 +365,13 @@ describe("bulkUpsertLogs — row identity", () => {
   it("uses onConflict customer_id,date,brand_id,product", async () => {
     await bulkUpsertLogs({
       logs: [
-        { custId: "C1", date: "2026-08-03", product: "Toned", qty: 1, brandId: "B1" },
+        {
+          custId: "C1",
+          date: "2026-08-03",
+          product: "Toned",
+          qty: 1,
+          brandId: "B1",
+        },
       ],
     });
 
@@ -369,8 +383,20 @@ describe("bulkUpsertLogs — row identity", () => {
   it("forwards brandId and accepts both camelCase forms", async () => {
     await bulkUpsertLogs({
       logs: [
-        { custId: "C1", date: "2026-08-03", product: "Toned", qty: 1, brandId: "B1" },
-        { custId: "C1", date: "2026-08-03", product: "Toned", qty: 1, brand_id: "B2" },
+        {
+          custId: "C1",
+          date: "2026-08-03",
+          product: "Toned",
+          qty: 1,
+          brandId: "B1",
+        },
+        {
+          custId: "C1",
+          date: "2026-08-03",
+          product: "Toned",
+          qty: 1,
+          brand_id: "B2",
+        },
         { custId: "C1", date: "2026-08-03", product: "Toned", qty: 1 },
       ],
     });
@@ -386,19 +412,30 @@ describe("bulkUpsertLogs — row identity", () => {
 
   it("updates the existing brandless row instead of inserting a duplicate", async () => {
     seed({
-      logs: [{ id: "L1", customer_id: "C1", date: "2026-08-03", product: "Toned" }],
+      logs: [
+        { id: "L1", customer_id: "C1", date: "2026-08-03", product: "Toned" },
+      ],
     });
 
     const res = await bulkUpsertLogs({
       logs: [
-        { custId: "C1", date: "2026-08-03", product: "Toned", qty: 2, delivered: true },
+        {
+          custId: "C1",
+          date: "2026-08-03",
+          product: "Toned",
+          qty: 2,
+          delivered: true,
+        },
       ],
     });
 
     expect(res.saved).toBe(1);
     expect(__mock.upsertCalls).toHaveLength(0);
     expect(__mock.updateCalls).toHaveLength(1);
-    expect(__mock.updateCalls[0].patch).toMatchObject({ qty: 2, delivered: true });
+    expect(__mock.updateCalls[0].patch).toMatchObject({
+      qty: 2,
+      delivered: true,
+    });
     expect(__mock.insertCalls).toHaveLength(0);
   });
 
@@ -406,9 +443,7 @@ describe("bulkUpsertLogs — row identity", () => {
     seed({ logs: [] });
 
     const res = await bulkUpsertLogs({
-      logs: [
-        { custId: "C1", date: "2026-08-03", product: "Toned", qty: 1 },
-      ],
+      logs: [{ custId: "C1", date: "2026-08-03", product: "Toned", qty: 1 }],
     });
 
     expect(res.saved).toBe(1);

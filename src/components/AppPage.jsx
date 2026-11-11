@@ -94,6 +94,7 @@ function renderImports(state, handlers, _derived) {
       onDelete={handlers.deleteMilkImport}
       onSaveImport={handlers.saveImport}
       today={state.today}
+      inventory={state.dailyInventory}
     />
   );
 }

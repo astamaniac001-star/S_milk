@@ -5,13 +5,10 @@
 // should never import directly from this file.
 
 import { supabase } from "../supabaseClient.js";
-import {
-  getToday,
-  getDaysAgoIST,
-  fmt,
-  toNum,
-  generateKey,
-} from "../utils.js";
+// (audit 2026-11-09: generateKey dropped from this import + the bottom
+// re-export — its only consumer was the removed mapPaymentToApi fallback;
+// the canonical source is lib/utils.js.)
+import { getToday, getDaysAgoIST, fmt, toNum } from "../utils.js";
 
 // JSONB array columns accept either an array, a JSON string, or a comma-
 // joined string. Normalize to a JS array (rule §6).
@@ -92,4 +89,4 @@ export class AuthzError extends Error {
   }
 }
 
-export { supabase, getToday, getDaysAgoIST, fmt, toNum, generateKey };
+export { supabase, getToday, getDaysAgoIST, fmt, toNum };

@@ -107,7 +107,18 @@ export function useAppState(auth) {
   const dayTick = useDayTick();
   const ui = useAppUi();
   const filters = useFilterState();
-  const entity = useEntityStore(auth?.token, ui.logDate, ui.billMonth);
+  // Imports page "By day" view: the day whose stock card is shown (null in
+  // month/range modes). Derived here — the composition root owns the wiring
+  // between the filter state and the entity store's date-dependent fetch
+  // group (rule §2).
+  const importDay =
+    filters.impFilter.mode === "day" ? filters.impFilter.day || null : null;
+  const entity = useEntityStore(
+    auth?.token,
+    ui.logDate,
+    ui.billMonth,
+    importDay,
+  );
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const today = useMemo(() => clampedToday(), [dayTick]);
 

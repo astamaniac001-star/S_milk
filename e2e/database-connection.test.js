@@ -34,12 +34,16 @@ test.describe("database connectivity & RLS gate", () => {
       .limit(1);
     if (error) {
       // Privilege-revocation outcome (current production model).
-      expect(error.code, "anon: expected 42501 permission denied").toBe("42501");
+      expect(error.code, "anon: expected 42501 permission denied").toBe(
+        "42501",
+      );
       expect(error.message).toMatch(/permission denied|denied for table/i);
       expect(data).toBeNull();
     } else {
       // RLS row-filter outcome.
-      expect(Array.isArray(data), "anon: RLS should return an array").toBe(true);
+      expect(Array.isArray(data), "anon: RLS should return an array").toBe(
+        true,
+      );
       expect(data.length, "anon leaked customer rows through RLS").toBe(0);
     }
   });
@@ -105,8 +109,7 @@ test.describe("database connectivity & RLS gate", () => {
       {
         name: "is_operator",
         args: {},
-        okIf: (r) =>
-          r.data === true || r.data === false || r.error === null,
+        okIf: (r) => r.data === true || r.data === false || r.error === null,
       },
       {
         name: "record_payment_rpc",

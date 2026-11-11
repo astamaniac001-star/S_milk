@@ -91,7 +91,10 @@ async function loginOnce(page) {
 // customer being in the in-memory state — which is only populated once, on
 // login. Inserting after login leaves the customer invisible to the page
 // (the store has no refresh-on-demand and tab switches don't re-fetch).
-async function loginWithProbeCustomer(page, { name, phone, product = "Full Cream", qty = 1 }) {
+async function loginWithProbeCustomer(
+  page,
+  { name, phone, product = "Full Cream", qty = 1 },
+) {
   const supabase = await makeSupabase({ withSession: true });
   const { error: insertError } = await supabase.from("customers").insert({
     name,
@@ -101,7 +104,8 @@ async function loginWithProbeCustomer(page, { name, phone, product = "Full Cream
     daily_qty: qty,
     delivery_days: JSON.stringify([0, 1, 2, 3, 4, 5, 6]),
   });
-  if (insertError) throw new Error(`Probe customer insert failed: ${insertError.message}`);
+  if (insertError)
+    throw new Error(`Probe customer insert failed: ${insertError.message}`);
   // Hard reload to force useEntityStore's token-effect to re-run and fetch
   // the freshly-inserted customer. `page.reload()` preserves the existing
   // Supabase session cookie so we don't hit the PIN screen again.
@@ -122,7 +126,9 @@ test.beforeEach(async ({ page }) => {
 // ────────────────────────────────────────────────────────────────────────
 // Customers — Edit
 // ────────────────────────────────────────────────────────────────────────
-test("Customers: Edit button opens the Edit Customer modal pre-filled with the existing row", async ({ page }) => {
+test("Customers: Edit button opens the Edit Customer modal pre-filled with the existing row", async ({
+  page,
+}) => {
   // Ensure a known customer exists for us to click Edit on. Use a unique
   // name so we can target it precisely in the DOM and clean it up after.
   const cname = e2eName("EditProbe Customer");
@@ -143,11 +149,17 @@ test("Customers: Edit button opens the Edit Customer modal pre-filled with the e
     ).toBeVisible({ timeout: 10_000 });
 
     // Open the Edit modal. Each customer card has one "Edit" button.
-    await page.locator(".card").filter({ hasText: cname }).first()
-      .getByRole("button", { name: "Edit" }).click();
+    await page
+      .locator(".card")
+      .filter({ hasText: cname })
+      .first()
+      .getByRole("button", { name: "Edit" })
+      .click();
     await expect(page.getByRole("dialog")).toBeVisible();
     // Modal title is "Edit Customer" (CustomerModal.jsx:5).
-    await expect(page.getByRole("heading", { name: "Edit Customer" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Edit Customer" }),
+    ).toBeVisible();
     // The Name field is prefilled with the existing row's name. The input
     // uses placeholder="Ramesh Sharma" but its value is the loaded cusomer.
     const nameField = page.getByPlaceholder("Ramesh Sharma");
@@ -163,7 +175,9 @@ test("Customers: Edit button opens the Edit Customer modal pre-filled with the e
 // ────────────────────────────────────────────────────────────────────────
 // Customers — Deactivate
 // ────────────────────────────────────────────────────────────────────────
-test("Customers: Deactivate button calls deactivateCustomer → customer.status=Inactive in DB", async ({ page }) => {
+test("Customers: Deactivate button calls deactivateCustomer → customer.status=Inactive in DB", async ({
+  page,
+}) => {
   // The game involves window.confirm() — Playwright auto-dismisses dialogs
   // with `true` once `page.on("dialog", ...)` is registered.
   const cname = e2eName("DeactivateProbe Customer");
@@ -177,16 +191,27 @@ test("Customers: Deactivate button calls deactivateCustomer → customer.status=
 
   // Auto-accept any window.confirm() the app throws up.
   let dialogSeen = false;
-  page.on("dialog", (d) => { dialogSeen = true; d.accept(); });
+  page.on("dialog", (d) => {
+    dialogSeen = true;
+    d.accept();
+  });
 
   try {
     await page.getByRole("button", { name: "Customers" }).click();
     await page.getByPlaceholder("Search…").first().fill(cname);
-    await expect(page.locator(".card").filter({ hasText: cname }).first()).toBeVisible({ timeout: 10_000 });
-    await page.locator(".card").filter({ hasText: cname }).first()
-      .getByRole("button", { name: "Deactivate" }).click();
+    await expect(
+      page.locator(".card").filter({ hasText: cname }).first(),
+    ).toBeVisible({ timeout: 10_000 });
+    await page
+      .locator(".card")
+      .filter({ hasText: cname })
+      .first()
+      .getByRole("button", { name: "Deactivate" })
+      .click();
     // Wait for the app to confirm via toast.
-    await expect(page.getByText(/deactivated/i).first()).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(/deactivated/i).first()).toBeVisible({
+      timeout: 10_000,
+    });
 
     // Wait for DB to reflect the change.
     await expect(async () => {
@@ -196,9 +221,13 @@ test("Customers: Deactivate button calls deactivateCustomer → customer.status=
         .eq("phone", phone)
         .maybeSingle();
       expect(error).toBeNull();
-      expect(data.status, "customer was NOT deactivated in DB").toBe("Inactive");
+      expect(data.status, "customer was NOT deactivated in DB").toBe(
+        "Inactive",
+      );
     }).toPass({ timeout: 10_000, intervals: [500, 1000, 2000] });
-    expect(dialogSeen, "Deactivate did not surface a confirm() dialog").toBe(true);
+    expect(dialogSeen, "Deactivate did not surface a confirm() dialog").toBe(
+      true,
+    );
   } finally {
     await supabase.from("customers").delete().eq("phone", phone);
   }
@@ -207,7 +236,9 @@ test("Customers: Deactivate button calls deactivateCustomer → customer.status=
 // ────────────────────────────────────────────────────────────────────────
 // Customers — Pause
 // ────────────────────────────────────────────────────────────────────────
-test("Customers: Pause button opens Add Pause modal; saving inserts a pause_periods row in DB", async ({ page }) => {
+test("Customers: Pause button opens Add Pause modal; saving inserts a pause_periods row in DB", async ({
+  page,
+}) => {
   const cname = e2eName("PauseProbe Customer");
   const phone = "9000020003";
   const supabase = await loginWithProbeCustomer(page, {
@@ -220,23 +251,40 @@ test("Customers: Pause button opens Add Pause modal; saving inserts a pause_peri
   try {
     await page.getByRole("button", { name: "Customers" }).click();
     await page.getByPlaceholder("Search…").first().fill(cname);
-    await expect(page.locator(".card").filter({ hasText: cname }).first()).toBeVisible({ timeout: 10_000 });
+    await expect(
+      page.locator(".card").filter({ hasText: cname }).first(),
+    ).toBeVisible({ timeout: 10_000 });
 
     // Find the customer row's id so we can later verify the pause row landed.
-    const { data: custRow } = await supabase.from("customers").select("id").eq("phone", phone).maybeSingle();
+    const { data: custRow } = await supabase
+      .from("customers")
+      .select("id")
+      .eq("phone", phone)
+      .maybeSingle();
     const custId = custRow.id;
 
     // Pause button only renders for Active customers (Customers.jsx:115).
-    await page.locator(".card").filter({ hasText: cname }).first()
-      .getByRole("button", { name: "Pause" }).click();
+    await page
+      .locator(".card")
+      .filter({ hasText: cname })
+      .first()
+      .getByRole("button", { name: "Pause" })
+      .click();
     await expect(page.getByRole("dialog")).toBeVisible();
     // Modal title is "Add Pause Period" (PauseModal.jsx:22).
-    await expect(page.getByRole("heading", { name: "Add Pause Period" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Add Pause Period" }),
+    ).toBeVisible();
     // PauseModal uses CustomerDateFields (start date default = today) and an
     // End Date + Reason field. Fill reason + an end date next week so save
     // succeeds.
-    const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
-    const nextWeek = new Date(Date.now() + 6 * 86400000).toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+    const today = new Date().toLocaleDateString("en-CA", {
+      timeZone: "Asia/Kolkata",
+    });
+    const nextWeek = new Date(Date.now() + 6 * 86400000).toLocaleDateString(
+      "en-CA",
+      { timeZone: "Asia/Kolkata" },
+    );
     // CustomerDateFields (shared.jsx) shows today as the visible value of the
     // Start Date input but does NOT seed `form.startDate` until the operator
     // explicitly interacts. The PausePeriods.start_date column is NOT NULL
@@ -247,11 +295,14 @@ test("Customers: Pause button opens Add Pause modal; saving inserts a pause_peri
     // Playwright's fill() may not trigger onChange when the value is unchanged
     // (the CustomerDateFields component pre-fills with `today` as a display
     // fallback, so fill(today) is a no-op that doesn't fire onChange).
-    await page.locator('.modal-overlay input[type="date"]').first().evaluate((el, val) => {
-      el.value = val;
-      el.dispatchEvent(new Event('input', { bubbles: true }));
-      el.dispatchEvent(new Event('change', { bubbles: true }));
-    }, today);
+    await page
+      .locator('.modal-overlay input[type="date"]')
+      .first()
+      .evaluate((el, val) => {
+        el.value = val;
+        el.dispatchEvent(new Event("input", { bubbles: true }));
+        el.dispatchEvent(new Event("change", { bubbles: true }));
+      }, today);
     await page.getByLabel("End Date").fill(nextWeek);
     await page.getByPlaceholder("Out of town, Travel…").fill("E2E probe pause");
     await page.getByRole("button", { name: "Save" }).click();
@@ -271,7 +322,11 @@ test("Customers: Pause button opens Add Pause modal; saving inserts a pause_peri
     }).toPass({ timeout: 10_000, intervals: [500, 1000, 2000] });
   } finally {
     // Delete any pause rows + customer.
-    const { data: cust } = await supabase.from("customers").select("id").eq("phone", phone).maybeSingle();
+    const { data: cust } = await supabase
+      .from("customers")
+      .select("id")
+      .eq("phone", phone)
+      .maybeSingle();
     if (cust) {
       await supabase.from("pause_periods").delete().eq("customer_id", cust.id);
       await supabase.from("customers").delete().eq("id", cust.id);
@@ -284,7 +339,10 @@ test("Customers: Pause button opens Add Pause modal; saving inserts a pause_peri
 // ────────────────────────────────────────────────────────────────────────
 // Customers — WhatsApp button
 // ────────────────────────────────────────────────────────────────────────
-test("Customers: WhatsApp button opens https://wa.me/<phone> in a new tab/popup", async ({ page, context }) => {
+test("Customers: WhatsApp button opens https://wa.me/<phone> in a new tab/popup", async ({
+  page,
+  context,
+}) => {
   const cname = e2eName("WhatsappProbe");
   const phone = "9000020004";
   const supabase = await loginWithProbeCustomer(page, {
@@ -300,10 +358,15 @@ test("Customers: WhatsApp button opens https://wa.me/<phone> in a new tab/popup"
   // (which defaults to billMonth=today) would show it — but the WhatsApp
   // button on the Customers page just needs `billId` to be truthy, so any
   // unpaid bill for this customer works.
-  const month = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" }).substring(0, 7);
+  const month = new Date()
+    .toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" })
+    .substring(0, 7);
   const { data: custRow } = await supabase
-    .from("customers").select("id").eq("phone", phone).maybeSingle();
-   await supabase.from("bills").insert({
+    .from("customers")
+    .select("id")
+    .eq("phone", phone)
+    .maybeSingle();
+  await supabase.from("bills").insert({
     customer_id: custRow.id,
     month,
     amount: 100,
@@ -318,25 +381,35 @@ test("Customers: WhatsApp button opens https://wa.me/<phone> in a new tab/popup"
   // once on login. Without the reload, `bills.find(...)` returns undefined
   // and the handler early-returns with "No pending bill to share".
   await page.reload();
-  await expect(page.getByRole("heading", { name: "Milk Delivery Admin" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Milk Delivery Admin" }),
+  ).toBeVisible();
 
   try {
     await page.getByRole("button", { name: "Customers" }).click();
     await page.getByPlaceholder("Search…").first().fill(cname);
-    await expect(page.locator(".card").filter({ hasText: cname }).first()).toBeVisible({ timeout: 10_000 });
+    await expect(
+      page.locator(".card").filter({ hasText: cname }).first(),
+    ).toBeVisible({ timeout: 10_000 });
 
     // WhatsApp share opens wa.me in a new tab/popup. We capture it via
     // context.page (popup) or page (target=_blank link navigation). The
     // cleanPlaywright approach: install a promise that resolves when a new
     // page is added.
     const popupPromise = context.waitForEvent("page", { timeout: 10_000 });
-    await page.locator(".card").filter({ hasText: cname }).first()
-      .getByRole("button", { name: "WhatsApp" }).click();
+    await page
+      .locator(".card")
+      .filter({ hasText: cname })
+      .first()
+      .getByRole("button", { name: "WhatsApp" })
+      .click();
     const popup = await popupPromise;
     // The URL must be https://wa.me/91<phone> — the helper calls
     // window.open in src/lib/api.js (whatsapp helper). 10-digit phone is
     // prefixed with `91` per utils.js cleanPhone docs.
-    await expect(popup).toHaveURL(/wa\.me\/919000020004|api\.whatsapp\.com\/send\/\?phone=919000020004/);
+    await expect(popup).toHaveURL(
+      /wa\.me\/919000020004|api\.whatsapp\.com\/send\/\?phone=919000020004/,
+    );
   } finally {
     await supabase.from("bills").delete().eq("customer_id", custRow.id);
     await supabase.from("customers").delete().eq("phone", phone);
@@ -346,7 +419,9 @@ test("Customers: WhatsApp button opens https://wa.me/<phone> in a new tab/popup"
 // ────────────────────────────────────────────────────────────────────────
 // Subscriptions list → Add Subscription
 // ────────────────────────────────────────────────────────────────────────
-test("Subscriptions: Subscriptions tab + Add Subscription inserts a subscriptions row + Edit + History open modals", async ({ page }) => {
+test("Subscriptions: Subscriptions tab + Add Subscription inserts a subscriptions row + Edit + History open modals", async ({
+  page,
+}) => {
   const cname = e2eName("SubsProbe Customer");
   const phone = "9000020005";
   const supabase = await makeSupabase({ withSession: true });
@@ -363,14 +438,19 @@ test("Subscriptions: Subscriptions tab + Add Subscription inserts a subscription
     })
     .select("id,brand_name")
     .single();
-  if (brandErr) throw new Error(`Probe brand insert failed: ${brandErr.message}`);
+  if (brandErr)
+    throw new Error(`Probe brand insert failed: ${brandErr.message}`);
   await loginWithProbeCustomer(page, {
     name: cname,
     phone,
     product: "Full Cream",
     qty: 1,
   });
-  const { data: custRow } = await supabase.from("customers").select("id").eq("phone", phone).maybeSingle();
+  const { data: custRow } = await supabase
+    .from("customers")
+    .select("id")
+    .eq("phone", phone)
+    .maybeSingle();
   const custId = custRow.id;
 
   try {
@@ -383,7 +463,9 @@ test("Subscriptions: Subscriptions tab + Add Subscription inserts a subscription
 
     // "+ Add" → opens the SubscriptionModal with defaults.
     await page.getByRole("button", { name: "+ Add" }).click();
-    await expect(page.getByRole("heading", { name: "Add Subscription" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Add Subscription" }),
+    ).toBeVisible();
     // Pick our customer in the dropdown, the brand (required), qty 2, save.
     await page.getByLabel(/Customer/i).selectOption({ label: cname });
     await page.getByLabel(/Brand/i).selectOption(brandRow.id);
@@ -413,14 +495,22 @@ test("Subscriptions: Subscriptions tab + Add Subscription inserts a subscription
     const ourCard = page.locator(".card").filter({ hasText: cname }).first();
     await expect(ourCard).toBeVisible({ timeout: 10_000 });
     await ourCard.getByRole("button", { name: "History" }).click();
-    await expect(page.getByRole("heading", { name: /^History:/ })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: /^History:/ }),
+    ).toBeVisible();
     await page.getByRole("button", { name: "Close dialog" }).click();
     await expect(page.getByRole("dialog")).toHaveCount(0);
 
     // Edit on the same row → opens the SubscriptionModal in edit mode.
-    await page.locator(".card").filter({ hasText: cname }).first()
-      .getByRole("button", { name: "Edit" }).click();
-    await expect(page.getByRole("heading", { name: "Edit Subscription" })).toBeVisible();
+    await page
+      .locator(".card")
+      .filter({ hasText: cname })
+      .first()
+      .getByRole("button", { name: "Edit" })
+      .click();
+    await expect(
+      page.getByRole("heading", { name: "Edit Subscription" }),
+    ).toBeVisible();
     // Cancel without saving — proving the modal opens is the contract.
     await page.getByRole("button", { name: "Cancel" }).click();
   } finally {
@@ -433,7 +523,9 @@ test("Subscriptions: Subscriptions tab + Add Subscription inserts a subscription
 // ────────────────────────────────────────────────────────────────────────
 // Delivery — + Extra Delivery (record_ad_hoc_log_rpc)
 // ────────────────────────────────────────────────────────────────────────
-test("Delivery: + Extra Delivery → AdHocLogModal save inserts an extra daily_logs row (record_ad_hoc_log_rpc)", async ({ page }) => {
+test("Delivery: + Extra Delivery → AdHocLogModal save inserts an extra daily_logs row (record_ad_hoc_log_rpc)", async ({
+  page,
+}) => {
   const cname = e2eName("ExtraDeliveryProbe");
   const phone = "9000020006";
   const supabase = await loginWithProbeCustomer(page, {
@@ -442,15 +534,23 @@ test("Delivery: + Extra Delivery → AdHocLogModal save inserts an extra daily_l
     product: "Full Cream",
     qty: 1,
   });
-  const { data: custRow } = await supabase.from("customers").select("id").eq("phone", phone).maybeSingle();
+  const { data: custRow } = await supabase
+    .from("customers")
+    .select("id")
+    .eq("phone", phone)
+    .maybeSingle();
   const custId = custRow.id;
-  const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+  const today = new Date().toLocaleDateString("en-CA", {
+    timeZone: "Asia/Kolkata",
+  });
 
   try {
     await page.getByRole("button", { name: "Delivery" }).click();
     await page.getByRole("button", { name: "+ Extra Delivery" }).click();
     await expect(page.getByRole("dialog")).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Add Extra Delivery" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Add Extra Delivery" }),
+    ).toBeVisible();
     // Fill the modal: select the customer, leave product default=Full
     // Cream, qty 2, reason. Explicitly fill the Date field — default
     // display of `today` doesn't make it into `form.date`, and
@@ -458,15 +558,20 @@ test("Delivery: + Extra Delivery → AdHocLogModal save inserts an extra daily_l
     // Use CSS selectors scoped to the modal — getByLabel matching is
     // unreliable because the Field component renders the label with a
     // trailing space before the aria-hidden asterisk.
-    await page.locator('.modal-overlay select').first().selectOption({ label: cname });
+    await page
+      .locator(".modal-overlay select")
+      .first()
+      .selectOption({ label: cname });
     // Use evaluate to set the date input value and dispatch change event —
     // CustomerDateFields pre-fills with `today` as a display fallback, so
     // fill(today) is a no-op that doesn't fire onChange.
-    await page.locator('.modal-overlay input[type="date"]').evaluate((el, val) => {
-      el.value = val;
-      el.dispatchEvent(new Event('input', { bubbles: true }));
-      el.dispatchEvent(new Event('change', { bubbles: true }));
-    }, today);
+    await page
+      .locator('.modal-overlay input[type="date"]')
+      .evaluate((el, val) => {
+        el.value = val;
+        el.dispatchEvent(new Event("input", { bubbles: true }));
+        el.dispatchEvent(new Event("change", { bubbles: true }));
+      }, today);
     await page.locator('.modal-overlay input[type="number"]').fill("2");
     await page.getByPlaceholder("Guests, Festival...").fill("E2E probe extra");
     await page.getByRole("button", { name: "Add Delivery" }).click();
@@ -493,7 +598,9 @@ test("Delivery: + Extra Delivery → AdHocLogModal save inserts an extra daily_l
 // ────────────────────────────────────────────────────────────────────────
 // Delivery — per-row ✓ Done / ✗ Skip toggle
 // ────────────────────────────────────────────────────────────────────────
-test("Delivery: per-row ✓ Done / ✗ Skip toggle flips delivered in DB", async ({ page }) => {
+test("Delivery: per-row ✓ Done / ✗ Skip toggle flips delivered in DB", async ({
+  page,
+}) => {
   const cname = e2eName("ToggleDeliveryProbe");
   const phone = "9000020007";
   const supabase = await loginWithProbeCustomer(page, {
@@ -502,18 +609,32 @@ test("Delivery: per-row ✓ Done / ✗ Skip toggle flips delivered in DB", async
     product: "Full Cream",
     qty: 1,
   });
-  const { data: custRow } = await supabase.from("customers").select("id").eq("phone", phone).maybeSingle();
+  const { data: custRow } = await supabase
+    .from("customers")
+    .select("id")
+    .eq("phone", phone)
+    .maybeSingle();
   const custId = custRow.id;
-  const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+  const today = new Date().toLocaleDateString("en-CA", {
+    timeZone: "Asia/Kolkata",
+  });
 
   // Pre-insert a daily log so the toggle has something to flip. This must
   // happen AFTER loginWithProbeCustomer's reload (which re-fetched logs for
   // today) so the log is present in the fresh fetch. We then toggle the date
   // picker to a different date and back to today to force a re-fetch that
   // picks up the newly-inserted log.
-  const { data: log } = await supabase.from("daily_logs").insert({
-    customer_id: custId, date: today, delivered: false, qty: 1, product: "Full Cream",
-  }).select("id").single();
+  const { data: log } = await supabase
+    .from("daily_logs")
+    .insert({
+      customer_id: custId,
+      date: today,
+      delivered: false,
+      qty: 1,
+      product: "Full Cream",
+    })
+    .select("id")
+    .single();
   const logId = log.id;
 
   try {
@@ -522,17 +643,24 @@ test("Delivery: per-row ✓ Done / ✗ Skip toggle flips delivered in DB", async
     // The date picker is controlled (value={logDate}); setting it to a
     // different date then back to today triggers two onChange events, each
     // of which re-runs useEntityStore's date-dependent fetch.
-    const tomorrow = new Date(Date.now() + 86400000).toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+    const tomorrow = new Date(Date.now() + 86400000).toLocaleDateString(
+      "en-CA",
+      { timeZone: "Asia/Kolkata" },
+    );
     const dateInput = page.locator('input[type="date"]').first();
     await dateInput.fill(tomorrow);
     await dateInput.fill(today);
     // The Delivery Card lists one entry per scheduled log; find ours.
-    const toggle = page.getByRole("button", { name: `Mark ${cname} as delivered` }).first();
+    const toggle = page
+      .getByRole("button", { name: `Mark ${cname} as delivered` })
+      .first();
     await expect(toggle).toBeVisible({ timeout: 10_000 });
     await toggle.click();
     // After toggle: delivered=true. The button flips to "✓ Done" with aria
     // label "Mark ... as skipped".
-    await expect(page.getByRole("button", { name: `Mark ${cname} as skipped` }).first()).toBeVisible({ timeout: 10_000 });
+    await expect(
+      page.getByRole("button", { name: `Mark ${cname} as skipped` }).first(),
+    ).toBeVisible({ timeout: 10_000 });
 
     // Verify DB.
     await expect(async () => {
@@ -553,7 +681,9 @@ test("Delivery: per-row ✓ Done / ✗ Skip toggle flips delivered in DB", async
 // ────────────────────────────────────────────────────────────────────────
 // Imports — + Import, Confirm, Delete, Edit
 // ────────────────────────────────────────────────────────────────────────
-test("Imports: + Import → save inserts a Draft row; Confirm marks Confirmed; Delete removes it (RPC proven live)", async ({ page }) => {
+test("Imports: + Import → save inserts a Draft row; Confirm marks Confirmed; Delete removes it (RPC proven live)", async ({
+  page,
+}) => {
   const supabase = await makeSupabase({ withSession: true });
   // Need an active brand for the import to associate with. The seeded brand
   // __e2e__ ActiveBrand fulfills this.
@@ -564,13 +694,18 @@ test("Imports: + Import → save inserts a Draft row; Confirm marks Confirmed; D
     .limit(1)
     .maybeSingle();
   if (!brandRow) {
-    test.skip(true, "no __e2e__ brand seeded; run e2e/vitest/_cleanup.mjs + reseed first");
+    test.skip(
+      true,
+      "no __e2e__ brand seeded; run e2e/vitest/_cleanup.mjs + reseed first",
+    );
     return;
   }
   const _brandId = brandRow.id;
   void _brandId;
   const brandName = brandRow.brand_name;
-  const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+  const today = new Date().toLocaleDateString("en-CA", {
+    timeZone: "Asia/Kolkata",
+  });
 
   try {
     await page.getByRole("button", { name: "Imports" }).click();
@@ -582,18 +717,29 @@ test("Imports: + Import → save inserts a Draft row; Confirm marks Confirmed; D
     // getByLabel matching is unreliable because the Field component renders
     // the label with a trailing space ({label}{" "}) before the aria-hidden
     // asterisk, which can cause accessible-name mismatches.
-    await page.locator('.modal-overlay select').first().selectOption({ label: brandName });
-    await page.locator('.modal-overlay select').nth(1).selectOption({ label: "Full Cream" });
-    await page.locator('.modal-overlay input[type="number"]').first().fill("10");
+    await page
+      .locator(".modal-overlay select")
+      .first()
+      .selectOption({ label: brandName });
+    await page
+      .locator(".modal-overlay select")
+      .nth(1)
+      .selectOption({ label: "Full Cream" });
+    await page
+      .locator('.modal-overlay input[type="number"]')
+      .first()
+      .fill("10");
     await page.locator('.modal-overlay input[type="number"]').nth(1).fill("60");
     // Use evaluate to set the date input value and dispatch change event —
     // ImportModal's ImportDateField pre-fills with `today` as a display
     // fallback, so fill(today) is a no-op that doesn't fire onChange.
-    await page.locator('.modal-overlay input[type="date"]').evaluate((el, val) => {
-      el.value = val;
-      el.dispatchEvent(new Event('input', { bubbles: true }));
-      el.dispatchEvent(new Event('change', { bubbles: true }));
-    }, today);
+    await page
+      .locator('.modal-overlay input[type="date"]')
+      .evaluate((el, val) => {
+        el.value = val;
+        el.dispatchEvent(new Event("input", { bubbles: true }));
+        el.dispatchEvent(new Event("change", { bubbles: true }));
+      }, today);
     await page.getByRole("button", { name: "Save Draft" }).click();
     await expect(page.getByRole("dialog")).toHaveCount(0, { timeout: 15_000 });
 
@@ -602,7 +748,9 @@ test("Imports: + Import → save inserts a Draft row; Confirm marks Confirmed; D
     await expect(async () => {
       const { data, error } = await supabase
         .from("milk_imports")
-        .select("id,brand_name,milk_type,quantity,rate_per_liter,status,version,date")
+        .select(
+          "id,brand_name,milk_type,quantity,rate_per_liter,status,version,date",
+        )
         .like("brand_name", brandName)
         .order("created_at", { ascending: false })
         .limit(1)
@@ -625,8 +773,12 @@ test("Imports: + Import → save inserts a Draft row; Confirm marks Confirmed; D
         .eq("id", impId)
         .maybeSingle();
       expect(error).toBeNull();
-      expect(data.status, "import status NOT changed to Confirmed").toBe("Confirmed");
-      expect(Number(data.version), "version was not bumped").toBe(Number(impRow.version) + 1);
+      expect(data.status, "import status NOT changed to Confirmed").toBe(
+        "Confirmed",
+      );
+      expect(Number(data.version), "version was not bumped").toBe(
+        Number(impRow.version) + 1,
+      );
     }).toPass({ timeout: 10_000, intervals: [500, 1000, 2000] });
 
     // After Confirm, the card no longer shows Edit/Confirm/Delete (those
@@ -638,11 +790,18 @@ test("Imports: + Import → save inserts a Draft row; Confirm marks Confirmed; D
     });
     expect(del.error, "delete_milk_import_rpc errored").toBeNull();
     expect(del.data.success).toBe(true);
-    const { data: stillThere } = await supabase.from("milk_imports").select("id").eq("id", impId).maybeSingle();
+    const { data: stillThere } = await supabase
+      .from("milk_imports")
+      .select("id")
+      .eq("id", impId)
+      .maybeSingle();
     expect(stillThere, "import row not actually deleted").toBeNull();
   } finally {
     // Best-effort cleanup of any probe rows.
-    const { data: rows } = await supabase.from("milk_imports").select("id").like("brand_name", brandName);
+    const { data: rows } = await supabase
+      .from("milk_imports")
+      .select("id")
+      .like("brand_name", brandName);
     for (const r of rows || []) {
       await supabase.from("milk_imports").delete().eq("id", r.id);
     }
@@ -652,7 +811,9 @@ test("Imports: + Import → save inserts a Draft row; Confirm marks Confirmed; D
 // ────────────────────────────────────────────────────────────────────────
 // Imports — + Brand
 // ────────────────────────────────────────────────────────────────────────
-test("Imports: + Brand → BrandModal save inserts a new milk_brands row (status=Active)", async ({ page }) => {
+test("Imports: + Brand → BrandModal save inserts a new milk_brands row (status=Active)", async ({
+  page,
+}) => {
   const supabase = await makeSupabase({ withSession: true });
   const bname = e2eName("BrandProbe");
 
@@ -660,7 +821,9 @@ test("Imports: + Brand → BrandModal save inserts a new milk_brands row (status
     await page.getByRole("button", { name: "Imports" }).click();
     await page.getByRole("button", { name: "+ Brand" }).click();
     await expect(page.getByRole("dialog")).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Add Milk Brand" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Add Milk Brand" }),
+    ).toBeVisible();
     // BrandModal fields (BrandModal.jsx): Brand Name, Supplier Name,
     // Supplier Phone and a per-milk-type rate editor (rows with a
     // "Type N" select + a "Rate N" input). Use label-based lookups —
@@ -669,7 +832,9 @@ test("Imports: + Brand → BrandModal save inserts a new milk_brands row (status
     await page.getByLabel("Brand Name").fill(bname);
     await page.getByLabel("Supplier Name").fill("probe supplier");
     await page.getByLabel("Supplier Phone").fill("9000030001");
-    await page.getByLabel("Type 1", { exact: true }).selectOption({ label: "Full Cream" });
+    await page
+      .getByLabel("Type 1", { exact: true })
+      .selectOption({ label: "Full Cream" });
     await page.getByLabel("Rate 1", { exact: true }).fill("65");
     await page.getByRole("button", { name: "Save" }).click();
     await expect(page.getByRole("dialog")).toHaveCount(0, { timeout: 15_000 });
@@ -677,7 +842,9 @@ test("Imports: + Brand → BrandModal save inserts a new milk_brands row (status
     await expect(async () => {
       const { data, error } = await supabase
         .from("milk_brands")
-        .select("id,brand_name,default_milk_type,rate_per_liter,status,supplier_name,supplier_phone")
+        .select(
+          "id,brand_name,default_milk_type,rate_per_liter,status,supplier_name,supplier_phone",
+        )
         .eq("brand_name", bname)
         .maybeSingle();
       expect(error).toBeNull();
@@ -692,13 +859,16 @@ test("Imports: + Brand → BrandModal save inserts a new milk_brands row (status
       const { data: rateRow, error: rateErr } = await supabase
         .from("brand_rates")
         .select("milk_type,rate_per_liter")
-        .eq("brand_id", (
-          await supabase
-            .from("milk_brands")
-            .select("id")
-            .eq("brand_name", bname)
-            .maybeSingle()
-        ).data.id)
+        .eq(
+          "brand_id",
+          (
+            await supabase
+              .from("milk_brands")
+              .select("id")
+              .eq("brand_name", bname)
+              .maybeSingle()
+          ).data.id,
+        )
         .eq("milk_type", "Full Cream")
         .maybeSingle();
       expect(rateErr).toBeNull();
@@ -706,14 +876,19 @@ test("Imports: + Brand → BrandModal save inserts a new milk_brands row (status
       expect(Number(rateRow.rate_per_liter)).toBe(65);
     }).toPass({ timeout: 10_000, intervals: [500, 1000, 2000] });
   } finally {
-    await supabase.from("milk_brands").delete().like("brand_name", `${E2E_MARKER}%BrandProbe%`);
+    await supabase
+      .from("milk_brands")
+      .delete()
+      .like("brand_name", `${E2E_MARKER}%BrandProbe%`);
   }
 });
 
 // ────────────────────────────────────────────────────────────────────────
 // Billing — Add Credit Note
 // ────────────────────────────────────────────────────────────────────────
-test("Billing: Add Credit Note → save inserts a credit_notes row (applied=false)", async ({ page }) => {
+test("Billing: Add Credit Note → save inserts a credit_notes row (applied=false)", async ({
+  page,
+}) => {
   const cname = e2eName("CreditNoteProbe Customer");
   const phone = "9000020008";
   const supabase = await loginWithProbeCustomer(page, {
@@ -722,17 +897,25 @@ test("Billing: Add Credit Note → save inserts a credit_notes row (applied=fals
     product: "Full Cream",
     qty: 1,
   });
-  const { data: custRow } = await supabase.from("customers").select("id").eq("phone", phone).maybeSingle();
+  const { data: custRow } = await supabase
+    .from("customers")
+    .select("id")
+    .eq("phone", phone)
+    .maybeSingle();
   const custId = custRow.id;
 
   try {
     await page.getByRole("button", { name: "Billing" }).click();
     await page.getByRole("button", { name: "Add Credit Note" }).click();
     await expect(page.getByRole("dialog")).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Issue Credit Note" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Issue Credit Note" }),
+    ).toBeVisible();
     await page.getByLabel(/Customer/i).selectOption({ label: cname });
     await page.getByPlaceholder("50").fill("25");
-    await page.getByPlaceholder("Spoiled milk, Missed delivery...").fill("E2E probe credit note");
+    await page
+      .getByPlaceholder("Spoiled milk, Missed delivery...")
+      .fill("E2E probe credit note");
     await page.getByRole("button", { name: "Issue Credit" }).click();
     await expect(page.getByRole("dialog")).toHaveCount(0, { timeout: 15_000 });
 
@@ -757,7 +940,9 @@ test("Billing: Add Credit Note → save inserts a credit_notes row (applied=fals
 // ────────────────────────────────────────────────────────────────────────
 // Billing — View (BillDetailModal opens)
 // ────────────────────────────────────────────────────────────────────────
-test("Billing: View opens the BillDetailModal for an existing bill", async ({ page }) => {
+test("Billing: View opens the BillDetailModal for an existing bill", async ({
+  page,
+}) => {
   // Always probe with our own e2e-scoped customer + bill so the test is
   // deterministic — never relies on the operator's REAL bill data.
   const cname = e2eName("BillViewProbe");
@@ -768,11 +953,24 @@ test("Billing: View opens the BillDetailModal for an existing bill", async ({ pa
     product: "Full Cream",
     qty: 1,
   });
-  const { data: c } = await supabase.from("customers").select("id").eq("phone", phone).maybeSingle();
-  const { data: b } = await supabase.from("bills").insert({
-    customer_id: c.id, month: "2000-01", amount: 1, amount_paid: 0,
-    status: "Unpaid", locked: false, version: 1,
-  }).select("id").single();
+  const { data: c } = await supabase
+    .from("customers")
+    .select("id")
+    .eq("phone", phone)
+    .maybeSingle();
+  const { data: b } = await supabase
+    .from("bills")
+    .insert({
+      customer_id: c.id,
+      month: "2000-01",
+      amount: 1,
+      amount_paid: 0,
+      status: "Unpaid",
+      locked: false,
+      version: 1,
+    })
+    .select("id")
+    .single();
   const billId = b.id;
 
   try {
@@ -800,14 +998,22 @@ test("Billing: View opens the BillDetailModal for an existing bill", async ({ pa
 // ────────────────────────────────────────────────────────────────────────
 // More — Change PIN modal opens
 // ────────────────────────────────────────────────────────────────────────
-test("More: Change PIN opens the ChangePinModal with current/new/confirm fields", async ({ page }) => {
+test("More: Change PIN opens the ChangePinModal with current/new/confirm fields", async ({
+  page,
+}) => {
   await page.getByRole("button", { name: "More" }).click();
   await page.getByRole("button", { name: "Change PIN" }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Change Operator PIN" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Change Operator PIN" }),
+  ).toBeVisible();
   await expect(page.getByPlaceholder("Enter 6-digit PIN")).toBeVisible();
-  await expect(page.getByPlaceholder("Enter new 6-digit PIN", { exact: true })).toBeVisible();
-  await expect(page.getByPlaceholder("Re-enter new 6-digit PIN", { exact: true })).toBeVisible();
+  await expect(
+    page.getByPlaceholder("Enter new 6-digit PIN", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByPlaceholder("Re-enter new 6-digit PIN", { exact: true }),
+  ).toBeVisible();
   await expect(page.getByRole("button", { name: "Update PIN" })).toBeDisabled();
   await page.getByRole("button", { name: "Cancel" }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
@@ -816,26 +1022,32 @@ test("More: Change PIN opens the ChangePinModal with current/new/confirm fields"
 // ────────────────────────────────────────────────────────────────────────
 // More — Diagnostics Run button populates the diagnostics list
 // ────────────────────────────────────────────────────────────────────────
-test("More: Run (Diagnostics) populates the Diagnostics card with live values", async ({ page }) => {
+test("More: Run (Diagnostics) populates the Diagnostics card with live values", async ({
+  page,
+}) => {
   await page.getByRole("button", { name: "More" }).click();
   // The Diagnostics card initially shows "Tap Run to check connectivity"
   // (More.jsx:281).
   await expect(page.getByText("Tap Run to check connectivity")).toBeVisible();
   // Click the Run button (exact=true because "Run" prefix-matches
-   // "Run Health Check").
-   await page.getByRole("button", { name: "Run", exact: true }).click();
+  // "Run Health Check").
+  await page.getByRole("button", { name: "Run", exact: true }).click();
   // After clicking Run, the handler stores live per-item probe results (via
   // callApi("runDiagnostics")) into `diagResults`, and the card renders those
   // probes instead of the old static list. The probe labels include
   // "Schema version" and "Migration" so search for those texts.
-  await expect(page.getByText(/Schema version/)).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText(/Schema version/)).toBeVisible({
+    timeout: 10_000,
+  });
   await expect(page.getByText(/Migrations?/)).toBeVisible();
 });
 
 // ────────────────────────────────────────────────────────────────────────
 // More — System Health → Run Health Check
 // ────────────────────────────────────────────────────────────────────────
-test("More: Run Health Check button is clickable and stays enabled post-click", async ({ page }) => {
+test("More: Run Health Check button is clickable and stays enabled post-click", async ({
+  page,
+}) => {
   await page.getByRole("button", { name: "More" }).click();
   const btn = page.getByRole("button", { name: "Run Health Check" });
   await expect(btn).toBeVisible();
@@ -849,7 +1061,9 @@ test("More: Run Health Check button is clickable and stays enabled post-click", 
 // ────────────────────────────────────────────────────────────────────────
 // More — Adjustments + Add → AdjustmentModal save
 // ────────────────────────────────────────────────────────────────────────
-test("More: Adjustments + Add → AdjustmentModal save inserts an adjustments row (applied=false)", async ({ page }) => {
+test("More: Adjustments + Add → AdjustmentModal save inserts an adjustments row (applied=false)", async ({
+  page,
+}) => {
   const cname = e2eName("AdjProbe Customer");
   const phone = "9000020010";
   const supabase = await loginWithProbeCustomer(page, {
@@ -858,9 +1072,15 @@ test("More: Adjustments + Add → AdjustmentModal save inserts an adjustments ro
     product: "Full Cream",
     qty: 1,
   });
-  const { data: custRow } = await supabase.from("customers").select("id").eq("phone", phone).maybeSingle();
+  const { data: custRow } = await supabase
+    .from("customers")
+    .select("id")
+    .eq("phone", phone)
+    .maybeSingle();
   const custId = custRow.id;
-  const _today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+  const _today = new Date().toLocaleDateString("en-CA", {
+    timeZone: "Asia/Kolkata",
+  });
   void _today;
 
   // An adjustment is applied to a BILL: the handler resolves the customer's
@@ -885,11 +1105,15 @@ test("More: Adjustments + Add → AdjustmentModal save inserts an adjustments ro
     await page.getByRole("heading", { name: "Adjustments" }).waitFor();
     await page.getByRole("button", { name: "+ Add" }).first().click();
     await expect(page.getByRole("dialog")).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Add Adjustment" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Add Adjustment" }),
+    ).toBeVisible();
     await page.getByLabel(/Customer/i).selectOption({ label: cname });
     // CustomerDateFields already prefilled date=today.
     await page.getByPlaceholder("50 reduces · -50 adds").fill("25");
-    await page.getByPlaceholder("Half delivery, Quality issue…").fill("E2E probe adjustment");
+    await page
+      .getByPlaceholder("Half delivery, Quality issue…")
+      .fill("E2E probe adjustment");
     await page.getByRole("button", { name: "Save" }).click();
     await expect(page.getByRole("dialog")).toHaveCount(0, { timeout: 10_000 });
 

@@ -226,5 +226,11 @@ export function useBillPayments(state) {
     [showToast, closeModal, refresh],
   );
 
-  return { recordPayment, saveAdjustment, applyAdjustment, addCreditNote, applyCreditNote };
+  return {
+    recordPayment,
+    saveAdjustment,
+    applyAdjustment,
+    addCreditNote,
+    applyCreditNote,
+  };
 }

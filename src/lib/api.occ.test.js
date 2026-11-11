@@ -78,7 +78,9 @@ describe("api.js - Atomicity + OCC fixes (2026-07-24)", () => {
     it("wraps Unauthorized as AuthzError (code AUTHZ)", async () => {
       vi.mocked(supabase.rpc).mockResolvedValue({
         data: null,
-        error: { message: "Unauthorized: only the operator may trigger rollover" },
+        error: {
+          message: "Unauthorized: only the operator may trigger rollover",
+        },
       });
       await expect(
         callApi("rolloverMonth", { targetMonth: "2026-08" }),
@@ -98,7 +100,9 @@ describe("api.js - Atomicity + OCC fixes (2026-07-24)", () => {
 
   describe("confirmMilkImport", () => {
     it("requires importId and version for OCC", async () => {
-      await expect(callApi("confirmMilkImport", {})).rejects.toThrow("importId");
+      await expect(callApi("confirmMilkImport", {})).rejects.toThrow(
+        "importId",
+      );
       await expect(
         callApi("confirmMilkImport", { importId: "x" }),
       ).rejects.toThrow("import version is required");
@@ -192,7 +196,13 @@ describe("api.js - Atomicity + OCC fixes (2026-07-24)", () => {
     it("throws when the customer lookup errors (previously silently produced 'Hi there')", async () => {
       // bills.find().single() returns the bill; customer lookup returns an error
       setSingle(
-        { id: "b", customer_id: "c", month: "2026-08", amount: 200, amount_paid: 50 },
+        {
+          id: "b",
+          customer_id: "c",
+          month: "2026-08",
+          amount: 200,
+          amount_paid: 50,
+        },
         null,
       );
       const chain = supabase.from();
@@ -208,10 +218,12 @@ describe("api.js - Atomicity + OCC fixes (2026-07-24)", () => {
 
   describe("deactivateCustomer — now uses updateWithVersion", () => {
     it("requires id and version", async () => {
-      await expect(callApi("deactivateCustomer", {})).rejects.toThrow("id is required");
-      await expect(
-        callApi("deactivateCustomer", { id: "c" }),
-      ).rejects.toThrow("customer version is required");
+      await expect(callApi("deactivateCustomer", {})).rejects.toThrow(
+        "id is required",
+      );
+      await expect(callApi("deactivateCustomer", { id: "c" })).rejects.toThrow(
+        "customer version is required",
+      );
     });
 
     it("sends version bump via the OCC helper and returns mapped customer", async () => {
@@ -255,7 +267,13 @@ describe("api.js - Atomicity + OCC fixes (2026-07-24)", () => {
   describe("mapImportToApi — dead idempotencyKey removed", () => {
     it("does NOT generate an idempotencyKey on the add path", async () => {
       const { mapImportToApi } = await import("./api/mappers.js");
-      const add = mapImportToApi({ brand: "Amul", type: "Toned", qty: 10, rate: 30, date: "2026-08-01" });
+      const add = mapImportToApi({
+        brand: "Amul",
+        type: "Toned",
+        qty: 10,
+        rate: 30,
+        date: "2026-08-01",
+      });
       expect(add).not.toHaveProperty("idempotencyKey");
     });
     it("threads id + expectedVersion on the edit path", async () => {
@@ -336,7 +354,9 @@ describe("api.js - Atomicity + OCC fixes (2026-07-24)", () => {
     it("maps Unauthorized → AuthzError (code AUTHZ)", async () => {
       vi.mocked(supabase.rpc).mockResolvedValue({
         data: null,
-        error: { message: "Unauthorized: only the operator may record ad-hoc logs" },
+        error: {
+          message: "Unauthorized: only the operator may record ad-hoc logs",
+        },
       });
       await expect(
         callApi("addAdHocLog", {

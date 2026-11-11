@@ -3,7 +3,16 @@
 // client-side filter before a single upsert — see AGENTS.md note: do not
 // refactor to a sequential loop.
 
-import { supabase, toNum, getToday, getDaysAgoIST, must, toArray, dayOfWeekKolkata, AuthzError } from "./shared.js";
+import {
+  supabase,
+  toNum,
+  getToday,
+  getDaysAgoIST,
+  must,
+  toArray,
+  dayOfWeekKolkata,
+  AuthzError,
+} from "./shared.js";
 import { mapLogFromApi } from "./mappers.js";
 
 export async function getDailyLogs(payload) {
@@ -108,7 +117,9 @@ export async function bulkUpsertLogs(payload) {
   }
 
   if (saved !== rows.length) {
-    console.warn(`bulkUpsertLogs count mismatch: expected ${rows.length}, got ${saved}`);
+    console.warn(
+      `bulkUpsertLogs count mismatch: expected ${rows.length}, got ${saved}`,
+    );
   }
   return { saved };
 }
@@ -120,9 +131,7 @@ export async function generateDailyLogsForDate(payload) {
   const dow = dayOfWeekKolkata(date);
 
   const [custRes, subRes, pauseRes, logRes] = await Promise.all([
-    supabase
-      .from("customers")
-      .select("id, status"),
+    supabase.from("customers").select("id, status"),
     supabase
       .from("subscriptions")
       .select("customer_id, delivery_days, qty, milk_type, brand_id")
@@ -238,7 +247,9 @@ export async function generateDailyLogsForDate(payload) {
     must(error);
     const savedCount = Number(count) || 0;
     if (savedCount !== toInsert.length) {
-      console.warn(`generateDailyLogsForDate upsert count mismatch: expected ${toInsert.length}, got ${savedCount}`);
+      console.warn(
+        `generateDailyLogsForDate upsert count mismatch: expected ${toInsert.length}, got ${savedCount}`,
+      );
     }
     created = savedCount;
   }

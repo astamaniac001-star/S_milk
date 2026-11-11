@@ -124,7 +124,9 @@ describe("Delivery Page", () => {
     const user = userEvent.setup();
     const props = {
       ...defaultProps,
-      logs: [{ id: "log2", custId: "c2", qty: 1, delivered: true, product: "Cow" }],
+      logs: [
+        { id: "log2", custId: "c2", qty: 1, delivered: true, product: "Cow" },
+      ],
       imports: [
         {
           id: "i1",
@@ -141,7 +143,9 @@ describe("Delivery Page", () => {
 
     await user.click(screen.getByLabelText(/Total:/));
 
-    expect(screen.getByText("Brand × Milk Type — 2026-07-04")).toBeInTheDocument();
+    expect(
+      screen.getByText("Brand × Milk Type — 2026-07-04"),
+    ).toBeInTheDocument();
     expect(screen.getByText("Amul")).toBeInTheDocument();
     expect(screen.getByText("Cow")).toBeInTheDocument();
     // Imported 5L appears in body row + tfoot row → both occurrences
@@ -154,7 +158,9 @@ describe("Delivery Page", () => {
     // All-skipped logs → nothing to aggregate in Total view
     const props = {
       ...defaultProps,
-      logs: [{ id: "log1", custId: "c1", qty: 2, delivered: false, product: "Cow" }],
+      logs: [
+        { id: "log1", custId: "c1", qty: 2, delivered: false, product: "Cow" },
+      ],
       imports: [],
     };
     render(<Delivery {...props} />);

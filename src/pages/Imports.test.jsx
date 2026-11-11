@@ -203,3 +203,155 @@ describe("Imports page — quick save from brand row", () => {
     expect(qty.value).toBe("10");
   });
 });
+
+describe("Imports page — day & date-range views (2026-11-10)", () => {
+  it("defaults to month mode: view select on 'month', month picker visible", () => {
+    render(<Imports {...baseProps()} />);
+    expect(screen.getByLabelText("Show imports by")).toHaveValue("month");
+    expect(
+      screen.getByLabelText("Filter imports by month"),
+    ).toBeInTheDocument();
+  });
+
+  it("switching to Day reports the mode and pre-fills today", async () => {
+    const user = userEvent.setup();
+    const props = baseProps();
+    render(<Imports {...props} />);
+    await user.selectOptions(screen.getByLabelText("Show imports by"), "day");
+    expect(props.onImpFilterChange).toHaveBeenCalledWith(
+      expect.objectContaining({ mode: "day", day: "2026-11-06" }),
+    );
+  });
+
+  it("renders the day picker and the stock card in Day mode", () => {
+    render(
+      <Imports
+        {...baseProps({
+          impFilter: {
+            mode: "day",
+            month: "",
+            brand: "",
+            status: "",
+            day: "2026-11-03",
+          },
+          inventory: {
+            date: "2026-11-03",
+            totalImported: 40,
+            totalDelivered: 25,
+            remaining: 15,
+            shortage: 0,
+          },
+          filtered: [IMPORTS[0]],
+        })}
+      />,
+    );
+    expect(screen.getByLabelText("Show imports for date")).toHaveValue(
+      "2026-11-03",
+    );
+    expect(screen.getByText(/Stock for 2026-11-03/)).toBeInTheDocument();
+    expect(screen.getByText(/Imported:/)).toBeInTheDocument();
+    expect(screen.getByText(/Remaining:/)).toBeInTheDocument();
+    // Confirmed-only note (operator decision: Draft ≠ stock).
+    expect(screen.getByText(/Confirmed imports only/)).toBeInTheDocument();
+    // No shortage line when remaining ≥ 0.
+    expect(screen.queryByText(/Shortage:/)).not.toBeInTheDocument();
+  });
+
+  it("shows the shortage line when delivered exceeds confirmed imports", () => {
+    render(
+      <Imports
+        {...baseProps({
+          impFilter: {
+            mode: "day",
+            month: "",
+            brand: "",
+            status: "",
+            day: "2026-11-03",
+          },
+          inventory: {
+            date: "2026-11-03",
+            totalImported: 20,
+            totalDelivered: 35,
+            remaining: 0,
+            shortage: 15,
+          },
+          filtered: [],
+        })}
+      />,
+    );
+    expect(screen.getByText(/Shortage: 15 L/)).toBeInTheDocument();
+  });
+
+  it("Day mode with no date picked shows the pick-a-date hint", () => {
+    render(
+      <Imports
+        {...baseProps({
+          impFilter: { mode: "day", month: "", brand: "", status: "", day: "" },
+          filtered: [],
+        })}
+      />,
+    );
+    expect(screen.getByText(/Pick a date/)).toBeInTheDocument();
+  });
+
+  it("Day mode with a date but no payload yet shows the loading hint", () => {
+    render(
+      <Imports
+        {...baseProps({
+          impFilter: {
+            mode: "day",
+            month: "",
+            brand: "",
+            status: "",
+            day: "2026-11-03",
+          },
+          inventory: null,
+          filtered: [],
+        })}
+      />,
+    );
+    expect(screen.getByText(/Loading stock/)).toBeInTheDocument();
+  });
+
+  it("switching to Date range pre-fills first-of-previous-month → today", async () => {
+    const user = userEvent.setup();
+    const props = baseProps();
+    render(<Imports {...props} />);
+    await user.selectOptions(screen.getByLabelText("Show imports by"), "range");
+    expect(props.onImpFilterChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mode: "range",
+        from: "2026-10-01",
+        to: "2026-11-06",
+      }),
+    );
+  });
+
+  it("renders From/To pickers in Range mode", () => {
+    render(
+      <Imports
+        {...baseProps({
+          impFilter: {
+            mode: "range",
+            month: "",
+            brand: "",
+            status: "",
+            from: "2026-10-01",
+            to: "2026-11-06",
+          },
+          filtered: [],
+        })}
+      />,
+    );
+    expect(screen.getByLabelText("Show imports from date")).toHaveValue(
+      "2026-10-01",
+    );
+    expect(screen.getByLabelText("Show imports to date")).toHaveValue(
+      "2026-11-06",
+    );
+    // Month picker hidden outside Month mode.
+    expect(
+      screen.queryByLabelText("Filter imports by month"),
+    ).not.toBeInTheDocument();
+  });
+});

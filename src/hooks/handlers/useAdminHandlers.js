@@ -13,6 +13,7 @@ export function useAdminHandlers(state) {
   const {
     setPauses,
     setBrands,
+    brands = [],
     form = {},
     modal = {},
     closeModal,
@@ -81,6 +82,24 @@ export function useAdminHandlers(state) {
         showToast("Brand name is required", "error");
         return;
       }
+      // Audit 2026-11-09 (F13): duplicate brand names make the name-based
+      // import prefill ambiguous. save_brand_rpc deliberately has no
+      // name-unique constraint (renames must not break existing name
+      // references in milk_imports), so the guard lives here: block a new
+      // duplicate and block renaming onto another brand's name, while an
+      // edit that keeps its own name still passes.
+      const editId = f.id ?? modal.data?.id;
+      const duplicate = (brands || []).find(
+        (b) =>
+          String(b.name || "")
+            .trim()
+            .toLowerCase() === String(brandName).trim().toLowerCase() &&
+          b.id !== editId,
+      );
+      if (duplicate) {
+        showToast(`A brand named "${duplicate.name}" already exists`, "error");
+        return;
+      }
       // Rates: BrandModal sends a rates array ({milkType, rate} rows). A
       // legacy single {defaultType, rate} form shape is mapped into one row
       // so both contracts land on save_brand_rpc's replace-all semantics.
@@ -145,7 +164,7 @@ export function useAdminHandlers(state) {
         showToast(err.message || "Failed to save brand", "error");
       }
     },
-    [setBrands, showToast, closeModal, form, modal],
+    [setBrands, showToast, closeModal, form, modal, brands],
   );
 
   // FIX (audit 2026-07-24): moved here from AppPage.jsx so the re-entrancy
@@ -185,20 +204,23 @@ export function useAdminHandlers(state) {
   // component does not import callApi directly (rule §1 — components go through
   // handlers). The modal will call this handler instead. busyRef guards
   // re-entrant rapid taps on the "Update PIN" button.
-  const [, rotatePin] = useBusy(async ({ currentPin, newPin }) => {
-    try {
-      await callApi("rotatePIN", { currentPin, newPin });
-      showToast(
-        "PIN updated successfully! Use it next time you log in.",
-        "success",
-      );
-      if (closeModal) closeModal();
-      return true;
-    } catch (err) {
-      showToast(err?.message || "Failed to update PIN", "error");
-      return false;
-    }
-  }, [showToast, closeModal]);
+  const [, rotatePin] = useBusy(
+    async ({ currentPin, newPin }) => {
+      try {
+        await callApi("rotatePIN", { currentPin, newPin });
+        showToast(
+          "PIN updated successfully! Use it next time you log in.",
+          "success",
+        );
+        if (closeModal) closeModal();
+        return true;
+      } catch (err) {
+        showToast(err?.message || "Failed to update PIN", "error");
+        return false;
+      }
+    },
+    [showToast, closeModal],
+  );
 
   return {
     ...adminHandlers,

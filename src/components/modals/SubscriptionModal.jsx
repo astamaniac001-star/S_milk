@@ -1,4 +1,11 @@
-import { Field, Modal, Btn, IS, ActiveCustomerOptions, ActiveBrandOptions } from "../ui.jsx";
+import {
+  Field,
+  Modal,
+  Btn,
+  IS,
+  ActiveCustomerOptions,
+  ActiveBrandOptions,
+} from "../ui.jsx";
 import { useBusy } from "../../hooks/useBusy.js";
 import { DAYS_OF_WEEK } from "./shared";
 
@@ -32,12 +39,12 @@ export function SubscriptionModal({
   const renderDayButton = (d) => {
     const isSelected = currentDays.includes(d.value);
     return (
-            <button
-              key={d.value}
-              type="button"
-              onClick={() => toggleDay(d.value)}
-              aria-pressed={isSelected}
-              style={{
+      <button
+        key={d.value}
+        type="button"
+        onClick={() => toggleDay(d.value)}
+        aria-pressed={isSelected}
+        style={{
           padding: "6px 10px",
           borderRadius: 6,
           border: isSelected ? "1px solid #1e40af" : "1px solid #d1d5db",

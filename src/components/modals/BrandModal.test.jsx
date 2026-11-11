@@ -89,7 +89,9 @@ describe("BrandModal — brand + per-type rates editor", () => {
     expect(onChange).toHaveBeenCalledWith("rates");
     // onChange(k) is evaluated at render for every field; the rates write is
     // the LAST "rates" call (from updateRow → setRows).
-    const ratesInner = innerHandlers.filter((h) => h.key === "rates").at(-1).inner;
+    const ratesInner = innerHandlers
+      .filter((h) => h.key === "rates")
+      .at(-1).inner;
     expect(ratesInner).toHaveBeenCalledWith(
       expect.objectContaining({
         target: { value: [{ milkType: "Toned", rate: "" }] },
@@ -142,7 +144,9 @@ describe("BrandModal — brand + per-type rates editor", () => {
       },
     });
     const row2 = screen.getByLabelText(/^Type 2$/);
-    const fullCreamInRow2 = [...row2.options].find((o) => o.value === "Full Cream");
+    const fullCreamInRow2 = [...row2.options].find(
+      (o) => o.value === "Full Cream",
+    );
     expect(fullCreamInRow2.disabled).toBe(true);
     const row1 = screen.getByLabelText(/^Type 1$/);
     const tonedInRow1 = [...row1.options].find((o) => o.value === "Toned");

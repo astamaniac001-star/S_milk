@@ -73,13 +73,20 @@ describe("useAdminHandlers — diagnostics + health + rotatePin (audit 2026-07-2
   it("runDiagnostics swallows re-entrant taps (busy guard)", async () => {
     let resolve;
     callApi.mockImplementation(
-      () => new Promise((r) => { resolve = r; }),
+      () =>
+        new Promise((r) => {
+          resolve = r;
+        }),
     );
     const s = baseState();
     const { result } = renderHook(() => useAdminHandlers(s));
     // First call in flight, second should be a no-op
-    const first = act(async () => { await result.current.runDiagnostics(); });
-    await act(async () => { await result.current.runDiagnostics(); });
+    const first = act(async () => {
+      await result.current.runDiagnostics();
+    });
+    await act(async () => {
+      await result.current.runDiagnostics();
+    });
     // Only the first call should have hit callApi; the second is swallowed
     expect(callApi).toHaveBeenCalledTimes(1);
     resolve();
@@ -109,7 +116,10 @@ describe("useAdminHandlers — diagnostics + health + rotatePin (audit 2026-07-2
       await result.current.healthCheck();
     });
     expect(callApi).toHaveBeenCalledWith("healthCheck");
-    expect(s.toast$).toHaveBeenCalledWith("Health check passed — V17", "success");
+    expect(s.toast$).toHaveBeenCalledWith(
+      "Health check passed — V17",
+      "success",
+    );
   });
 
   it("healthCheck toasts the error message on failure", async () => {
@@ -128,7 +138,10 @@ describe("useAdminHandlers — diagnostics + health + rotatePin (audit 2026-07-2
     const { result } = renderHook(() => useAdminHandlers(s));
     let ok;
     await act(async () => {
-      ok = await result.current.rotatePin({ currentPin: "111111", newPin: "222222" });
+      ok = await result.current.rotatePin({
+        currentPin: "111111",
+        newPin: "222222",
+      });
     });
     expect(callApi).toHaveBeenCalledWith("rotatePIN", {
       currentPin: "111111",
@@ -148,7 +161,10 @@ describe("useAdminHandlers — diagnostics + health + rotatePin (audit 2026-07-2
     const { result } = renderHook(() => useAdminHandlers(s));
     let ok;
     await act(async () => {
-      ok = await result.current.rotatePin({ currentPin: "wrong", newPin: "222222" });
+      ok = await result.current.rotatePin({
+        currentPin: "wrong",
+        newPin: "222222",
+      });
     });
     expect(ok).toBe(false);
     expect(s.toast$).toHaveBeenCalledWith("Current PIN is incorrect.", "error");
@@ -157,11 +173,20 @@ describe("useAdminHandlers — diagnostics + health + rotatePin (audit 2026-07-2
 
   it("rotatePin swallows re-entrant rapid taps", async () => {
     let resolve;
-    callApi.mockImplementation(() => new Promise((r) => { resolve = r; }));
+    callApi.mockImplementation(
+      () =>
+        new Promise((r) => {
+          resolve = r;
+        }),
+    );
     const s = baseState();
     const { result } = renderHook(() => useAdminHandlers(s));
-    const first = act(async () => { await result.current.rotatePin({ currentPin: "x", newPin: "y" }); });
-    await act(async () => { await result.current.rotatePin({ currentPin: "x", newPin: "y" }); });
+    const first = act(async () => {
+      await result.current.rotatePin({ currentPin: "x", newPin: "y" });
+    });
+    await act(async () => {
+      await result.current.rotatePin({ currentPin: "x", newPin: "y" });
+    });
     expect(callApi).toHaveBeenCalledTimes(1);
     resolve({ success: true });
     await first;

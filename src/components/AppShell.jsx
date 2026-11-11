@@ -202,7 +202,7 @@ export function AppShell({
           maxWidth: 1024,
           margin: "0 auto",
           width: "100%",
-          paddingBottom: 128, /* clearance for the floating pill nav */
+          paddingBottom: 128 /* clearance for the floating pill nav */,
         }}
       >
         {children}

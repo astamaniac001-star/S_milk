@@ -73,7 +73,10 @@ export const matchBrandByMilkType = (log, brands) => {
 // for legacy/unbranded rows. Shared by Delivery/Subscriptions/Customers.
 export const brandLabel = (record, brands) => {
   if (record?.brandId) {
-    return (brands || []).find((b) => b.id === record.brandId)?.name || "Unknown brand";
+    return (
+      (brands || []).find((b) => b.id === record.brandId)?.name ||
+      "Unknown brand"
+    );
   }
   if (record?.product) return matchBrandByMilkType(record, brands);
   return "Unknown brand";

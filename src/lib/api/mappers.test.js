@@ -7,6 +7,7 @@ import {
   mapBrandFromApi,
   mapBrandToApi,
   mapLogFromApi,
+  mapPaymentToApi,
 } from "./mappers.js";
 
 // Subscription-centric model: customers carry identity only. These tests
@@ -112,12 +113,16 @@ describe("mapSubscriptionToApi — subscription payload", () => {
   });
 
   it("normalizes an empty brandId to null (legacy brandless rows)", () => {
-    expect(mapSubscriptionToApi({ customerId: "C1", brandId: "" }).brandId).toBeNull();
+    expect(
+      mapSubscriptionToApi({ customerId: "C1", brandId: "" }).brandId,
+    ).toBeNull();
     expect(mapSubscriptionToApi({ customerId: "C1" }).brandId).toBeNull();
   });
 
   it("coerces qty to a number", () => {
-    expect(mapSubscriptionToApi({ customerId: "C1", qty: "2.5" }).qty).toBe(2.5);
+    expect(mapSubscriptionToApi({ customerId: "C1", qty: "2.5" }).qty).toBe(
+      2.5,
+    );
   });
 
   it("persists the modal's visible default (1L) when qty was never set", () => {
@@ -258,8 +263,62 @@ describe("mapBrandFromApi / mapBrandToApi — brand + rates shape", () => {
 
 describe("mapLogFromApi — brand-aware log shape", () => {
   it("maps brand_id to brandId (null for legacy rows)", () => {
-    expect(mapLogFromApi({ id: "L1", customer_id: "C1", product: "Full Cream", brand_id: "B1" }).brandId).toBe("B1");
-    expect(mapLogFromApi({ id: "L1", customer_id: "C1", product: "Full Cream", brand_id: null }).brandId).toBeNull();
-    expect(mapLogFromApi({ id: "L1", customer_id: "C1", product: "Full Cream" }).brandId).toBeNull();
+    expect(
+      mapLogFromApi({
+        id: "L1",
+        customer_id: "C1",
+        product: "Full Cream",
+        brand_id: "B1",
+      }).brandId,
+    ).toBe("B1");
+    expect(
+      mapLogFromApi({
+        id: "L1",
+        customer_id: "C1",
+        product: "Full Cream",
+        brand_id: null,
+      }).brandId,
+    ).toBeNull();
+    expect(
+      mapLogFromApi({ id: "L1", customer_id: "C1", product: "Full Cream" })
+        .brandId,
+    ).toBeNull();
+  });
+});
+
+describe("mapPaymentToApi — idempotency-key contract (AGENTS §14)", () => {
+  it("THROWS when the caller forgets the idempotency key", () => {
+    // A silent fallback `|| generateKey()` minted a fresh key per call and
+    // defeated the DB uniqueness guard (double-charge window). The mapper
+    // must fail loudly instead (audit 2026-11-09, F6).
+    expect(() => mapPaymentToApi("BILL1", 100, { mode: "Cash" })).toThrow(
+      /idempotencyKey/i,
+    );
+    expect(() => mapPaymentToApi("BILL1", 100, {})).toThrow(/idempotencyKey/i);
+  });
+
+  it("passes the caller-owned key through unchanged", () => {
+    const out = mapPaymentToApi("BILL1", "100", {
+      mode: "UPI",
+      date: "2026-11-09",
+      note: "ref#1",
+      idempotencyKey: "11111111-1111-4111-8111-111111111111",
+    });
+    expect(out).toEqual({
+      billId: "BILL1",
+      amount: 100,
+      mode: "UPI",
+      date: "2026-11-09",
+      note: "ref#1",
+      idempotencyKey: "11111111-1111-4111-8111-111111111111",
+    });
+  });
+
+  it("defaults mode to Cash and date to an IST YYYY-MM-DD", () => {
+    const out = mapPaymentToApi("BILL1", 50, {
+      idempotencyKey: "22222222-2222-4222-8222-222222222222",
+    });
+    expect(out.mode).toBe("Cash");
+    expect(out.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 });

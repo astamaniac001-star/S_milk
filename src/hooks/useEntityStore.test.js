@@ -123,7 +123,9 @@ describe("useEntityStore — safeFetch loadErrors banner (audit rule §10 layer 
       useEntityStore("tok", "2026-07-25", "2026-07"),
     );
 
-    await waitFor(() => expect(result.current.loadErrors).toContain("getCustomers"));
+    await waitFor(() =>
+      expect(result.current.loadErrors).toContain("getCustomers"),
+    );
     // The non-failing entities are populated (mapXFromApi maps [] to []).
     expect(result.current.customers).toEqual([]);
     expect(result.current.bills).toEqual([]);
@@ -164,16 +166,18 @@ describe("useEntityStore — safeFetch loadErrors banner (audit rule §10 layer 
     // Promise order matters here: we want getCustomers to fail all calls.
     callApiMock = vi.fn(async (action) => {
       if (action === "getCustomers") throw new Error("error");
-      return {
-        getBills: { bills: [] },
-        getMilkImports: { imports: [] },
-        getDailyLogs: { logs: [] },
-        getAdjustments: { adjustments: [] },
-        getPauses: { pauses: [] },
-        getBrands: { brands: [] },
-        getSubscriptions: { subscriptions: [] },
-        getCreditNotes: { creditNotes: [] },
-      }[action] || [];
+      return (
+        {
+          getBills: { bills: [] },
+          getMilkImports: { imports: [] },
+          getDailyLogs: { logs: [] },
+          getAdjustments: { adjustments: [] },
+          getPauses: { pauses: [] },
+          getBrands: { brands: [] },
+          getSubscriptions: { subscriptions: [] },
+          getCreditNotes: { creditNotes: [] },
+        }[action] || []
+      );
     });
 
     const { result, rerender } = renderHook(() =>
@@ -188,7 +192,9 @@ describe("useEntityStore — safeFetch loadErrors banner (audit rule §10 layer 
     // the effect is benign — the list stays at one entry. The `getCustomers`
     // action may or may not be re-invoked (effect deps are stable across a
     // plain rerender), but either way the loadErrors set stays deduped.
-    await waitFor(() => expect(result.current.loadErrors).toEqual(["getCustomers"]));
+    await waitFor(() =>
+      expect(result.current.loadErrors).toEqual(["getCustomers"]),
+    );
   });
 });
 
@@ -323,18 +329,23 @@ describe("useEntityStore — fetchLogs(date) refresh (audit rule §10 layer 1 �
     // There's no ferryPer loadErrors entry after the initial fetch.
     expect(result.current.loadErrors).toEqual([]);
 
-    // The fetchLogs path swallows errors internally (console.error) so the
-    // loadErrors banner stays clean and existing logs in state remain intact.
+    // The fetchLogs path is NOT safeFetch, but audit 2026-11-09 (F15) changed
+    // it from fully silent to layer-1 visible: the failure appends ONE
+    // deduped "getDailyLogs" entry to the loadErrors banner so the operator
+    // gets a Retry affordance. Repeat failures must not grow the list.
     callApiMock.mockImplementationOnce(async () => {
       throw new Error("date refresh");
     });
     await act(async () => {
       await result.current.fetchLogs("2026-07-26");
     });
+    expect(result.current.loadErrors).toEqual(["getDailyLogs"]);
 
-    // loadErrors must not be appended on the manual refresh path — that's
-    // NOT the safeFetch code path.
-    expect(result.current.loadErrors).toEqual([]);
+    await act(async () => {
+      await result.current.fetchLogs("2026-07-26");
+    });
+    // Deduped — the state-sheet cannot blow up on repeated failures.
+    expect(result.current.loadErrors).toEqual(["getDailyLogs"]);
   });
 
   it("replaces logs state with newly mapped UI rows on date refresh", async () => {

@@ -75,7 +75,13 @@ vi.mock("../lib/api", () => ({
           billId: "B1",
           amountPaid: 100,
           status: "Partial",
-          bill: { id: "B1", amount: 200, paid: 100, status: "Partial", version: 2 },
+          bill: {
+            id: "B1",
+            amount: 200,
+            paid: 100,
+            status: "Partial",
+            version: 2,
+          },
           idempotent: false,
         };
       case "getBills":

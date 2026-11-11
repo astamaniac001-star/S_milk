@@ -171,19 +171,34 @@ export default function Billing({
             >
               Add Credit Note
             </Btn>
-            <Btn small onClick={() => {
-              if (window.confirm(`Generate bills for ${billMonth}? This will create or update a bill for every active customer.`)) {
-                onGenerateBill();
-              }
-            }}>
+            <Btn
+              small
+              onClick={() => {
+                if (
+                  window.confirm(
+                    `Generate bills for ${billMonth}? This will create or update a bill for every active customer.`,
+                  )
+                ) {
+                  onGenerateBill();
+                }
+              }}
+            >
               Generate Bills
             </Btn>
           </div>
         }
       />
       <Field label="Bill Month (for Generate)">
+        {/* Deliberately <input type="month"> (audit 2026-11-09 revisit): the
+            operator must be able to target ANY month — including months with
+            no bills yet — and month-scoped refetches key off this value. A
+            data-derived <select> (like the Imports filter) cannot offer
+            arbitrary months. On Firefox/old WebViews this degrades to a text
+            field the operator can type YYYY-MM into. */}
         <input
           type="month"
+          id="bill-month"
+          name="bill-month"
           value={billMonth}
           onChange={(e) => onBillMonthChange(e.target.value)}
           style={IS()}

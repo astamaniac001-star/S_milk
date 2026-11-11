@@ -52,7 +52,9 @@ describe("ChangePinModal — delegates to onRotatePin (audit 2026-07-24, rule §
     fireEvent.change(next, { target: { value: "22" } }); // short
     fireEvent.change(confirm, { target: { value: "22" } });
     // Submit button stays disabled until length === 6 for all three fields
-    expect(screen.getByRole("button", { name: /Update PIN/i }).disabled).toBe(true);
+    expect(screen.getByRole("button", { name: /Update PIN/i }).disabled).toBe(
+      true,
+    );
   });
 
   it("rejects when new PIN === current PIN, surfacing a toast", async () => {

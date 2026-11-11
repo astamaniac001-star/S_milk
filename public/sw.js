@@ -26,7 +26,7 @@
 // previous bump: the shell handler is strictly cache-first, so the cached
 // `/index.html` still points at the OLD content-hashed bundles and returning
 // operators would keep running the previous build until the cache is evicted.
-const CACHE = "milk-v25"; // Bumped from v24: UI visual refresh (new palette + shell)
+const CACHE = "milk-v27"; // Bumped from v26: Imports day/date-range views + Confirmed-only daily stock card
 const SHELL = [
   "/",
   "/index.html",

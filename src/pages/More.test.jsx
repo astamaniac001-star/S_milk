@@ -20,7 +20,9 @@ vi.mock("../components/ui.jsx", () => ({
   Empty: ({ msg }) => <div data-testid="empty">{msg}</div>,
   Badge: ({ label }) => <div data-testid="badge">{label}</div>,
 }));
-vi.mock("lucide-react", () => ({ ShieldCheck: () => <svg data-testid="shield" /> }));
+vi.mock("lucide-react", () => ({
+  ShieldCheck: () => <svg data-testid="shield" />,
+}));
 
 import More from "./More.jsx";
 
@@ -50,9 +52,7 @@ describe("More page — Diagnostics live rendering (audit §3.9)", () => {
     ).toBeInTheDocument();
     // The old static "Not yet implemented" placeholder + audit footnote are gone.
     expect(screen.queryByText(/Not yet implemented/)).not.toBeInTheDocument();
-    expect(
-      screen.queryByText(/Static reference list/),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/Static reference list/)).not.toBeInTheDocument();
   });
 
   it("renders live per-item probe values after Run", () => {
@@ -73,11 +73,17 @@ describe("More page — Diagnostics live rendering (audit §3.9)", () => {
 
     const { getByText, queryByText } = diagCard();
     // Labels (icon + label share one span, so match by substring on spans).
-    expect(getByText(/Schema version/, { selector: "span" })).toBeInTheDocument();
+    expect(
+      getByText(/Schema version/, { selector: "span" }),
+    ).toBeInTheDocument();
     expect(getByText(/API version/, { selector: "span" })).toBeInTheDocument();
     expect(getByText(/Migration/, { selector: "span" })).toBeInTheDocument();
-    expect(getByText(/MilkTypes seeded/, { selector: "span" })).toBeInTheDocument();
-    expect(getByText(/MilkBrands seeded/, { selector: "span" })).toBeInTheDocument();
+    expect(
+      getByText(/MilkTypes seeded/, { selector: "span" }),
+    ).toBeInTheDocument();
+    expect(
+      getByText(/MilkBrands seeded/, { selector: "span" }),
+    ).toBeInTheDocument();
     // Values (value spans carry the exact value string).
     expect(getByText("V17")).toBeInTheDocument();
     expect(getByText("17")).toBeInTheDocument();
@@ -85,7 +91,9 @@ describe("More page — Diagnostics live rendering (audit §3.9)", () => {
     expect(getByText(/7 total/, { selector: "span" })).toBeInTheDocument();
     expect(getByText(/2 in use/, { selector: "span" })).toBeInTheDocument();
     expect(getByText("2 active / 5 total")).toBeInTheDocument();
-    expect(queryByText(/Tap Run to check connectivity/)).not.toBeInTheDocument();
+    expect(
+      queryByText(/Tap Run to check connectivity/),
+    ).not.toBeInTheDocument();
   });
 
   it("renders ❌ + an offline error banner for unhealthy probes", () => {
@@ -102,8 +110,12 @@ describe("More page — Diagnostics live rendering (audit §3.9)", () => {
     render(<More {...baseProps} diagRan={true} diagResults={diagResults} />);
 
     const { getByText, getAllByText } = diagCard();
-    expect(getByText(/Schema version/, { selector: "span" })).toBeInTheDocument();
-    expect(getByText(/MilkBrands seeded/, { selector: "span" })).toBeInTheDocument();
+    expect(
+      getByText(/Schema version/, { selector: "span" }),
+    ).toBeInTheDocument();
+    expect(
+      getByText(/MilkBrands seeded/, { selector: "span" }),
+    ).toBeInTheDocument();
     expect(getAllByText("offline").length).toBe(2);
     expect(getByText("Production")).toBeInTheDocument();
     // The connectivity error text is surfaced under the probe list.

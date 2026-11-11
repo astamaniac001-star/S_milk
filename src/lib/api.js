@@ -8,7 +8,6 @@
 
 import {
   mapCustomerFromApi,
-  mapBillFromApi,
   mapImportFromApi,
   mapLogFromApi,
   mapAdjustmentFromApi,
@@ -79,10 +78,12 @@ import {
 } from "./api/admin.js";
 
 // Re-export the public mappers and the auth-error helper so existing imports
-// (`import { mapBillFromApi, callApi } from "../lib/api.js"`) keep working.
+// (`import { callApi } from "../lib/api.js"`) keep working. mappers.js stays
+// the canonical source — api/* domain files import from it directly.
+// (mapBillFromApi is deliberately NOT re-exported: it had no consumers via
+// this barrel — audit 2026-11-09 dead-export cleanup.)
 export {
   mapCustomerFromApi,
-  mapBillFromApi,
   mapImportFromApi,
   mapLogFromApi,
   mapAdjustmentFromApi,
@@ -149,7 +150,8 @@ const DISPATCH = {
   // saveBrand: atomic brand + per-type rates via save_brand_rpc (replaces
   // the old addMilkBrand plain insert).
   saveBrand,
-  // NOTE: getDailyInventory is registered but intentionally not wired up — future feature
+  // getDailyInventory powers the Imports page "By day" stock card
+  // (wired 2026-11-10; Confirmed-only import counting).
   getDailyInventory,
 
   // Admin
@@ -165,9 +167,7 @@ export async function callApi(action, payload = {}) {
   try {
     const handler = DISPATCH[action];
     if (!handler) {
-      console.warn(
-        `Action '${action}' not yet implemented in Supabase API`,
-      );
+      console.warn(`Action '${action}' not yet implemented in Supabase API`);
       throw new Error(`Unknown action: ${action}`);
     }
     return await handler(payload);

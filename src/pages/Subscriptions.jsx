@@ -68,7 +68,9 @@ export default function Subscriptions({
   const handleDelete = async (sub) => {
     if (deletingId) return; // busy guard
     const name = resolveCustomerName(customers, sub.customerId);
-    if (!window.confirm(`Delete subscription for ${name}? This cannot be undone.`))
+    if (
+      !window.confirm(`Delete subscription for ${name}? This cannot be undone.`)
+    )
       return;
     setDeletingId(sub.id);
     try {
@@ -83,7 +85,10 @@ export default function Subscriptions({
       <Section
         title="Subscriptions"
         action={
-          <Btn small onClick={() => onOpenModal("addSubscription", NEW_SUB_DEFAULTS)}>
+          <Btn
+            small
+            onClick={() => onOpenModal("addSubscription", NEW_SUB_DEFAULTS)}
+          >
             + Add
           </Btn>
         }

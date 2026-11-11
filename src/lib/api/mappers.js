@@ -8,7 +8,7 @@
 // columns that genuinely default to 0 (e.g. balance) keep `|| 0` since 0 is
 // a no-op fallback for the empty/null case anyway.
 
-import { toArray, toNum, getToday, generateKey } from "./shared.js";
+import { toArray, toNum, getToday } from "./shared.js";
 
 export function mapCustomerFromApi(c) {
   // Subscription-centric model: customers are identity-only (name/phone/
@@ -236,13 +236,21 @@ export function mapPaymentToApi(billId, amount, opts = {}) {
   // user submit, reuse on retry of that submit, mint fresh on the next
   // distinct submit). MINTING HERE WAS A BUG — a fresh UUID per call
   // defeated the `record_payment_rpc` uniqueness guard, letting a manual
-  // retry after a successful-but-unacknowledged RPC double-charge the customer.
+  // retry after a successful-but-unacknowledged RPC double-charge the
+  // customer. A silent fallback `|| generateKey()` was ALSO removed
+  // (audit 2026-11-09): a caller that forgets the key must fail loudly here,
+  // not silently lose dedup protection.
+  if (!opts.idempotencyKey) {
+    throw new Error(
+      "mapPaymentToApi requires opts.idempotencyKey — mint one per user attempt and reuse it on retry of that attempt (AGENTS §14)",
+    );
+  }
   return {
     billId,
     amount: Number(amount),
     mode: opts.mode || "Cash",
     date: opts.date || getToday(),
     note: opts.note,
-    idempotencyKey: opts.idempotencyKey || generateKey(),
+    idempotencyKey: opts.idempotencyKey,
   };
 }

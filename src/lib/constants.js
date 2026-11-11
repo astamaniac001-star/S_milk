@@ -7,24 +7,8 @@ export const BLUE = "#4f46e5";
 export const BLUE_L = "#eef2ff";
 
 // Status → badge colors. Used by <Badge> to pick background/text.
-export const SC = {
-  Active: { bg: "#dcfce7", tx: "#166534" },
-  Paused: { bg: "#fef3c7", tx: "#92400e" },
-  Inactive: { bg: "#f3f4f6", tx: "#374151" },
-  Draft: { bg: "#e0e7ff", tx: "#3730a3" },
-  Confirmed: { bg: "#dcfce7", tx: "#166534" },
-  Paid: { bg: "#dcfce7", tx: "#166534" },
-  Unpaid: { bg: "#fee2e2", tx: "#991b1b" },
-  Partial: { bg: "#fef3c7", tx: "#92400e" },
-  // FIX (AI-1 Moderate 6): Standardized casing to PascalCase to match backend status strings
-  Pending: { bg: "#fef9c3", tx: "#854d0e" },
-  Failed: { bg: "#fee2e2", tx: "#991b1b" },
-  Dead: { bg: "#fee2e2", tx: "#991b1b" },
-  Reconciled: { bg: "#e0f2fe", tx: "#075985" },
-  Applied: { bg: "#dcfce7", tx: "#166534" },
-  Delivered: { bg: "#dcfce7", tx: "#166534" },
-  Skipped: { bg: "#fee2e2", tx: "#991b1b" },
-};
+// (audit 2026-11-09: removed the unused `SC` export — ui.jsx owns the
+// dark-mode-aware status palette; this static copy had no consumers.)
 
 // Day-of-week labels (en-IN). Month names live inline in utils.js#monthLabel.
 export const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];

@@ -23,8 +23,10 @@ function readDotEnv() {
       if (eq < 0) continue;
       const key = line.slice(0, eq).trim();
       let val = line.slice(eq + 1).trim();
-      if ((val.startsWith('"') && val.endsWith('"')) ||
-          (val.startsWith("'") && val.endsWith("'"))) {
+      if (
+        (val.startsWith('"') && val.endsWith('"')) ||
+        (val.startsWith("'") && val.endsWith("'"))
+      ) {
         val = val.slice(1, -1);
       }
       out[key] = val;
@@ -37,8 +39,7 @@ function readDotEnv() {
 
 const env = { ...readDotEnv(), ...process.env };
 
-export const SUPABASE_URL =
-  env.SUPABASE_URL || env.VITE_SUPABASE_URL || "";
+export const SUPABASE_URL = env.SUPABASE_URL || env.VITE_SUPABASE_URL || "";
 export const SUPABASE_ANON_KEY =
   env.SUPABASE_ANON_KEY || env.VITE_SUPABASE_ANON_KEY || "";
 
@@ -51,7 +52,8 @@ if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
 
 // Per AGENTS.md the confirmed operator account is the Supabase Auth user that
 // owns the data. Login is a 6-digit PIN used as that account's password.
-export const OPERATOR_EMAIL = env.E2E_OPERATOR_EMAIL || "astamaniac001@gmail.com";
+export const OPERATOR_EMAIL =
+  env.E2E_OPERATOR_EMAIL || "astamaniac001@gmail.com";
 export const OPERATOR_PIN = env.E2E_OPERATOR_PIN || "";
 
 if (!OPERATOR_PIN) {

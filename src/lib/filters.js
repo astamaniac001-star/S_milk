@@ -20,17 +20,55 @@ export function filterCustomers(customers, search, statusFilter) {
   });
 }
 
-export function filterImports(imports, { month, brand, status }) {
-  return imports.filter(
-    (i) =>
-      (!brand || i.brand === brand) &&
-      (!status || i.status === status) &&
-      // FIX (audit 2026-07-25, defensive): the `date` column is NOT NULL in
-      // DB, but `i.date` could still be undefined on malformed UI rows or
-      // staged updates. Guard the `.startsWith()` so the filter returns false
-      // instead of throwing on null/undefined.
-      (!month || (i.date && typeof i.date === "string" && i.date.startsWith(month))),
-  );
+// Import list filter. `mode` selects the date dimension (2026-11-10 —
+// Imports Day/Date-range views):
+//   "month" (default) — `i.date` starts with `month` (original behavior);
+//   "day"             — exact `i.date === day`;
+//   "range"           — inclusive `from <= i.date <= to`. YYYY-MM-DD strings
+//                       compare correctly lexically, so no Date parsing and
+//                       no timezone drift.
+// All modes compose with the brand/status filters. Defensive date guards
+// preserved (the `date` column is NOT NULL in DB, but `i.date` could still
+// be undefined on malformed UI rows or staged updates — return false
+// instead of throwing on null/undefined).
+export function filterImports(
+  imports,
+  { mode = "month", month, day, from, to, brand, status } = {},
+) {
+  return (imports || []).filter((i) => {
+    if (brand && i.brand !== brand) return false;
+    if (status && i.status !== status) return false;
+    const d = i.date;
+    const validDate = d && typeof d === "string";
+    if (mode === "day") {
+      if (!day) return true; // empty day = no date constraint
+      return validDate && d === day;
+    }
+    if (mode === "range") {
+      if (!from && !to) return true; // empty window = no date constraint
+      if (!validDate) return false;
+      if (from && d < from) return false;
+      if (to && d > to) return false;
+      return true;
+    }
+    if (!month) return true;
+    return validDate && d.startsWith(month);
+  });
+}
+
+// Default From/To window for the Imports "By date range" view: the first day
+// of the PREVIOUS month through `today`, so opening the picker immediately
+// covers "previous month + current month" (operator request 2026-11-10).
+// Month math is UTC-anchored with day=1 so the Dec→Jan rollback is correct
+// in every timezone. `today` is a YYYY-MM-DD string from getToday().
+export function defaultImportRange(today) {
+  if (typeof today !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(today)) {
+    return { from: "", to: "" };
+  }
+  const [y, m] = today.split("-").map(Number);
+  const prev = new Date(Date.UTC(y, m - 2, 1)); // month before, day 1
+  const from = `${prev.getUTCFullYear()}-${String(prev.getUTCMonth() + 1).padStart(2, "0")}-01`;
+  return { from, to: today };
 }
 
 // Month options for the Imports page filter, derived from the data itself.
@@ -39,8 +77,18 @@ export function filterImports(imports, { month, brand, status }) {
 // WebViews — the operator could not reach previous imports at all.
 // Returns [{ value: "YYYY-MM", label: "Nov 2026" }], newest first.
 const MONTH_SHORT = [
-  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
 ];
 
 export function buildMonthOptions(imports) {

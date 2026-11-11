@@ -20,7 +20,13 @@ vi.mock("../pages/Customers.jsx", () => ({ default: () => <div /> }));
 vi.mock("../pages/Imports.jsx", () => ({ default: () => <div /> }));
 vi.mock("../pages/Billing.jsx", () => ({ default: () => <div /> }));
 vi.mock("../pages/More.jsx", () => ({
-  default: (props) => <div data-testid="more" data-diag={props.onRunDiag ? "y" : "n"} data-health={props.onHealthCheck ? "y" : "n"} />,
+  default: (props) => (
+    <div
+      data-testid="more"
+      data-diag={props.onRunDiag ? "y" : "n"}
+      data-health={props.onHealthCheck ? "y" : "n"}
+    />
+  ),
 }));
 
 describe("AppPage (audit 2026-07-24)", () => {
@@ -74,10 +80,14 @@ describe("AppPage (audit 2026-07-24)", () => {
       healthCheck: vi.fn(),
     };
 
-    const { container } = render(<AppPage tab="delivery" state={state} handlers={handlers} />);
+    const { container } = render(
+      <AppPage tab="delivery" state={state} handlers={handlers} />,
+    );
     const deliv = container.querySelector('[data-testid="deliv"]');
     expect(deliv).toBeTruthy();
-    expect(deliv.getAttribute("data-logs")).toBe(JSON.stringify(selectedDateLogs));
+    expect(deliv.getAttribute("data-logs")).toBe(
+      JSON.stringify(selectedDateLogs),
+    );
   });
 
   it("exposes runDiagnostics and healthCheck handlers to More (no inline callApi)", () => {
@@ -97,7 +107,9 @@ describe("AppPage (audit 2026-07-24)", () => {
       healthCheck: vi.fn(),
       applyAdjustment: vi.fn(),
     };
-    const { container } = render(<AppPage tab="more" state={state} handlers={handlers} />);
+    const { container } = render(
+      <AppPage tab="more" state={state} handlers={handlers} />,
+    );
     const more = container.querySelector('[data-testid="more"]');
     expect(more).toBeTruthy();
     expect(more.getAttribute("data-diag")).toBe("y");

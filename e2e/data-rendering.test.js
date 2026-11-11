@@ -41,7 +41,9 @@ test.describe("UI shows what DB holds", () => {
     await waitForAppReady(page);
   });
 
-  test("every customer the DB returns appears as a Card on the Customers page", async ({ page }) => {
+  test("every customer the DB returns appears as a Card on the Customers page", async ({
+    page,
+  }) => {
     const supabase = await makeSupabase({ withSession: true });
     const { data, error } = await supabase
       .from("customers")
@@ -54,13 +56,17 @@ test.describe("UI shows what DB holds", () => {
     await page.getByRole("button", { name: "Customers" }).click();
     // STRICT-MODE GUARD: both <h2>Customers</h2> (AppShell tab title) and
     // <h3>Customers</h3> (Customers.jsx:25 Section) match. Use .first().
-    await expect(page.getByRole("heading", { name: "Customers", exact: true }).first()).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Customers", exact: true }).first(),
+    ).toBeVisible();
 
     // If the DB is completely empty, the empty-state text is the right
     // appearance instead; assert either path explicitly so the test can't
     // pass both ways.
     if (names.length === 0) {
-      await expect(page.getByText("No customers found", { exact: true })).toBeVisible();
+      await expect(
+        page.getByText("No customers found", { exact: true }),
+      ).toBeVisible();
       return;
     }
 
@@ -72,12 +78,17 @@ test.describe("UI shows what DB holds", () => {
       // Some names may include characters that are regex-meaningful; escape.
       const escaped = n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       await expect(
-        page.locator(".card").filter({ hasText: new RegExp(escaped) }).first(),
+        page
+          .locator(".card")
+          .filter({ hasText: new RegExp(escaped) })
+          .first(),
       ).toBeVisible({ timeout: 10_000 });
     }
   });
 
-  test("dashboard Today's Delivery stats reflect DB logs / customers counts", async ({ page }) => {
+  test("dashboard Today's Delivery stats reflect DB logs / customers counts", async ({
+    page,
+  }) => {
     const supabase = await makeSupabase({ withSession: true });
     // Use TODAY in IST (per AGENTS.md §8 — getToday()). The dashboard's
     // `todayLogs` and `logs` store slice both come from
@@ -118,7 +129,9 @@ test.describe("UI shows what DB holds", () => {
     );
   });
 
-  test("Billing page KPI grid equals computed DB totals (no other-month leak)", async ({ page }) => {
+  test("Billing page KPI grid equals computed DB totals (no other-month leak)", async ({
+    page,
+  }) => {
     const supabase = await makeSupabase({ withSession: true });
     // The app loads bills filtered by `billMonth` = current YYYY-MM (useAppState
     // clampedMonth → today's YYYY-MM). To match that, compute bills from DB
@@ -133,7 +146,11 @@ test.describe("UI shows what DB holds", () => {
     const arr = bills || [];
     const totalBilled = arr.reduce((s, b) => s + num(b.amount), 0);
     const collected = arr.reduce(
-      (s, b) => s + (b.status === "Paid" || b.status === "Partial" ? num(b.amount_paid) : 0),
+      (s, b) =>
+        s +
+        (b.status === "Paid" || b.status === "Partial"
+          ? num(b.amount_paid)
+          : 0),
       0,
     );
     const pending = arr
@@ -143,12 +160,23 @@ test.describe("UI shows what DB holds", () => {
     await page.getByRole("button", { name: "Billing" }).click();
     // STRICT-MODE GUARD: AppShell <h2>Billing</h2> + Billing.jsx:163
     // <Section title="Billing"> → <h3>Billing</h3>. Use .first().
-    await expect(page.getByRole("heading", { name: "Billing" }).first()).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Billing" }).first(),
+    ).toBeVisible();
 
     // StatGrid labels per Billing.jsx:205-224.
-    const totalTile = page.locator(".stat-tile").filter({ hasText: "Total Billed" }).first();
-    const collectedTile = page.locator(".stat-tile").filter({ hasText: "Collected" }).first();
-    const pendingTile = page.locator(".stat-tile").filter({ hasText: "Pending" }).first();
+    const totalTile = page
+      .locator(".stat-tile")
+      .filter({ hasText: "Total Billed" })
+      .first();
+    const collectedTile = page
+      .locator(".stat-tile")
+      .filter({ hasText: "Collected" })
+      .first();
+    const pendingTile = page
+      .locator(".stat-tile")
+      .filter({ hasText: "Pending" })
+      .first();
 
     if (arr.length === 0) {
       // All three tiles should still render (just show ₹0.00).
@@ -163,7 +191,9 @@ test.describe("UI shows what DB holds", () => {
     await expect(pendingTile).toContainText(fmt(pending));
   });
 
-  test("Imports page Brand list matches DB milk_brands rows", async ({ page }) => {
+  test("Imports page Brand list matches DB milk_brands rows", async ({
+    page,
+  }) => {
     const supabase = await makeSupabase({ withSession: true });
     const { data, error } = await supabase
       .from("milk_brands")
@@ -171,17 +201,24 @@ test.describe("UI shows what DB holds", () => {
       .order("brand_name")
       .limit(50);
     expect(error, "DB SELECT milk_brands failed").toBeNull();
-    const names = (data || []).filter((b) => b?.brand_name).map((b) => b.brand_name);
+    const names = (data || [])
+      .filter((b) => b?.brand_name)
+      .map((b) => b.brand_name);
 
     await page.getByRole("button", { name: "Imports" }).click();
     // STRICT-MODE GUARD: AppShell <h2>Milk Imports</h2> + Imports.jsx:62
     // <Section title="Milk Imports"> → <h3>Milk Imports</h3>. Use .first().
-    await expect(page.getByRole("heading", { name: "Milk Imports" }).first()).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Milk Imports" }).first(),
+    ).toBeVisible();
     // The Brands subsection card (Imports.jsx:183-218) renders at the bottom.
     for (const n of names.slice(0, 5)) {
       const escaped = n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       await expect(
-        page.locator(".card").filter({ hasText: new RegExp(escaped) }).first(),
+        page
+          .locator(".card")
+          .filter({ hasText: new RegExp(escaped) })
+          .first(),
       ).toBeVisible({ timeout: 10_000 });
     }
   });
@@ -196,10 +233,13 @@ function num(v) {
   return isNaN(n) ? 0 : n;
 }
 function fmt(n) {
-  return "₹" + num(n).toLocaleString("en-IN", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+  return (
+    "₹" +
+    num(n).toLocaleString("en-IN", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })
+  );
 }
 
 // silence unused warning for marker exports in helpers (kept for parity).

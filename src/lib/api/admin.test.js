@@ -12,7 +12,13 @@ const mockState = vi.hoisted(() => ({
 // admin.js. `must` is the real no-op-on-null thrower.
 vi.mock("./shared.js", () => {
   function chainable(table) {
-    const calls = { select: [], eq: [], limit: [], maybeSingle: [], single: [] };
+    const calls = {
+      select: [],
+      eq: [],
+      limit: [],
+      maybeSingle: [],
+      single: [],
+    };
     const q = {};
     q.select = (cols, opts) => {
       calls.select.push({ cols, opts: opts || {} });
@@ -147,7 +153,9 @@ describe("api/admin.js — runDiagnostics (live per-item probes, audit §3.9)", 
     mockState.subscriptions = [{ milk_type: "Mystery Milk" }];
     const res = await runDiagnostics({});
     expect(res.probes["MilkTypes seeded"].ok).toBe(false);
-    expect(res.probes["MilkTypes seeded"].value).toBe(`${MILK_TYPES.length} total`);
+    expect(res.probes["MilkTypes seeded"].value).toBe(
+      `${MILK_TYPES.length} total`,
+    );
   });
 
   it("short-circuits probed items to skipped when DB is unreachable", async () => {
@@ -158,13 +166,19 @@ describe("api/admin.js — runDiagnostics (live per-item probes, audit §3.9)", 
     expect(res.ok).toBe(false);
     expect(res.error).toBe("permission denied for table settings");
     // The four DB-probed items short-circuit to "offline".
-    expect(res.probes["Schema version"]).toEqual({ ok: false, value: "offline" });
+    expect(res.probes["Schema version"]).toEqual({
+      ok: false,
+      value: "offline",
+    });
     expect(res.probes["API version"]).toEqual({ ok: false, value: "offline" });
     expect(res.probes["MilkBrands seeded"]).toEqual({
       ok: false,
       value: "offline",
     });
-    expect(res.probes["MilkTypes seeded"]).toEqual({ ok: false, value: "offline" });
+    expect(res.probes["MilkTypes seeded"]).toEqual({
+      ok: false,
+      value: "offline",
+    });
     // Migration is a tooling fact (ok gated on connectivity); Mode is the
     // client runtime and is independent of the DB.
     expect(res.probes.Migration).toEqual({

@@ -19,7 +19,17 @@ describe("AppShell — nav tabs", () => {
     const labels = screen
       .getAllByRole("button")
       .map((b) => b.textContent.trim())
-      .filter((t) => ["Home", "Customers", "Subs", "Delivery", "Imports", "Billing", "More"].includes(t));
+      .filter((t) =>
+        [
+          "Home",
+          "Customers",
+          "Subs",
+          "Delivery",
+          "Imports",
+          "Billing",
+          "More",
+        ].includes(t),
+      );
 
     expect(labels).toEqual([
       "Home",
