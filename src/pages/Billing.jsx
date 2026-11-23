@@ -30,7 +30,11 @@ const getFilterBtnStyle = (isActive) => ({
 });
 
 function renderPaymentButton(bill, onOpenModal) {
-  if (!bill.locked && bill.status !== "Paid") {
+  // FIX (2026-11-21 audit — AI-D P2-8): Draft bills must not be payable.
+  // `pendingDues` deliberately excludes Draft (bills not yet finalized), so
+  // allowing a payment on Draft made the KPI and the card disagree — and a
+  // payment could land on an unfinalized bill.
+  if (!bill.locked && bill.status !== "Paid" && bill.status !== "Draft") {
     return (
       <Btn small onClick={() => onOpenModal("payment", bill)}>
         Record Payment
@@ -117,7 +121,9 @@ function BillCard({
           <div style={{ fontSize: 13, color: "#374151", marginTop: 4 }}>
             {fmt(bill.paid)} / {fmt(bill.amount)}
           </div>
-          {bill.status !== "Paid" && (
+          {/* Pending display aligned with the KPI: Draft bills are not real
+              outstanding money yet (pendingDues excludes them). */}
+          {bill.status !== "Paid" && bill.status !== "Draft" && (
             <div style={{ fontSize: 12, color: "#991b1b" }}>
               Pending: {fmt(bill.amount - bill.paid)}
             </div>

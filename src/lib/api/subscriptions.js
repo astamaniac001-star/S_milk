@@ -147,10 +147,13 @@ export async function getSubscriptionHistory(payload) {
 export async function deleteSubscription(payload) {
   const { subscriptionId, version } = payload;
   if (!subscriptionId) throw new Error("subscriptionId is required");
-  if (version === undefined)
+  if (version === undefined || version === null)
     throw new Error("subscription version is required for OCC");
 
-  const ev = toNum(version) || 1;
+  // FIX (2026-11-21 audit): same version-0 preservation as
+  // updateWithVersion — `toNum(version) || 1` rewrote a legitimate
+  // version = 0 to 1, producing a spurious CONFLICT on a valid delete.
+  const ev = toNum(version);
   let count;
   let error;
   try {

@@ -10,7 +10,30 @@ vi.mock("../../lib/api", () => ({
   callApi: vi.fn(),
 }));
 
+// Chainable supabase mock for updateWithVersion:
+// .from(t) → .update(patch) → .eq("id", …) → .eq("version", ev) → .select() → .single()
+const { single, select, eq, update, from } = vi.hoisted(() => ({
+  single: vi.fn(),
+  select: vi.fn(),
+  eq: vi.fn(),
+  update: vi.fn(),
+  from: vi.fn(),
+}));
+
+vi.mock("../../lib/supabaseClient.js", () => ({
+  supabase: { from },
+}));
+
+// Wire the chain once at module scope (vi.hoisted guarantees the fns exist).
+select.mockReturnValue({ single });
+eq.mockReturnValue({ eq, select });
+update.mockReturnValue({ eq });
+from.mockReturnValue({ update });
+
 import { callApi } from "../../lib/api";
+// NOTE: updateWithVersion lives in src/lib/api/shared.js — NOT the handlers
+// ./shared.js (useHelpers) this file primarily exercises.
+import { updateWithVersion } from "../../lib/api/shared.js";
 
 function harness(overrides = {}) {
   const state = {
@@ -93,56 +116,82 @@ describe("useHelpers.executeApiAction", () => {
   });
 });
 
-describe("useHelpers.handleIdAction", () => {
+describe("useHelpers.executeApiAction — refresh-failure semantics (2026-11-21)", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("sends { [idKey]: id }, toasts success, refetches + maps", async () => {
+  it("warns ONCE and reports success when the mutation lands but the refetch fails", async () => {
     callApi
-      .mockResolvedValueOnce({ deleted: true })
-      .mockResolvedValueOnce({ customers: [{ id: "C1", name: "A" }] });
-    const { result } = harness();
+      .mockResolvedValueOnce({ customerId: "C1" }) // mutation committed
+      .mockRejectedValueOnce(new Error("fetch failed")); // refetch failed
+    const { state, result } = harness();
     const setList = vi.fn();
 
+    let ok;
     await act(async () => {
-      await result.current.handleIdAction(
-        "deactivateCustomer",
-        "id",
-        "C1",
-        "Customer deactivated",
+      ok = await result.current.executeApiAction(
+        "addCustomer",
+        { name: "Ramesh" },
+        "Customer added",
         "getCustomers",
         setList,
-        (x) => ({ ...x, mapped: true }),
-        "customers",
-      );
-    });
-
-    expect(callApi).toHaveBeenNthCalledWith(1, "deactivateCustomer", {
-      id: "C1",
-    });
-    expect(setList).toHaveBeenCalledWith([
-      { id: "C1", name: "A", mapped: true },
-    ]);
-  });
-
-  it("uses the fallback message when the action rejects without one", async () => {
-    callApi.mockRejectedValueOnce({ message: "" });
-    const { state, result } = harness();
-
-    await act(async () => {
-      await result.current.handleIdAction(
-        "deactivateCustomer",
-        "id",
-        "C1",
-        "Customer deactivated",
-        "getCustomers",
-        vi.fn(),
         (x) => x,
         "customers",
-        "Deactivate failed",
       );
     });
 
-    expect(state.toast$).toHaveBeenCalledWith("Deactivate failed", "error");
+    // The MUTATION succeeded — callers must not roll back UI state.
+    expect(ok).toBe(true);
+    expect(state.toast$).toHaveBeenCalledTimes(1);
+    expect(state.toast$).toHaveBeenCalledWith(
+      "Saved — but the list refresh failed. Use Retry to reload it.",
+      "warning",
+    );
+    expect(setList).not.toHaveBeenCalled();
+    // The modal still closes: the save itself succeeded.
+    expect(state.closeModal).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("updateWithVersion — OCC version handling (2026-11-21)", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("preserves a legitimate version = 0 compare-and-set", async () => {
+    single.mockResolvedValueOnce({
+      data: { id: "R1", version: 1 },
+      error: null,
+    });
+    await act(async () => {
+      await updateWithVersion("customers", "R1", 0, { status: "Inactive" });
+    });
+    expect(update).toHaveBeenCalledWith({
+      status: "Inactive",
+      version: 1, // ev (0) + 1
+    });
+    expect(eq).toHaveBeenNthCalledWith(2, "version", 0);
+  });
+
+  it("rejects a nullish version BEFORE touching Supabase", async () => {
+    await act(async () => {
+      await expect(
+        updateWithVersion("bills", "B1", null, { locked: true }),
+      ).rejects.toThrow("bills version is required for OCC");
+      await expect(
+        updateWithVersion("bills", "B1", undefined, { locked: true }),
+      ).rejects.toThrow("bills version is required for OCC");
+    });
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it("throws typed CONFLICT when PGRST116 reports zero rows updated", async () => {
+    single.mockResolvedValueOnce({
+      data: null,
+      error: { code: "PGRST116", message: "No rows" },
+    });
+    await act(async () => {
+      await expect(
+        updateWithVersion("bills", "B1", 3, { locked: true }),
+      ).rejects.toMatchObject({ code: "CONFLICT" });
+    });
   });
 });
 

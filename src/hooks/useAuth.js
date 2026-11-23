@@ -3,6 +3,17 @@ import { useState, useEffect } from "react";
 import { supabase, configError } from "../lib/supabaseClient";
 import { OPERATOR_EMAIL } from "../lib/constants.js";
 
+// Network-level failures (offline, DNS, captive portal) are NOT auth
+// verdicts. AuthApiError carries an HTTP status; fetch-level failures
+// don't (TypeError "Failed to fetch", AuthRetryableFetchError, "fetch
+// failed" in Node). Module-scope so the identity is stable for hooks.
+const NETWORK_ERR_RE =
+  /fetch failed|failed to fetch|network ?error|load failed|internet ?connection/i;
+const isNetworkError = (err) =>
+  err?.name === "AuthRetryableFetchError" ||
+  (err?.status === undefined &&
+    NETWORK_ERR_RE.test(String(err?.message || err)));
+
 export function useAuth() {
   const [session, setSession] = useState(null);
   // No client means nothing to load — surface configError immediately.
@@ -47,6 +58,27 @@ export function useAuth() {
         if (err?.name === "AuthSessionMissingError") {
           // Expected on first load / cold start — there is no persisted
           // session. Silently treat as unauthenticated.
+        } else if (isNetworkError(err)) {
+          // FIX (2026-11-21 audit — AI-D P2-4): a network-level failure must
+          // not dead-end the operator on the login screen — login itself
+          // needs network, so the installed PWA was unusable offline. Fall
+          // back to a valid, UNEXPIRED persisted session in degraded mode;
+          // API calls will surface the offline state through the normal
+          // error layers (loadErrors banner, toasts).
+          try {
+            const { data: fallback } = await supabase.auth.getSession();
+            const s = fallback?.session;
+            const notExpired = s?.expires_at && s.expires_at * 1000 > Date.now();
+            if (s && notExpired) {
+              console.warn(
+                "getUser() failed at network level — trusting the unexpired persisted session (offline mode).",
+              );
+              setSession(s);
+              return; // finally still runs — loading terminates
+            }
+          } catch {
+            /* fall through to unauthenticated */
+          }
         } else {
           console.error("Failed to get initial session:", err);
         }

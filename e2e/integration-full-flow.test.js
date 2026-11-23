@@ -3,9 +3,12 @@
 // Complete user journey:
 //   1. Create a real customer via the Customer modal — verify the row lands
 //      in the DB AND that it then appears on the Customers page.
-//   2. Generate a delivery log for today via the Delivery page's
-//      "Generate Deliveries" button — verify daily_logs rows appear.
-//   3. Generate a bill for the current month via Billing → Generate Bills.
+//   2. Seed today's delivery log for the probe customer (probe-scoped — the
+//      app's "Generate Deliveries" button runs a GLOBAL generator and must
+//      never be driven against a linked project with real data).
+//   3. Generate a bill for the current month via the probe-scoped
+//      generate_month_bill_rpc (the app's "Generate Bills" button bills
+//      EVERY active subscribed customer — same containment rule).
 //   4. Record a partial payment via the Payment modal — verify the bill's
 //      amount_paid and status move from Unpaid → Partial in the DB.
 //   5. Clean up: delete the created bill, daily_logs, subscription,
@@ -25,7 +28,7 @@ import {
   E2E_MARKER,
   e2eName,
 } from "./helpers/supabase.js";
-import { waitForAppReady } from "./helpers/app.js";
+import { loginViaPin } from "./helpers/app.js";
 
 // Collection-time conditional skip — the lifecycle test creates real
 // customers/bills and reads the live DB, so it cannot run without an
@@ -44,12 +47,10 @@ test.describe("full operator lifecycle", () => {
     // would silently skip the billing step. Accept them.
     page.on("dialog", (d) => d.accept());
     await page.goto("/");
-    const pin = page.locator("#pin-input");
-    if (await pin.isVisible({ timeout: 8_000 }).catch(() => false)) {
-      await pin.fill(OPERATOR_PIN);
-      await page.getByRole("button", { name: "Login" }).click();
-    }
-    await waitForAppReady(page);
+    // FIX (2026-11-22): shared retrying login (network blips no longer fail
+    // the suite) — helpers/app.js loginViaPin (replaces the inline dance +
+    // waitForAppReady, which it subsumes).
+    await loginViaPin(page);
   });
 
   test("create customer, generate log, generate bill, partial payment — DB ↔ UI agree", async ({
@@ -200,22 +201,44 @@ test.describe("full operator lifecycle", () => {
     await page.getByRole("button", { name: "Save" }).click();
     await expect(page.getByRole("dialog")).toHaveCount(0, { timeout: 15_000 });
 
-    // ─── STEP 2: Generate delivery logs for today ──────────────────────
+    // ─── STEP 2: Seed today's delivery log for the probe customer ──────
+    // CONTAINMENT (2026-11-21 audit): the Delivery page's "Generate
+    // Deliveries" button runs the GLOBAL generator — it writes rows for
+    // EVERY active customer on the linked project, not just the probe.
+    // Never invoke it against real operator data. Instead, insert the exact
+    // row the generator would produce for the probe customer (its output
+    // contract: delivered=false, note "Auto-generated (Sub)"), then open the
+    // Delivery page so the date-dependent fetch picks it up.
+    const { error: seedLogErr } = await supabase.from("daily_logs").insert({
+      customer_id: customerId,
+      date: today,
+      product: "Full Cream",
+      brand_id: probeBrand.id,
+      qty: 1,
+      delivered: false,
+      note: "Auto-generated (Sub)",
+    });
+    expect(seedLogErr, "could not seed the probe daily_log").toBeNull();
+
     await page.getByRole("button", { name: "Delivery" }).click();
     // STRICT-MODE: AppShell renders <h2>Daily Delivery</h2>. Delivery.jsx
     // itself has no second heading with this label, so single-match.
     await expect(
       page.getByRole("heading", { name: "Daily Delivery" }),
     ).toBeVisible();
-    // Set the date to today (page defaults to today but covers UI contract).
-    await page.locator('input[type="date"]').first().fill(today);
+    // The seeded log was inserted AFTER login, so the store's logDate-scoped
+    // fetch predates it. Cycle the date picker (away → today) to drive the
+    // app's own date-change refetch — the same technique the per-card toggle
+    // test uses. (Filling with today's ALREADY-SET value fires no change.)
+    const dateInput = page.locator('input[type="date"]').first();
+    await dateInput.fill("2026-01-01");
+    await dateInput.fill(today);
 
-    await page.getByRole("button", { name: /Generate Deliveries/ }).click();
-    // Toast confirms generation. The Delivery page renders .stat-tile with
-    // the "Scheduled" count label (Delivery.jsx:113-118).
-    await expect(
-      page.locator(".stat-label").filter({ hasText: "Scheduled" }).first(),
-    ).toBeVisible({ timeout: 10_000 });
+    // The seeded log must surface on the Delivery page (DB ⇄ UI agreement):
+    // DeliveryLogItem renders the customer name in the log row.
+    await expect(page.getByText(cname).first()).toBeVisible({
+      timeout: 10_000,
+    });
 
     // Verify DB has at daily_logs row for this customer today. Same
     // retry rationale as the customer/bill lookups above.
@@ -257,16 +280,31 @@ test.describe("full operator lifecycle", () => {
       "could not mark the generated daily_log as delivered",
     ).toBeNull();
 
-    // ─── STEP 3: Generate the month bill ───────────────────────────────
+    // ─── STEP 3: Generate the month bill (probe-scoped) ────────────────
+    // CONTAINMENT (2026-11-21 audit): the Billing page's "Generate Bills"
+    // button runs `generateMonthlyBills`, which bills EVERY active
+    // subscribed customer — regenerating real bills on the linked project.
+    // Call the per-customer RPC directly for the probe customer instead;
+    // the bill card is then surfaced through the UI via a fresh fetch.
+    const { error: billGenErr } = await supabase.rpc(
+      "generate_month_bill_rpc",
+      { p_customer_id: customerId, p_month: month },
+    );
+    expect(billGenErr, "probe bill generation failed").toBeNull();
+
     await page.getByRole("button", { name: "Billing" }).click();
     // STRICT-MODE: AppShell <h2>Billing</h2> + Billing.jsx:163
     // <Section title="Billing"> → <h3>Billing</h3>. Use .first().
     await expect(
       page.getByRole("heading", { name: "Billing" }).first(),
     ).toBeVisible();
-    // Set the month picker to current month (typically already there).
-    await page.locator('input[type="month"]').first().fill(month);
-    await page.getByRole("button", { name: "Generate Bills" }).click();
+    // The probe bill was created AFTER login, so the store's month-scoped
+    // fetch predates it. Cycle the month picker (away → current) to drive
+    // the app's own billMonth-change refetch — filling with the
+    // ALREADY-SET value fires no change event.
+    const monthInput = page.locator('input[type="month"]').first();
+    await monthInput.fill("2026-01");
+    await monthInput.fill(month);
 
     // DB should have exactly one bill for this customer/month. Use a retry
     // loop because the click handler awaits the RPC (committed by commit
@@ -289,12 +327,10 @@ test.describe("full operator lifecycle", () => {
     expect(num(billRow.amount)).toBeGreaterThan(0);
     expect(billRow.status).toBe("Unpaid");
 
-    // NOTE: `generateMonthlyBills` (useBillOperations.js:18-64) already
-    // re-fetches `getBills({month: billMonth})` and calls `setBills` after
-    // every generation — the in-memory state is updated in place and the
-    // Billing page re-renders with the newly generated bill. A full-page
-    // `page.reload()` here would dump us back to the dashboard tab and
-    // wipe the in-memory cache; do NOT reload.
+    // NOTE: the bill was created by the direct RPC above, so the in-memory
+    // list only picks it up through the month-scoped `getBills` refetch that
+    // the month-picker change above triggers. A full-page `page.reload()`
+    // would dump us back to the dashboard tab; do NOT reload.
     await expect(
       page.getByRole("heading", { name: "Billing" }).first(),
     ).toBeVisible();

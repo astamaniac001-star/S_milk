@@ -15,7 +15,7 @@
 
 import { test, expect } from "@playwright/test";
 import { OPERATOR_PIN } from "./helpers/supabase.js";
-import { waitForAppReady } from "./helpers/app.js";
+import { loginViaPin, waitForAppReady } from "./helpers/app.js";
 
 // Collection-time conditional skip: skip EVERY test in this file when the
 // operator PIN isn't configured. Doing this at module scope means Playwright
@@ -35,14 +35,10 @@ async function loginOnce(page) {
     return;
   }
   await page.goto("/");
-  // The login form is server-rendered by Vite for the very first paint, so
-  // we wait for the PIN input (login.jsx:46). ToT being absent means already
-  // authenticated from a previous attempt within this browser context.
-  const pinInput = page.locator("#pin-input");
-  if (await pinInput.isVisible({ timeout: 8_000 }).catch(() => false)) {
-    await pinInput.fill(OPERATOR_PIN);
-    await page.getByRole("button", { name: "Login" }).click();
-  }
+  // FIX (2026-11-22): shared retrying login — the PIN form is server-
+  // rendered for the first paint; loginViaPin fills + clicks + retries on
+  // network blips, then waits for the authenticated shell.
+  await loginViaPin(page);
   // Authenticated app shell always renders the bottom nav (the heading alone
   // also shows on the login page — see e2e/helpers/app.js).
   await waitForAppReady(page);

@@ -7,15 +7,17 @@
 //   - Logs full error info to console (browser console — the only place a
 //     PWA has without a backend collector).
 //   - Shows a "Reload" button which clears hash + reloads the page.
-//   - If the user clicks "Sign out & reload", clears the token from BOTH
-//     storages (useAuth now uses sessionStorage; legacy tokens may still
-//     sit in localStorage from older builds — flush them on sign-out).
+//   - If the user clicks "Sign out & reload", performs a REAL Supabase
+//     sign-out (best-effort) and flushes the legacy token from BOTH
+//     storages plus any `sb-*` session keys, so the reload actually
+//     lands on the login screen.
 //
 // Place it as the OUTERMOST component around <App/> in main.jsx so all
 // child renders are protected.
 
 import { Component } from "react";
 import { Btn } from "./ui.jsx";
+import { supabase } from "../lib/supabaseClient.js";
 
 export class ErrorBoundary extends Component {
   constructor(props) {
@@ -44,14 +46,28 @@ export class ErrorBoundary extends Component {
     window.location.reload();
   };
 
-  handleSignOut = () => {
+  // FIX (2026-11-21 audit — AI-D P1-4): "Sign out & reload" previously only
+  // removed the legacy `token` keys. The LIVE Supabase session persists
+  // under `sb-<ref>-auth-token` in localStorage, so useAuth's getUser()
+  // restored the session after reload and the operator stayed signed in —
+  // on a shared device that is a real security defect, not cosmetics.
+  handleSignOut = async () => {
+    // Best-effort REAL sign-out (revokes the refresh token server-side).
     try {
-      // Flush both stores — current build uses sessionStorage, but legacy
-      // tokens from before the migration may still live in localStorage.
-      // (sessionSecret was removed in the 2026-07-15 audit; it was never
-      // generated server-side and never validated, just dead bookkeeping.)
+      if (supabase) await supabase.auth.signOut();
+    } catch {
+      /* ignore — session may already be invalid; local flush still runs */
+    }
+    try {
+      // Flush the legacy token from both storages (current build uses
+      // sessionStorage; older builds left tokens in localStorage).
       sessionStorage.removeItem("token");
       localStorage.removeItem("token");
+      // Belt & braces: any Supabase storage keys left behind (offline sign-
+      // out failure, storage listener races) are flushed too.
+      for (const key of Object.keys(localStorage)) {
+        if (key.startsWith("sb-")) localStorage.removeItem(key);
+      }
     } catch {
       /* ignore */
     }

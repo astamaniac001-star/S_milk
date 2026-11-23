@@ -61,38 +61,51 @@ export function useImportHandlers(state) {
 
   const handleImportAction = useCallback(
     async (action, importId, successMsg, fallbackErrMsg) => {
-      try {
-        let imp = state.imports?.find((i) => i.id === importId);
+      // Mutation first (single-toast rule §3 — the old code toasted success
+      // before the refetch, so a failed read produced a green-then-red pair).
+      let imp = state.imports?.find((i) => i.id === importId);
 
-        // If the import isn't in the in-memory list (race: list refresh
-        // hasn't landed yet), try one refetch before bailing. Without the
-        // version, confirm/delete RPCs throw "version is required for OCC"
-        // and the row silently stays in its prior state.
-        if (!imp) {
+      // If the import isn't in the in-memory list (race: list refresh
+      // hasn't landed yet), try one refetch before bailing. Without the
+      // version, confirm/delete RPCs throw "version is required for OCC"
+      // and the row silently stays in its prior state.
+      if (!imp) {
+        try {
           const res = await callApi("getMilkImports", {});
           const fresh = (res.imports || []).map(mapImportFromApi);
           setImports(fresh);
           imp = fresh.find((i) => i.id === importId);
+        } catch (err) {
+          showToast(err.message || fallbackErrMsg, "error");
+          return;
         }
+      }
 
-        const payload = { importId };
+      const payload = { importId };
 
-        // Attach version if it exists (crucial for OCC)
-        if (imp && imp.version !== undefined) {
-          payload.version = imp.version;
-        }
+      // Attach version if it exists (crucial for OCC)
+      if (imp && imp.version !== undefined) {
+        payload.version = imp.version;
+      }
 
-        // ✅ FIX: Call the API ONLY ONCE with the versioned payload
+      // ✅ Call the API ONLY ONCE with the versioned payload
+      try {
         await callApi(action, payload);
-
-        showToast(successMsg, "success");
-
-        // Refetch the updated list
-        const res = await callApi("getMilkImports", {});
-        setImports((res.imports || []).map(mapImportFromApi));
       } catch (err) {
         showToast(err.message || fallbackErrMsg, "error");
+        return;
       }
+      try {
+        const res = await callApi("getMilkImports", {});
+        setImports((res.imports || []).map(mapImportFromApi));
+      } catch {
+        showToast(
+          "Import updated — but the list refresh failed. Use Retry.",
+          "warning",
+        );
+        return;
+      }
+      showToast(successMsg, "success");
     },
     [state.imports, showToast, setImports],
   );
@@ -112,12 +125,21 @@ export function useImportHandlers(state) {
     async (id, version) => {
       try {
         await callApi("deleteMilkImport", { importId: id, version });
-        showToast("Import deleted", "success");
-        const res = await callApi("getMilkImports", {});
-        setImports((res.imports || []).map(mapImportFromApi));
       } catch (err) {
         showToast(err.message || "Failed to delete import", "error");
+        return;
       }
+      try {
+        const res = await callApi("getMilkImports", {});
+        setImports((res.imports || []).map(mapImportFromApi));
+      } catch {
+        showToast(
+          "Import deleted — but the list refresh failed. Use Retry.",
+          "warning",
+        );
+        return;
+      }
+      showToast("Import deleted", "success");
     },
     [showToast, setImports],
   );

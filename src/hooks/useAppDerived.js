@@ -14,6 +14,13 @@ export function useAppDerived(state) {
     bills = EMPTY_ARRAY,
     brands = EMPTY_ARRAY,
     logs = EMPTY_ARRAY,
+    // FIX (2026-11-21 audit): todayLogs comes from the store's DEDICATED
+    // today fetch — deriving it from `logs` (scoped to the VIEWED date)
+    // zeroed the Dashboard whenever the operator opened a historical date.
+    // The filter fallback covers the boot window before the dedicated
+    // fetch lands (and the logDate === today case where one fetch feeds
+    // both snapshots).
+    todayLogs: todayLogsFromState = EMPTY_ARRAY,
     subscriptions = EMPTY_ARRAY,
     custSearch,
     custFilter,
@@ -34,7 +41,10 @@ export function useAppDerived(state) {
   return useMemo(() => {
     const targetDate = logDate || today;
     const selectedDateLogs = logs.filter((l) => l.date === targetDate);
-    const todayLogs = logs.filter((l) => l.date === today);
+    const todayLogs =
+      todayLogsFromState.length > 0
+        ? todayLogsFromState
+        : logs.filter((l) => l.date === today);
     const confirmedStock = todayLogs
       .filter((l) => l.delivered)
       .reduce((sum, l) => sum + (l.qty || 0), 0);
@@ -95,6 +105,7 @@ export function useAppDerived(state) {
     bills,
     brands,
     logs,
+    todayLogsFromState,
     subscriptions,
     custSearch,
     custFilter,

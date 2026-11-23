@@ -10,10 +10,11 @@
 //      adjustments, pause_periods, milk_brands, subscriptions, credit_notes)
 //      and the small reference tables the admin page touches (operators,
 //      payments, settings).
-//   3. The seven atomic RPCs the app actually calls through callApi exist
+//   3. The atomic RPCs the app actually calls through callApi exist
 //      and respond (even if they reject with a business-rule error, an
 //      authz error, or a schema-arity error — that still proves the function
-//      is reachable; only "function not found" would fail).
+//      is reachable; only "function not found" would fail). Every probe is
+//      NON-MUTATING: bad args that fail validation before any write.
 //
 // This file self-skips (not fail) when E2E_OPERATOR_PIN is missing so the
 // anon-RLS half still runs on a fresh checkout.
@@ -204,15 +205,18 @@ test.describe("database connectivity & RLS gate", () => {
       },
       {
         name: "rollover_month_rpc",
-        args: { p_month: "2000-01" },
-        // The function ran successfully against a 2000-01 probe month (no
-        // customers/logs exist for that month → likely returns an empty /
-        // zero-affected result). EITHER a successful response OR a business
-        // error (NOT "Could not find the function") proves reachability.
+        // CONTAINMENT (2026-11-21 audit): this RPC seeds a bill for EVERY
+        // active subscription regardless of month, so a well-formed probe
+        // month (e.g. "2000-01") MUTATES REAL DATA on the linked project.
+        // The month-format gate is the function's FIRST statement — a
+        // malformed month ("2000-1") raises "Invalid month format" before
+        // any row is touched. The resulting business error still proves
+        // reachability, which is all this probe asserts.
+        args: { p_month: "2000-1" },
         okIf: (r) =>
-          (r.error === null && r.data !== null && r.data !== undefined) ||
-          (r.error !== null &&
-            !/Could not find the function/i.test(r.error.message)),
+          r.error !== null &&
+          /Invalid month format/i.test(r.error.message) &&
+          !/Could not find the function/i.test(r.error.message),
       },
     ];
 

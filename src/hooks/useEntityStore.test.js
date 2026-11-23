@@ -429,3 +429,109 @@ describe("useEntityStore — refresh() bumps refreshKey (rule §10 layer 1 retry
     await waitFor(() => expect(result.current.loadErrors).toEqual([]));
   });
 });
+
+describe("useEntityStore — dedicated todayLogs snapshot (2026-11-21)", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("fetches today's logs SEPARATELY when the operator views a historical date", async () => {
+    const calls = [];
+    callApiMock = vi.fn(async (action, payload = {}) => {
+      calls.push([action, payload]);
+      if (action === "getDailyLogs") {
+        return {
+          logs:
+            payload.date === "2026-07-25"
+              ? [
+                  {
+                    id: "T1",
+                    customer_id: "C1",
+                    date: "2026-07-25",
+                    delivered: true,
+                    qty: 4,
+                  },
+                ]
+              : [
+                  {
+                    id: "O1",
+                    customer_id: "C1",
+                    date: "2026-07-20",
+                    delivered: false,
+                    qty: 1,
+                  },
+                ],
+        };
+      }
+      return {};
+    });
+
+    const { result } = renderHook(() =>
+      useEntityStore("tok", "2026-07-20", "2026-07", null, "2026-07-25"),
+    );
+
+    await waitFor(() => expect(result.current.todayLogs.length).toBe(1));
+    // The viewed-date snapshot holds the historical rows only.
+    expect(result.current.logs[0].id).toBe("O1");
+    expect(result.current.todayLogs[0].id).toBe("T1");
+    // Two DISTINCT getDailyLogs reads: viewed date + today.
+    const logCalls = calls.filter(([a]) => a === "getDailyLogs");
+    expect(logCalls.map(([, p]) => p.date).sort()).toEqual([
+      "2026-07-20",
+      "2026-07-25",
+    ]);
+  });
+
+  it("feeds BOTH snapshots from ONE fetch when the viewed date IS today", async () => {
+    const calls = [];
+    callApiMock = vi.fn(async (action, payload = {}) => {
+      calls.push([action, payload]);
+      if (action === "getDailyLogs") {
+        return {
+          logs: [
+            {
+              id: "T1",
+              customer_id: "C1",
+              date: "2026-07-25",
+              delivered: true,
+              qty: 4,
+            },
+          ],
+        };
+      }
+      return {};
+    });
+
+    const { result } = renderHook(() =>
+      useEntityStore("tok", "2026-07-25", "2026-07", null, "2026-07-25"),
+    );
+
+    await waitFor(() => expect(result.current.todayLogs.length).toBe(1));
+    expect(result.current.logs[0].id).toBe("T1");
+    const logCalls = calls.filter(([a]) => a === "getDailyLogs");
+    expect(logCalls).toHaveLength(1); // no duplicate today fetch
+  });
+
+  it("fetchLogs(today) refreshes todayLogs alongside the viewed-date logs", async () => {
+    callApiMock = vi.fn(async () => ({
+      logs: [
+        {
+          id: "T1",
+          customer_id: "C1",
+          date: "2026-07-25",
+          delivered: true,
+          qty: 4,
+        },
+      ],
+    }));
+
+    const { result } = renderHook(() =>
+      useEntityStore("tok", "2026-07-25", "2026-07", null, "2026-07-25"),
+    );
+    await waitFor(() => expect(result.current.todayLogs.length).toBe(1));
+
+    await act(async () => {
+      await result.current.fetchLogs("2026-07-25");
+    });
+    expect(result.current.logs).toHaveLength(1);
+    expect(result.current.todayLogs).toHaveLength(1);
+  });
+});

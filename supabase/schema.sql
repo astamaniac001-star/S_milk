@@ -37,17 +37,26 @@ BEGIN
     RAISE EXCEPTION 'Unauthorized: only the operator may apply adjustments';
   END IF;
 
+  -- 2026-11-21 audit P2-1: `v_adj.version != p_version` evaluated to NULL
+  -- for a NULL p_version, and `IF NULL` SKIPS the branch — a direct RPC call
+  -- with NULL bypassed compare-and-set entirely. Reject nullish versions
+  -- explicitly, then compare with IS DISTINCT FROM.
+  IF p_version IS NULL THEN
+    RAISE EXCEPTION 'BAD_REQUEST: version is required for OCC';
+  END IF;
+
   -- Fetch and lock the adjustment
   SELECT * INTO v_adj FROM adjustments WHERE id = p_adjustment_id FOR UPDATE;
   IF v_adj IS NULL THEN RAISE EXCEPTION 'Adjustment not found'; END IF;
 
   -- Check version for Optimistic Concurrency Control (OCC)
-  IF v_adj.version != p_version THEN
+  IF v_adj.version IS DISTINCT FROM p_version THEN
     RAISE EXCEPTION 'CONFLICT: Adjustment was modified by another process.';
   END IF;
 
-  -- Check if already applied
-  IF v_adj.applied = true THEN
+  -- Check if already applied (COALESCE: a NULL `applied` must not slip past
+  -- the `= true` test the old code used).
+  IF COALESCE(v_adj.applied, false) THEN
     RAISE EXCEPTION 'Adjustment has already been applied.';
   END IF;
 
@@ -63,6 +72,14 @@ BEGIN
   -- owed to one customer to another customer's bill.
   IF v_adj.customer_id IS DISTINCT FROM v_bill.customer_id THEN
     RAISE EXCEPTION 'Adjustment and bill belong to different customers';
+  END IF;
+
+  -- 2026-11-21 audit P2-2: when the adjustment was ISSUED against a bill,
+  -- it must be applied to that bill — not any other bill of the same
+  -- customer (cross-month misapplication). NULL bill_id (standalone
+  -- adjustment) keeps the caller-chosen target.
+  IF v_adj.bill_id IS NOT NULL AND v_adj.bill_id IS DISTINCT FROM p_bill_id THEN
+    RAISE EXCEPTION 'BAD_REQUEST: adjustment is registered against a different bill';
   END IF;
 
   -- Calculate new amount (Assumes v_adj.amount is a positive discount.
@@ -117,17 +134,22 @@ BEGIN
     RAISE EXCEPTION 'Unauthorized: only the operator may apply credit notes';
   END IF;
 
+  -- 2026-11-21 audit P2-1: NULL-safe OCC (see apply_adjustment_rpc).
+  IF p_version IS NULL THEN
+    RAISE EXCEPTION 'BAD_REQUEST: version is required for OCC';
+  END IF;
+
   -- 1. Fetch and lock the credit note
   SELECT * INTO v_cn FROM credit_notes WHERE id = p_credit_note_id FOR UPDATE;
   IF v_cn IS NULL THEN RAISE EXCEPTION 'Credit note not found'; END IF;
 
   -- 2. Check version for Optimistic Concurrency Control (OCC)
-  IF v_cn.version != p_version THEN
+  IF v_cn.version IS DISTINCT FROM p_version THEN
     RAISE EXCEPTION 'CONFLICT: Credit note was modified by another process.';
   END IF;
 
-  -- 3. Check if already applied
-  IF v_cn.applied = true THEN
+  -- 3. Check if already applied (COALESCE for NULL `applied`).
+  IF COALESCE(v_cn.applied, false) THEN
     RAISE EXCEPTION 'Credit note has already been applied.';
   END IF;
 
@@ -148,6 +170,11 @@ BEGIN
   -- apply_adjustment_rpc above.
   IF v_cn.customer_id IS DISTINCT FROM v_bill.customer_id THEN
     RAISE EXCEPTION 'Credit note and bill belong to different customers';
+  END IF;
+
+  -- 2026-11-21 audit P2-2: stored-bill match (see apply_adjustment_rpc).
+  IF v_cn.bill_id IS NOT NULL AND v_cn.bill_id IS DISTINCT FROM p_bill_id THEN
+    RAISE EXCEPTION 'BAD_REQUEST: credit note is registered against a different bill';
   END IF;
 
   -- FIX: bound the applied amount so chk_bills_paid_lte_amount can never
@@ -225,6 +252,13 @@ BEGIN
     );
   END IF;
 
+  -- 2026-11-21 audit P3-1: the old code confirmed ANY non-Confirmed status —
+  -- a 'Reconciled' import was silently DOWNGRADED to 'Confirmed', losing its
+  -- reconciled provenance. Only Draft → Confirmed is a legal transition.
+  IF v_imp.status IS DISTINCT FROM 'Draft' THEN
+    RAISE EXCEPTION 'BAD_REQUEST: only Draft imports can be confirmed (current status: %)', v_imp.status;
+  END IF;
+
   -- OCC update + verify exactly one row was affected (rule 5).
   UPDATE milk_imports
     SET status = 'Confirmed',
@@ -288,7 +322,7 @@ ALTER FUNCTION "public"."delete_milk_import_rpc"("p_import_id" "uuid", "p_expect
 
 
 CREATE OR REPLACE FUNCTION "public"."generate_month_bill_rpc"("p_customer_id" "uuid", "p_month" "text") RETURNS "jsonb"
-    LANGUAGE "plpgsql"
+    LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'public'
     AS $_$
 DECLARE
@@ -371,6 +405,18 @@ BEGIN
     IF v_existing_bill.locked = true THEN
       RAISE EXCEPTION 'Cannot regenerate a locked bill.';
     END IF;
+
+    -- 2026-11-21 audit P1-1: regeneration recomputed the amount from logs
+    -- and overwrote `amount` with no floor. When a delivered log is
+    -- corrected to skipped (or a rate drops), the new amount could fall
+    -- BELOW what was already collected — chk_bills_paid_lte_amount aborted
+    -- the whole transaction with an unmappable raw 23514 and dead-ended the
+    -- workflow. Guard it explicitly and mirror apply_adjustment_rpc's
+    -- credit-note guidance. (billing.js maps this to code OVERPAY.)
+    IF v_amount < v_existing_bill.amount_paid THEN
+      RAISE EXCEPTION 'REGUNDERFLOW: cannot regenerate bill — new amount (%) is less than already paid (%). Issue a credit note for the difference instead.', v_amount, v_existing_bill.amount_paid;
+    END IF;
+
     UPDATE bills SET
         amount = v_amount,
         status = CASE
@@ -409,7 +455,7 @@ $$;
 ALTER FUNCTION "public"."is_operator"() OWNER TO "postgres";
 
 
-CREATE OR REPLACE FUNCTION "public"."record_ad_hoc_log_rpc"("p_customer_id" "uuid", "p_date" "date", "p_qty" numeric, "p_product" "text", "p_brand_id" "uuid", "p_reason" "text") RETURNS "jsonb"
+CREATE OR REPLACE FUNCTION "public"."record_ad_hoc_log_rpc"("p_customer_id" "uuid", "p_date" "date", "p_qty" numeric, "p_product" "text", "p_brand_id" "uuid", "p_reason" "text", "p_client_key" "text" DEFAULT NULL::"text") RETURNS "jsonb"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'public'
     AS $$
@@ -450,6 +496,26 @@ BEGIN
     ELSE 'Extra: ' || v_note
   END;
 
+  -- 2026-11-21 audit (AI-S M4): this is an ACCUMULATING write with no
+  -- dedupe token — a network retry after a lost response double-counted
+  -- liters and flowed straight into billing. When the caller supplies a
+  -- client key and a row already carries it, this attempt already landed:
+  -- return it idempotently without accumulating again.
+  IF p_client_key IS NOT NULL THEN
+    SELECT * INTO v_existing
+      FROM daily_logs
+     WHERE client_key = p_client_key
+     FOR UPDATE;
+    IF FOUND THEN
+      RETURN jsonb_build_object(
+        'logId', v_existing.id,
+        'qty', v_existing.qty,
+        'created', false,
+        'idempotent', true
+      );
+    END IF;
+  END IF;
+
   -- Lock the existing row for THIS (customer, date, product, brand). Rows
   -- without a brand (NULL) only accumulate onto other NULL-brand rows —
   -- IS NOT DISTINCT FROM treats NULLs as equal for this lookup.
@@ -471,6 +537,7 @@ BEGIN
             WHEN v_existing.note IS NULL OR v_existing.note = '' THEN v_display_note
             ELSE v_existing.note || ' | ' || v_display_note
           END,
+          client_key = COALESCE(p_client_key, daily_logs.client_key),
           updated_at = now()
       WHERE id = v_existing.id
       RETURNING id, qty INTO v_existing.id, v_existing.qty;
@@ -487,8 +554,8 @@ BEGIN
   -- unique_violation on a concurrent insert — let that propagate so the
   -- caller can retry.
   BEGIN
-    INSERT INTO daily_logs (id, customer_id, date, product, brand_id, qty, delivered, note)
-      VALUES (gen_random_uuid(), p_customer_id, p_date, v_product, v_brand_id, v_qty, true, v_display_note)
+    INSERT INTO daily_logs (id, customer_id, date, product, brand_id, qty, delivered, note, client_key)
+      VALUES (gen_random_uuid(), p_customer_id, p_date, v_product, v_brand_id, v_qty, true, v_display_note, p_client_key)
       RETURNING id, qty INTO v_existing.id, v_existing.qty;
   EXCEPTION WHEN unique_violation THEN
     RAISE EXCEPTION 'CONFLICT: ad-hoc log race, please retry';
@@ -503,11 +570,11 @@ END;
 $$;
 
 
-ALTER FUNCTION "public"."record_ad_hoc_log_rpc"("p_customer_id" "uuid", "p_date" "date", "p_qty" numeric, "p_product" "text", "p_brand_id" "uuid", "p_reason" "text") OWNER TO "postgres";
+ALTER FUNCTION "public"."record_ad_hoc_log_rpc"("p_customer_id" "uuid", "p_date" "date", "p_qty" numeric, "p_product" "text", "p_brand_id" "uuid", "p_reason" "text", "p_client_key" "text") OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."record_payment_rpc"("p_bill_id" "uuid", "p_amount" numeric, "p_mode" "text", "p_date" "date", "p_note" "text", "p_idempotency_key" "uuid") RETURNS "jsonb"
-    LANGUAGE "plpgsql"
+    LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'public'
     AS $$
 DECLARE
@@ -521,13 +588,26 @@ BEGIN
     RAISE EXCEPTION 'Unauthorized: only the operator may record payments';
   END IF;
 
-  -- 1. Idempotency check.
+  -- 1. Idempotency check (fast path).
   --    payments.idempotency_key is text; cast the uuid param to text so
   --    Postgres can resolve `text = text` (was: `text = uuid` → 42883).
-  SELECT id INTO v_existing_payment
+  --    2026-11-21 audit P1-3/M-1: the key is BOUND to its original request.
+  --    The old check returned generic success for ANY replay — a key reused
+  --    for a different bill or amount silently "succeeded" without applying
+  --    anything. Also: the key must be present (UNIQUE constraints treat
+  --    NULLs as distinct, so a NULL key deduplicated nothing).
+  IF p_idempotency_key IS NULL THEN
+    RAISE EXCEPTION 'BAD_REQUEST: idempotency key is required';
+  END IF;
+
+  SELECT id, bill_id, amount INTO v_existing_payment
     FROM payments
    WHERE idempotency_key = p_idempotency_key::text;
   IF v_existing_payment IS NOT NULL THEN
+    IF v_existing_payment.bill_id IS DISTINCT FROM p_bill_id
+       OR v_existing_payment.amount IS DISTINCT FROM p_amount THEN
+      RAISE EXCEPTION 'CONFLICT: idempotency key was already used for a different payment';
+    END IF;
     RETURN jsonb_build_object('success', true, 'idempotent', true);
   END IF;
 
@@ -538,17 +618,32 @@ BEGIN
   IF p_amount <= 0 THEN RAISE EXCEPTION 'Amount must be positive'; END IF;
 
   v_pending := v_bill.amount - v_bill.amount_paid;
-  IF p_amount > v_pending + 0.01 THEN
+  -- 2026-11-21 audit P1-2: EXACT check. The old `+ 0.01` epsilon let a
+  -- rounded payment (e.g. 56.88) exceed a 3-decimal pending (56.875) and
+  -- abort on chk_bills_paid_lte_amount with an unmappable 23514 — the
+  -- friendly OVERPAY message never fired. PostgREST maps 23514 by message
+  -- in lib/api/billing.js (OVERPAY), so operators now see actionable text.
+  IF p_amount > v_pending THEN
     RAISE EXCEPTION 'Payment exceeds pending amount (%). Overpayment is not supported — record the exact pending amount and issue the excess as a credit note for the next cycle.', v_pending;
   END IF;
 
   v_customer_id := v_bill.customer_id;
 
   -- 3. Insert payment. Cast the uuid param to ::text for the text column.
-  INSERT INTO payments
-       (id, bill_id, customer_id, amount, payment_mode, payment_date, note, idempotency_key, created_at)
-  VALUES
-       (gen_random_uuid(), p_bill_id, v_customer_id, p_amount, p_mode, p_date, p_note, p_idempotency_key::text, now());
+  --    2026-11-21 audit P1-3: two concurrent requests with the same key both
+  --    pass the SELECT above; the loser hit a raw 23505 on
+  --    payments_idempotency_key_key while the winner committed — a "failed"
+  --    toast for a payment that LANDED. Treat the unique violation as the
+  --    idempotent success it semantically is.
+  BEGIN
+    INSERT INTO payments
+         (id, bill_id, customer_id, amount, payment_mode, payment_date, note, idempotency_key, created_at)
+    VALUES
+         (gen_random_uuid(), p_bill_id, v_customer_id, p_amount, p_mode, p_date, p_note, p_idempotency_key::text, now());
+  EXCEPTION WHEN unique_violation THEN
+    -- The winner of the race owns this key; it already updated the bill.
+    RETURN jsonb_build_object('success', true, 'idempotent', true);
+  END;
 
   -- 4. Update bill atomically.
   UPDATE bills
@@ -575,9 +670,14 @@ DECLARE
   v_skipped_existing int := 0;
   v_active_subs int := 0;
   v_sub record;
+  v_inserted int;
 BEGIN
-  IF p_month IS NULL OR p_month !~ '^\d{4}-\d{2}$' THEN
-    RAISE EXCEPTION 'Invalid month format (expected YYYY-MM): %', p_month;
+  -- 2026-11-21 audit P3-2: the old regex '^\d{4}-\d{2}$' accepted 2024-13
+  -- and 2024-00. The e2e reachability probe uses a deliberately-invalid
+  -- month ("2000-1") and asserts THIS error — validation still fails before
+  -- any write, so the probe stays non-mutating.
+  IF p_month IS NULL OR p_month !~ '^\d{4}-(0[1-9]|1[0-2])$' THEN
+    RAISE EXCEPTION 'Invalid month format (expected YYYY-MM between 01 and 12): %', p_month;
   END IF;
 
   -- Authorize the caller. Supabase exposes auth.uid(); is_operator() is the
@@ -599,13 +699,17 @@ BEGIN
     -- INSERT ... ON CONFLICT is the atomic equivalent of the old
     -- "select-then-insert" client loop. The unique (customer_id, month) index
     -- on bills backs the DO NOTHING; partial-failure retries are safe.
+    -- 2026-11-21 audit: the old code did `RETURNING 1 INTO v_generated`,
+    -- OVERWRITING the counter every loop (final value 0, 1, or NULL — never
+    -- the real count). Accumulate explicitly instead.
     INSERT INTO bills (id, customer_id, month, amount, amount_paid, status, locked, version)
     VALUES (gen_random_uuid(), v_sub.customer_id, p_month, 0, 0, 'Unpaid', false, 1)
     ON CONFLICT (customer_id, month) DO NOTHING
-    RETURNING 1 INTO v_generated;
+    RETURNING 1 INTO v_inserted;
 
-    -- If RETURNING yielded nothing the row already existed — count as skipped.
-    IF NOT FOUND THEN
+    IF FOUND THEN
+      v_generated := v_generated + 1;
+    ELSE
       v_skipped_existing := v_skipped_existing + 1;
     END IF;
   END LOOP;
@@ -635,6 +739,7 @@ DECLARE
   v_status text;
   v_rate jsonb;
   v_type text;
+  v_rate_raw text;
   v_rate_val numeric;
   v_rate_count integer := 0;
   v_first_type text;
@@ -692,12 +797,24 @@ BEGIN
 
   FOR v_rate IN SELECT * FROM jsonb_array_elements(p_rates) LOOP
     v_type := NULLIF(TRIM(COALESCE(v_rate->>'milk_type', '')), '');
-    v_rate_val := COALESCE(NULLIF(TRIM(COALESCE(v_rate->>'rate_per_liter', '')), ''), '0')::numeric;
+    -- 2026-11-21 audit P2-3 + operator decision: a MISSING rate was silently
+    -- coerced to '0' and any rate >= 0 was accepted — a forgotten rate
+    -- silently priced that brand's deliveries at ₹0. Rates are now required
+    -- and strictly positive. `<> self` catches 'NaN'::numeric.
+    v_rate_raw := NULLIF(TRIM(COALESCE(v_rate->>'rate_per_liter', '')), '');
+    IF v_rate_raw IS NULL THEN
+      RAISE EXCEPTION 'BAD_REQUEST: rate_per_liter is required for every rate';
+    END IF;
+    BEGIN
+      v_rate_val := v_rate_raw::numeric;
+    EXCEPTION WHEN invalid_text_representation THEN
+      RAISE EXCEPTION 'BAD_REQUEST: rate_per_liter must be a number';
+    END;
+    IF v_rate_val IS NULL OR v_rate_val <> v_rate_val OR v_rate_val <= 0 THEN
+      RAISE EXCEPTION 'BAD_REQUEST: rate must be greater than 0';
+    END IF;
     IF v_type IS NULL THEN
       RAISE EXCEPTION 'BAD_REQUEST: milk_type is required for every rate';
-    END IF;
-    IF v_rate_val < 0 THEN
-      RAISE EXCEPTION 'BAD_REQUEST: rate cannot be negative';
     END IF;
     IF EXISTS (
       SELECT 1 FROM brand_rates WHERE brand_id = v_brand_id AND milk_type = v_type
@@ -759,7 +876,8 @@ CREATE TABLE IF NOT EXISTS "public"."adjustments" (
     "created_at" timestamp with time zone DEFAULT "now"(),
     "updated_at" timestamp with time zone DEFAULT "now"(),
     "version" integer DEFAULT 1,
-    CONSTRAINT "chk_adjustments_amount_nonzero" CHECK (("amount" <> (0)::numeric))
+    CONSTRAINT "chk_adjustments_amount_nonzero" CHECK (("amount" <> (0)::numeric)),
+    CONSTRAINT "chk_adjustments_core_fields" CHECK ((("customer_id" IS NOT NULL) AND ("amount" IS NOT NULL) AND ("version" IS NOT NULL)))
 );
 
 ALTER TABLE ONLY "public"."adjustments" FORCE ROW LEVEL SECURITY;
@@ -780,6 +898,8 @@ CREATE TABLE IF NOT EXISTS "public"."bills" (
     "created_at" timestamp with time zone DEFAULT "now"(),
     "updated_at" timestamp with time zone DEFAULT "now"(),
     CONSTRAINT "chk_bills_amount_positive" CHECK ((("amount" >= (0)::numeric) AND ("amount_paid" >= (0)::numeric))),
+    CONSTRAINT "chk_bills_core_fields" CHECK ((("customer_id" IS NOT NULL) AND ("amount" IS NOT NULL) AND ("amount_paid" IS NOT NULL) AND ("version" IS NOT NULL))),
+    CONSTRAINT "chk_bills_month_format" CHECK (("month" ~ '^\d{4}-(0[1-9]|1[0-2])$'::"text")),
     CONSTRAINT "chk_bills_paid_lte_amount" CHECK (("amount_paid" <= "amount")),
     CONSTRAINT "chk_bills_status_valid" CHECK (("status" = ANY (ARRAY['Unpaid'::"text", 'Partial'::"text", 'Paid'::"text", 'Draft'::"text"])))
 );
@@ -796,7 +916,8 @@ CREATE TABLE IF NOT EXISTS "public"."brand_rates" (
     "milk_type" "text" NOT NULL,
     "rate_per_liter" numeric DEFAULT 0 NOT NULL,
     "created_at" timestamp with time zone DEFAULT "now"(),
-    CONSTRAINT "chk_brand_rates_rate_nonneg" CHECK (("rate_per_liter" >= (0)::numeric))
+    CONSTRAINT "chk_brand_rates_rate_nonneg" CHECK (("rate_per_liter" >= (0)::numeric)),
+    CONSTRAINT "chk_brand_rates_rate_positive" CHECK (("rate_per_liter" > (0)::numeric))
 );
 
 ALTER TABLE ONLY "public"."brand_rates" FORCE ROW LEVEL SECURITY;
@@ -816,7 +937,9 @@ CREATE TABLE IF NOT EXISTS "public"."credit_notes" (
     "date" "date",
     "created_at" timestamp with time zone DEFAULT "now"(),
     "updated_at" timestamp with time zone DEFAULT "now"(),
-    "version" integer DEFAULT 1
+    "version" integer DEFAULT 1,
+    CONSTRAINT "chk_credit_notes_amount_positive" CHECK (("amount" > (0)::numeric)),
+    CONSTRAINT "chk_credit_notes_core_fields" CHECK ((("customer_id" IS NOT NULL) AND ("amount" IS NOT NULL) AND ("version" IS NOT NULL)))
 );
 
 ALTER TABLE ONLY "public"."credit_notes" FORCE ROW LEVEL SECURITY;
@@ -856,7 +979,9 @@ CREATE TABLE IF NOT EXISTS "public"."daily_logs" (
     "note" "text",
     "created_at" timestamp with time zone DEFAULT "now"(),
     "updated_at" timestamp with time zone DEFAULT "now"(),
-    "brand_id" "uuid"
+    "brand_id" "uuid",
+    "client_key" "text",
+    CONSTRAINT "chk_daily_logs_core_fields" CHECK ((("customer_id" IS NOT NULL) AND ("qty" IS NOT NULL) AND ("qty" >= (0)::numeric)))
 );
 
 ALTER TABLE ONLY "public"."daily_logs" FORCE ROW LEVEL SECURITY;
@@ -896,7 +1021,9 @@ CREATE TABLE IF NOT EXISTS "public"."milk_imports" (
     "status" "text" DEFAULT 'Draft'::"text",
     "version" integer DEFAULT 1,
     "created_at" timestamp with time zone DEFAULT "now"(),
-    "updated_at" timestamp with time zone DEFAULT "now"()
+    "updated_at" timestamp with time zone DEFAULT "now"(),
+    CONSTRAINT "chk_milk_imports_core_fields" CHECK ((("quantity" IS NOT NULL) AND ("quantity" >= (0)::numeric) AND ("rate_per_liter" IS NOT NULL) AND ("rate_per_liter" >= (0)::numeric) AND ("total_cost" IS NOT NULL) AND ("total_cost" >= (0)::numeric) AND ("version" IS NOT NULL))),
+    CONSTRAINT "chk_milk_imports_status" CHECK (("status" = ANY (ARRAY['Draft'::"text", 'Pending'::"text", 'Confirmed'::"text", 'Reconciled'::"text"])))
 );
 
 ALTER TABLE ONLY "public"."milk_imports" FORCE ROW LEVEL SECURITY;
@@ -920,7 +1047,8 @@ CREATE TABLE IF NOT EXISTS "public"."pause_periods" (
     "start_date" "date" NOT NULL,
     "end_date" "date",
     "reason" "text",
-    "created_at" timestamp with time zone DEFAULT "now"()
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    CONSTRAINT "chk_pause_periods_range" CHECK ((("customer_id" IS NOT NULL) AND (("end_date" IS NULL) OR ("end_date" >= "start_date"))))
 );
 
 ALTER TABLE ONLY "public"."pause_periods" FORCE ROW LEVEL SECURITY;
@@ -939,7 +1067,8 @@ CREATE TABLE IF NOT EXISTS "public"."payments" (
     "note" "text",
     "idempotency_key" "text",
     "created_at" timestamp with time zone DEFAULT "now"(),
-    CONSTRAINT "chk_payments_amount_positive" CHECK (("amount" > (0)::numeric))
+    CONSTRAINT "chk_payments_amount_positive" CHECK (("amount" > (0)::numeric)),
+    CONSTRAINT "chk_payments_idempotency_key_present" CHECK (("idempotency_key" IS NOT NULL))
 );
 
 ALTER TABLE ONLY "public"."payments" FORCE ROW LEVEL SECURITY;
@@ -970,7 +1099,8 @@ CREATE TABLE IF NOT EXISTS "public"."subscriptions" (
     "version" integer DEFAULT 1,
     "created_at" timestamp with time zone DEFAULT "now"(),
     "updated_at" timestamp with time zone DEFAULT "now"(),
-    "brand_id" "uuid"
+    "brand_id" "uuid",
+    CONSTRAINT "chk_subscriptions_core_fields" CHECK ((("customer_id" IS NOT NULL) AND ("qty" IS NOT NULL) AND ("qty" > (0)::numeric) AND ("version" IS NOT NULL)))
 );
 
 ALTER TABLE ONLY "public"."subscriptions" FORCE ROW LEVEL SECURITY;
@@ -996,11 +1126,6 @@ ALTER TABLE ONLY "public"."brand_rates"
 
 ALTER TABLE ONLY "public"."brand_rates"
     ADD CONSTRAINT "brand_rates_pkey" PRIMARY KEY ("id");
-
-
-
-ALTER TABLE "public"."credit_notes"
-    ADD CONSTRAINT "chk_credit_notes_amount_positive" CHECK (("amount" > (0)::numeric)) NOT VALID;
 
 
 
@@ -1073,11 +1198,11 @@ CREATE INDEX "idx_adjustments_bill_id" ON "public"."adjustments" USING "btree" (
 
 
 
+CREATE INDEX "idx_adjustments_created_at" ON "public"."adjustments" USING "btree" ("created_at");
+
+
+
 CREATE INDEX "idx_adjustments_customer_id" ON "public"."adjustments" USING "btree" ("customer_id");
-
-
-
-CREATE INDEX "idx_bills_customer_month" ON "public"."bills" USING "btree" ("customer_id", "month");
 
 
 
@@ -1090,6 +1215,10 @@ CREATE INDEX "idx_credit_notes_applied_to_bill_id" ON "public"."credit_notes" US
 
 
 CREATE INDEX "idx_credit_notes_bill_id" ON "public"."credit_notes" USING "btree" ("bill_id");
+
+
+
+CREATE INDEX "idx_credit_notes_created_at" ON "public"."credit_notes" USING "btree" ("created_at");
 
 
 
@@ -1137,6 +1266,10 @@ CREATE INDEX "idx_subscriptions_customer" ON "public"."subscriptions" USING "btr
 
 
 
+CREATE UNIQUE INDEX "uniq_daily_logs_client_key" ON "public"."daily_logs" USING "btree" ("client_key") WHERE ("client_key" IS NOT NULL);
+
+
+
 CREATE UNIQUE INDEX "uniq_daily_logs_cust_date_brand_product_nullsafe" ON "public"."daily_logs" USING "btree" ("customer_id", "date", COALESCE("brand_id", '00000000-0000-0000-0000-000000000000'::"uuid"), "product");
 
 
@@ -1162,6 +1295,10 @@ CREATE OR REPLACE TRIGGER "set_updated_at" BEFORE UPDATE ON "public"."customers"
 
 
 CREATE OR REPLACE TRIGGER "set_updated_at" BEFORE UPDATE ON "public"."daily_logs" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at_column"();
+
+
+
+CREATE OR REPLACE TRIGGER "set_updated_at" BEFORE UPDATE ON "public"."milk_imports" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at_column"();
 
 
 
@@ -1531,9 +1668,8 @@ GRANT ALL ON FUNCTION "public"."is_operator"() TO "authenticated";
 
 
 
-REVOKE ALL ON FUNCTION "public"."record_ad_hoc_log_rpc"("p_customer_id" "uuid", "p_date" "date", "p_qty" numeric, "p_product" "text", "p_brand_id" "uuid", "p_reason" "text") FROM PUBLIC;
-GRANT ALL ON FUNCTION "public"."record_ad_hoc_log_rpc"("p_customer_id" "uuid", "p_date" "date", "p_qty" numeric, "p_product" "text", "p_brand_id" "uuid", "p_reason" "text") TO "authenticated";
-GRANT ALL ON FUNCTION "public"."record_ad_hoc_log_rpc"("p_customer_id" "uuid", "p_date" "date", "p_qty" numeric, "p_product" "text", "p_brand_id" "uuid", "p_reason" "text") TO "service_role";
+GRANT ALL ON FUNCTION "public"."record_ad_hoc_log_rpc"("p_customer_id" "uuid", "p_date" "date", "p_qty" numeric, "p_product" "text", "p_brand_id" "uuid", "p_reason" "text", "p_client_key" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."record_ad_hoc_log_rpc"("p_customer_id" "uuid", "p_date" "date", "p_qty" numeric, "p_product" "text", "p_brand_id" "uuid", "p_reason" "text", "p_client_key" "text") TO "service_role";
 
 
 
@@ -1561,43 +1697,43 @@ GRANT ALL ON FUNCTION "public"."update_updated_at_column"() TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."adjustments" TO "authenticated";
 GRANT ALL ON TABLE "public"."adjustments" TO "service_role";
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE "public"."adjustments" TO "authenticated";
 
 
 
-GRANT ALL ON TABLE "public"."bills" TO "authenticated";
 GRANT ALL ON TABLE "public"."bills" TO "service_role";
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE "public"."bills" TO "authenticated";
 
 
 
-GRANT ALL ON TABLE "public"."brand_rates" TO "authenticated";
 GRANT ALL ON TABLE "public"."brand_rates" TO "service_role";
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE "public"."brand_rates" TO "authenticated";
 
 
 
-GRANT ALL ON TABLE "public"."credit_notes" TO "authenticated";
 GRANT ALL ON TABLE "public"."credit_notes" TO "service_role";
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE "public"."credit_notes" TO "authenticated";
 
 
 
-GRANT ALL ON TABLE "public"."customers" TO "authenticated";
 GRANT ALL ON TABLE "public"."customers" TO "service_role";
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE "public"."customers" TO "authenticated";
 
 
 
-GRANT ALL ON TABLE "public"."daily_logs" TO "authenticated";
 GRANT ALL ON TABLE "public"."daily_logs" TO "service_role";
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE "public"."daily_logs" TO "authenticated";
 
 
 
-GRANT ALL ON TABLE "public"."milk_brands" TO "authenticated";
 GRANT ALL ON TABLE "public"."milk_brands" TO "service_role";
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE "public"."milk_brands" TO "authenticated";
 
 
 
-GRANT ALL ON TABLE "public"."milk_imports" TO "authenticated";
 GRANT ALL ON TABLE "public"."milk_imports" TO "service_role";
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE "public"."milk_imports" TO "authenticated";
 
 
 
@@ -1605,28 +1741,28 @@ GRANT ALL ON TABLE "public"."operators" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."pause_periods" TO "authenticated";
 GRANT ALL ON TABLE "public"."pause_periods" TO "service_role";
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE "public"."pause_periods" TO "authenticated";
 
 
 
-GRANT ALL ON TABLE "public"."payments" TO "authenticated";
 GRANT ALL ON TABLE "public"."payments" TO "service_role";
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE "public"."payments" TO "authenticated";
 
 
 
-GRANT ALL ON TABLE "public"."settings" TO "authenticated";
 GRANT ALL ON TABLE "public"."settings" TO "service_role";
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE "public"."settings" TO "authenticated";
 
 
 
-GRANT ALL ON TABLE "public"."subscriptions" TO "authenticated";
 GRANT ALL ON TABLE "public"."subscriptions" TO "service_role";
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE "public"."subscriptions" TO "authenticated";
 
 
 
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON SEQUENCES TO "postgres";
-ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON SEQUENCES TO "authenticated";
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT SELECT,USAGE ON SEQUENCES TO "authenticated";
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON SEQUENCES TO "service_role";
 
 
@@ -1644,7 +1780,7 @@ ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON FUN
 
 
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "postgres";
-ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "authenticated";
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT SELECT,INSERT,DELETE,UPDATE ON TABLES TO "authenticated";
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "service_role";
 
 

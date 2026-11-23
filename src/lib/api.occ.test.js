@@ -330,7 +330,12 @@ describe("api.js - Atomicity + OCC fixes (2026-07-24)", () => {
         p_brand_id: null,
         p_reason: "extra bottle",
       });
-      expect(out).toEqual({ logId: "log-1", qty: 2.5, created: true });
+      expect(out).toEqual({
+        logId: "log-1",
+        qty: 2.5,
+        created: true,
+        idempotent: false,
+      });
     });
 
     it("returns created=false when the RPC accumulated onto an existing row", async () => {
@@ -348,7 +353,12 @@ describe("api.js - Atomicity + OCC fixes (2026-07-24)", () => {
         "record_ad_hoc_log_rpc",
         expect.objectContaining({ p_product: "" }),
       );
-      expect(out).toEqual({ logId: "log-9", qty: 7, created: false });
+      expect(out).toEqual({
+        logId: "log-9",
+        qty: 7,
+        created: false,
+        idempotent: false,
+      });
     });
 
     it("maps Unauthorized → AuthzError (code AUTHZ)", async () => {

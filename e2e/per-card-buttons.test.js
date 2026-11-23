@@ -53,6 +53,7 @@
 // cleanupAll helpers) ensures even mid-test failures leave no residue.
 
 import { test, expect } from "@playwright/test";
+import { loginViaPin } from "./helpers/app.js";
 import {
   makeSupabase,
   OPERATOR_PIN,
@@ -63,26 +64,39 @@ import {
 test.skip(!OPERATOR_PIN, "E2E_OPERATOR_PIN not set");
 
 // Pre-clean sweep: delete any leftover e2e data from prior aborted runs.
+// CONTAINMENT (2026-11-21 audit): the old sweep matched the bare substring
+// "%E2E probe%", which could destroy a REAL operator row whose reason/note
+// merely contained that text. Probe rows now carry the `__e2e__` marker in
+// their free-text fields (reason/note — names already carry it via e2eName),
+// and the sweep matches only marker-bearing rows. Each delete is asserted so
+// a failed (e.g. 42501) sweep is never silently swallowed.
 test.beforeAll(async () => {
   const supabase = await makeSupabase({ withSession: true });
+  const sweep = async (label, op) => {
+    const { error } = await op;
+    if (error) throw new Error(`pre-clean ${label} failed: ${error.message}`);
+  };
   await Promise.all([
-    supabase.from("pause_periods").delete().like("reason", "%E2E probe%"),
-    supabase.from("daily_logs").delete().like("note", "%E2E probe%"),
-    supabase.from("customers").delete().like("name", `${E2E_MARKER}%`),
+    sweep(
+      "pause_periods",
+      supabase.from("pause_periods").delete().like("reason", `%${E2E_MARKER}%`),
+    ),
+    sweep(
+      "daily_logs",
+      supabase.from("daily_logs").delete().like("note", `%${E2E_MARKER}%`),
+    ),
+    sweep(
+      "customers",
+      supabase.from("customers").delete().like("name", `${E2E_MARKER}%`),
+    ),
   ]);
 });
 
 async function loginOnce(page) {
   await page.goto("/");
-  const pinInput = page.locator("#pin-input");
-  if (await pinInput.isVisible({ timeout: 8_000 }).catch(() => false)) {
-    await pinInput.fill(OPERATOR_PIN);
-    await page.getByRole("button", { name: "Login" }).click();
-  }
-  // The heading "Milk Delivery Admin" appears on both the Login page AND the
-  // AppShell, so it doesn't prove authentication. Wait for .bottom-nav which
-  // only renders inside AppShell (AppShell.jsx:196).
-  await expect(page.locator(".bottom-nav")).toBeVisible();
+  // FIX (2026-11-22): shared retrying login (network blips no longer fail
+  // the suite) — helpers/app.js loginViaPin.
+  await loginViaPin(page);
 }
 
 // Insert a probe customer via the Supabase API, then hard-reload the page so
@@ -168,7 +182,7 @@ test("Customers: Edit button opens the Edit Customer modal pre-filled with the e
     await page.getByRole("button", { name: "Cancel" }).click();
     await expect(page.getByRole("dialog")).toHaveCount(0);
   } finally {
-    await supabase.from("customers").delete().eq("phone", phone);
+    await supabase.from("customers").delete().eq("phone", phone).like("name", `${E2E_MARKER}%`);
   }
 });
 
@@ -218,7 +232,7 @@ test("Customers: Deactivate button calls deactivateCustomer → customer.status=
       const { data, error } = await supabase
         .from("customers")
         .select("status")
-        .eq("phone", phone)
+        .eq("phone", phone).like("name", `${E2E_MARKER}%`)
         .maybeSingle();
       expect(error).toBeNull();
       expect(data.status, "customer was NOT deactivated in DB").toBe(
@@ -229,7 +243,7 @@ test("Customers: Deactivate button calls deactivateCustomer → customer.status=
       true,
     );
   } finally {
-    await supabase.from("customers").delete().eq("phone", phone);
+    await supabase.from("customers").delete().eq("phone", phone).like("name", `${E2E_MARKER}%`);
   }
 });
 
@@ -259,7 +273,7 @@ test("Customers: Pause button opens Add Pause modal; saving inserts a pause_peri
     const { data: custRow } = await supabase
       .from("customers")
       .select("id")
-      .eq("phone", phone)
+      .eq("phone", phone).like("name", `${E2E_MARKER}%`)
       .maybeSingle();
     const custId = custRow.id;
 
@@ -304,7 +318,7 @@ test("Customers: Pause button opens Add Pause modal; saving inserts a pause_peri
         el.dispatchEvent(new Event("change", { bubbles: true }));
       }, today);
     await page.getByLabel("End Date").fill(nextWeek);
-    await page.getByPlaceholder("Out of town, Travel…").fill("E2E probe pause");
+    await page.getByPlaceholder("Out of town, Travel…").fill("__e2e__ probe pause");
     await page.getByRole("button", { name: "Save" }).click();
     await expect(page.getByRole("dialog")).toHaveCount(0, { timeout: 10_000 });
 
@@ -318,20 +332,20 @@ test("Customers: Pause button opens Add Pause modal; saving inserts a pause_peri
       expect(error).toBeNull();
       expect(data, "pause_periods row was not inserted").not.toBeNull();
       expect(data.start_date).toBe(today);
-      expect(data.reason).toBe("E2E probe pause");
+      expect(data.reason).toBe("__e2e__ probe pause");
     }).toPass({ timeout: 10_000, intervals: [500, 1000, 2000] });
   } finally {
     // Delete any pause rows + customer.
     const { data: cust } = await supabase
       .from("customers")
       .select("id")
-      .eq("phone", phone)
+      .eq("phone", phone).like("name", `${E2E_MARKER}%`)
       .maybeSingle();
     if (cust) {
       await supabase.from("pause_periods").delete().eq("customer_id", cust.id);
       await supabase.from("customers").delete().eq("id", cust.id);
     } else {
-      await supabase.from("customers").delete().eq("phone", phone);
+      await supabase.from("customers").delete().eq("phone", phone).like("name", `${E2E_MARKER}%`);
     }
   }
 });
@@ -341,7 +355,9 @@ test("Customers: Pause button opens Add Pause modal; saving inserts a pause_peri
 // ────────────────────────────────────────────────────────────────────────
 test("Customers: WhatsApp button opens https://wa.me/<phone> in a new tab/popup", async ({
   page,
-  context,
+  // `context` was used by the old context-level popup listener; the
+  // deterministic window.open stub (2026-11-22) no longer needs it.
+  context: _context,
 }) => {
   const cname = e2eName("WhatsappProbe");
   const phone = "9000020004";
@@ -364,7 +380,7 @@ test("Customers: WhatsApp button opens https://wa.me/<phone> in a new tab/popup"
   const { data: custRow } = await supabase
     .from("customers")
     .select("id")
-    .eq("phone", phone)
+    .eq("phone", phone).like("name", `${E2E_MARKER}%`)
     .maybeSingle();
   await supabase.from("bills").insert({
     customer_id: custRow.id,
@@ -392,27 +408,46 @@ test("Customers: WhatsApp button opens https://wa.me/<phone> in a new tab/popup"
       page.locator(".card").filter({ hasText: cname }).first(),
     ).toBeVisible({ timeout: 10_000 });
 
-    // WhatsApp share opens wa.me in a new tab/popup. We capture it via
-    // context.page (popup) or page (target=_blank link navigation). The
-    // cleanPlaywright approach: install a promise that resolves when a new
-    // page is added.
-    const popupPromise = context.waitForEvent("page", { timeout: 10_000 });
+    // WhatsApp share opens wa.me in a new tab/popup. FIX (2026-11-22,
+    // observed flake): the handler calls window.open(..., "noopener") — a
+    // DETACHED popup that Edge/Playwright intermittently fails to attribute
+    // to the page/context (missed "popup"/"page" events even with the
+    // canonical channel). Assert the CONTRACT deterministically instead:
+    // stub window.open in the page, capture the (url, target, features)
+    // arguments, and assert them. The URL + _blank + noopener flags ARE the
+    // app behavior under test; real popup plumbing is browser behavior.
+    // (Installed via evaluate on the LIVE document — addInitScript only
+    // applies to future navigations and the SPA performs none here.)
+    await page.evaluate(() => {
+      window.__opened = [];
+      window.open = (url, target, features) => {
+        window.__opened.push({ url, target, features });
+        return null; // don't actually open — deterministic, offline-safe
+      };
+    });
     await page
       .locator(".card")
       .filter({ hasText: cname })
       .first()
       .getByRole("button", { name: "WhatsApp" })
       .click();
-    const popup = await popupPromise;
     // The URL must be https://wa.me/91<phone> — the helper calls
     // window.open in src/lib/api.js (whatsapp helper). 10-digit phone is
     // prefixed with `91` per utils.js cleanPhone docs.
-    await expect(popup).toHaveURL(
-      /wa\.me\/919000020004|api\.whatsapp\.com\/send\/\?phone=919000020004/,
-    );
+    await expect
+      .poll(() => page.evaluate(() => window.__opened?.[0] ?? null), {
+        timeout: 10_000,
+      })
+      .toEqual({
+        url: expect.stringMatching(
+          /wa\.me\/919000020004|api\.whatsapp\.com\/send\/\?phone=919000020004/,
+        ),
+        target: "_blank",
+        features: expect.stringContaining("noopener"),
+      });
   } finally {
     await supabase.from("bills").delete().eq("customer_id", custRow.id);
-    await supabase.from("customers").delete().eq("phone", phone);
+    await supabase.from("customers").delete().eq("phone", phone).like("name", `${E2E_MARKER}%`);
   }
 });
 
@@ -449,7 +484,7 @@ test("Subscriptions: Subscriptions tab + Add Subscription inserts a subscription
   const { data: custRow } = await supabase
     .from("customers")
     .select("id")
-    .eq("phone", phone)
+    .eq("phone", phone).like("name", `${E2E_MARKER}%`)
     .maybeSingle();
   const custId = custRow.id;
 
@@ -515,7 +550,7 @@ test("Subscriptions: Subscriptions tab + Add Subscription inserts a subscription
     await page.getByRole("button", { name: "Cancel" }).click();
   } finally {
     await supabase.from("subscriptions").delete().eq("customer_id", custId);
-    await supabase.from("customers").delete().eq("phone", phone);
+    await supabase.from("customers").delete().eq("phone", phone).like("name", `${E2E_MARKER}%`);
     await supabase.from("milk_brands").delete().eq("id", brandRow.id);
   }
 });
@@ -537,7 +572,7 @@ test("Delivery: + Extra Delivery → AdHocLogModal save inserts an extra daily_l
   const { data: custRow } = await supabase
     .from("customers")
     .select("id")
-    .eq("phone", phone)
+    .eq("phone", phone).like("name", `${E2E_MARKER}%`)
     .maybeSingle();
   const custId = custRow.id;
   const today = new Date().toLocaleDateString("en-CA", {
@@ -573,7 +608,7 @@ test("Delivery: + Extra Delivery → AdHocLogModal save inserts an extra daily_l
         el.dispatchEvent(new Event("change", { bubbles: true }));
       }, today);
     await page.locator('.modal-overlay input[type="number"]').fill("2");
-    await page.getByPlaceholder("Guests, Festival...").fill("E2E probe extra");
+    await page.getByPlaceholder("Guests, Festival...").fill("__e2e__ probe extra");
     await page.getByRole("button", { name: "Add Delivery" }).click();
     await expect(page.getByRole("dialog")).toHaveCount(0, { timeout: 15_000 });
 
@@ -591,7 +626,7 @@ test("Delivery: + Extra Delivery → AdHocLogModal save inserts an extra daily_l
     }).toPass({ timeout: 15_000, intervals: [500, 1000, 2000] });
   } finally {
     await supabase.from("daily_logs").delete().eq("customer_id", custId);
-    await supabase.from("customers").delete().eq("phone", phone);
+    await supabase.from("customers").delete().eq("phone", phone).like("name", `${E2E_MARKER}%`);
   }
 });
 
@@ -612,7 +647,7 @@ test("Delivery: per-row ✓ Done / ✗ Skip toggle flips delivered in DB", async
   const { data: custRow } = await supabase
     .from("customers")
     .select("id")
-    .eq("phone", phone)
+    .eq("phone", phone).like("name", `${E2E_MARKER}%`)
     .maybeSingle();
   const custId = custRow.id;
   const today = new Date().toLocaleDateString("en-CA", {
@@ -674,7 +709,7 @@ test("Delivery: per-row ✓ Done / ✗ Skip toggle flips delivered in DB", async
     }).toPass({ timeout: 10_000, intervals: [500, 1000, 2000] });
   } finally {
     await supabase.from("daily_logs").delete().eq("customer_id", custId);
-    await supabase.from("customers").delete().eq("phone", phone);
+    await supabase.from("customers").delete().eq("phone", phone).like("name", `${E2E_MARKER}%`);
   }
 });
 
@@ -900,7 +935,7 @@ test("Billing: Add Credit Note → save inserts a credit_notes row (applied=fals
   const { data: custRow } = await supabase
     .from("customers")
     .select("id")
-    .eq("phone", phone)
+    .eq("phone", phone).like("name", `${E2E_MARKER}%`)
     .maybeSingle();
   const custId = custRow.id;
 
@@ -915,7 +950,7 @@ test("Billing: Add Credit Note → save inserts a credit_notes row (applied=fals
     await page.getByPlaceholder("50").fill("25");
     await page
       .getByPlaceholder("Spoiled milk, Missed delivery...")
-      .fill("E2E probe credit note");
+      .fill("__e2e__ probe credit note");
     await page.getByRole("button", { name: "Issue Credit" }).click();
     await expect(page.getByRole("dialog")).toHaveCount(0, { timeout: 15_000 });
 
@@ -929,11 +964,11 @@ test("Billing: Add Credit Note → save inserts a credit_notes row (applied=fals
       expect(data, "credit_notes row was not inserted").not.toBeNull();
       expect(Number(data.amount)).toBe(25);
       expect(data.applied).toBe(false);
-      expect(data.reason).toBe("E2E probe credit note");
+      expect(data.reason).toBe("__e2e__ probe credit note");
     }).toPass({ timeout: 10_000, intervals: [500, 1000, 2000] });
   } finally {
     await supabase.from("credit_notes").delete().eq("customer_id", custId);
-    await supabase.from("customers").delete().eq("phone", phone);
+    await supabase.from("customers").delete().eq("phone", phone).like("name", `${E2E_MARKER}%`);
   }
 });
 
@@ -956,7 +991,7 @@ test("Billing: View opens the BillDetailModal for an existing bill", async ({
   const { data: c } = await supabase
     .from("customers")
     .select("id")
-    .eq("phone", phone)
+    .eq("phone", phone).like("name", `${E2E_MARKER}%`)
     .maybeSingle();
   const { data: b } = await supabase
     .from("bills")
@@ -991,7 +1026,7 @@ test("Billing: View opens the BillDetailModal for an existing bill", async ({
     await expect(page.getByRole("dialog")).toHaveCount(0);
   } finally {
     await supabase.from("bills").delete().eq("id", billId);
-    await supabase.from("customers").delete().eq("phone", phone);
+    await supabase.from("customers").delete().eq("phone", phone).like("name", `${E2E_MARKER}%`);
   }
 });
 
@@ -1075,7 +1110,7 @@ test("More: Adjustments + Add → AdjustmentModal save inserts an adjustments ro
   const { data: custRow } = await supabase
     .from("customers")
     .select("id")
-    .eq("phone", phone)
+    .eq("phone", phone).like("name", `${E2E_MARKER}%`)
     .maybeSingle();
   const custId = custRow.id;
   const _today = new Date().toLocaleDateString("en-CA", {
@@ -1113,7 +1148,7 @@ test("More: Adjustments + Add → AdjustmentModal save inserts an adjustments ro
     await page.getByPlaceholder("50 reduces · -50 adds").fill("25");
     await page
       .getByPlaceholder("Half delivery, Quality issue…")
-      .fill("E2E probe adjustment");
+      .fill("__e2e__ probe adjustment");
     await page.getByRole("button", { name: "Save" }).click();
     await expect(page.getByRole("dialog")).toHaveCount(0, { timeout: 10_000 });
 
@@ -1127,11 +1162,11 @@ test("More: Adjustments + Add → AdjustmentModal save inserts an adjustments ro
       expect(data, "adjustments row was not inserted").not.toBeNull();
       expect(Number(data.amount)).toBe(25);
       expect(data.applied).toBe(false);
-      expect(data.reason).toBe("E2E probe adjustment");
+      expect(data.reason).toBe("__e2e__ probe adjustment");
     }).toPass({ timeout: 10_000, intervals: [500, 1000, 2000] });
   } finally {
     await supabase.from("adjustments").delete().eq("customer_id", custId);
     await supabase.from("bills").delete().eq("customer_id", custId);
-    await supabase.from("customers").delete().eq("phone", phone);
+    await supabase.from("customers").delete().eq("phone", phone).like("name", `${E2E_MARKER}%`);
   }
 });

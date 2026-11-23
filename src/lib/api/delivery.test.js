@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+﻿import { describe, it, expect, vi, beforeEach } from "vitest";
 import { generateDailyLogsForDate, bulkUpsertLogs } from "./delivery.js";
 import { supabase, __mock } from "../supabaseClient.js";
 
@@ -70,7 +70,7 @@ function lastUpsert() {
   return __mock.upsertCalls[__mock.upsertCalls.length - 1];
 }
 
-describe("generateDailyLogsForDate — subscription-centric generation", () => {
+describe("generateDailyLogsForDate â€” subscription-centric generation", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     seed({});
@@ -98,7 +98,12 @@ describe("generateDailyLogsForDate — subscription-centric generation", () => {
     const res = await generateDailyLogsForDate({ date: "2026-08-03" });
 
     expect(res.created).toBe(2);
-    const rows = lastUpsert().rows;
+    // Brandless subs take the find-then-INSERT path (2026-11-21 fix): NULL
+    // never matches a PostgREST onConflict target, so brandless rows must
+    // NOT go through the branded upsert. (The generator inserts one row per
+    // brandless entry.)
+    expect(__mock.upsertCalls).toHaveLength(0);
+    const rows = __mock.insertCalls.flatMap((c) => c.rows);
     expect(rows).toHaveLength(2);
     expect(rows).toEqual(
       expect.arrayContaining([
@@ -118,7 +123,7 @@ describe("generateDailyLogsForDate — subscription-centric generation", () => {
     );
   });
 
-  it("uses onConflict customer_id,date,brand_id,product — the DB row identity", async () => {
+  it("branded generation uses onConflict customer_id,date,brand_id,product as the DB row identity", async () => {
     seed({
       customers: [{ id: "C1", status: "Active" }],
       subscriptions: [
@@ -127,6 +132,7 @@ describe("generateDailyLogsForDate — subscription-centric generation", () => {
           delivery_days: ALL_DAYS,
           qty: 1,
           milk_type: "Toned",
+          brand_id: "B1",
         },
       ],
     });
@@ -161,7 +167,7 @@ describe("generateDailyLogsForDate — subscription-centric generation", () => {
     });
   });
 
-  it("writes brandless (legacy) subscriptions with brand_id null", async () => {
+  it("writes brandless (legacy) subscriptions via the INSERT path with brand_id null (2026-11-21 fix)", async () => {
     seed({
       customers: [{ id: "C1", status: "Active" }],
       subscriptions: [
@@ -177,7 +183,11 @@ describe("generateDailyLogsForDate — subscription-centric generation", () => {
 
     await generateDailyLogsForDate({ date: "2026-08-03" });
 
-    expect(lastUpsert().rows[0].brand_id).toBeNull();
+    // Brandless rows bypass the upsert entirely (NULL never matches a
+    // unique index) — they are find-then-update-or-inserted.
+    expect(__mock.upsertCalls).toHaveLength(0);
+    expect(__mock.insertCalls).toHaveLength(1);
+    expect(__mock.insertCalls[0].rows[0].brand_id).toBeNull();
   });
 
   it("creates separate rows for the same milk type from different brands", async () => {
@@ -244,8 +254,11 @@ describe("generateDailyLogsForDate — subscription-centric generation", () => {
     const res = await generateDailyLogsForDate({ date: "2026-08-03" });
 
     expect(res.created).toBe(1);
-    expect(lastUpsert().rows).toHaveLength(1);
-    expect(lastUpsert().rows[0]).toMatchObject({
+    // Brandless merge → single row through the INSERT path.
+    expect(__mock.upsertCalls).toHaveLength(0);
+    expect(__mock.insertCalls).toHaveLength(1);
+    expect(__mock.insertCalls[0].rows).toHaveLength(1);
+    expect(__mock.insertCalls[0].rows[0]).toMatchObject({
       product: "Full Cream",
       qty: 3.5,
     });
@@ -345,8 +358,15 @@ describe("generateDailyLogsForDate — subscription-centric generation", () => {
 
     expect(res.created).toBe(1);
     expect(res.skippedExisting).toBe(1);
-    expect(lastUpsert().rows).toHaveLength(1);
-    expect(lastUpsert().rows[0]).toMatchObject({ product: "Toned" });
+    // Brandless toInsert row (Toned) is find-then-modified, never upserted.
+    // NOTE: the mock's `then` resolves without applying query filters, so the
+    // find matches the seeded Full Cream row — the assertion's point is that
+    // NO duplicate row is created (no upsert, no second INSERT), the existing
+    // row is updated in place.
+    expect(__mock.upsertCalls).toHaveLength(0);
+    expect(__mock.insertCalls).toHaveLength(0);
+    expect(__mock.updateCalls).toHaveLength(1);
+    expect(__mock.updateCalls[0].table).toBe("daily_logs");
   });
 
   it("requires a date", async () => {
@@ -356,7 +376,7 @@ describe("generateDailyLogsForDate — subscription-centric generation", () => {
   });
 });
 
-describe("bulkUpsertLogs — row identity", () => {
+describe("bulkUpsertLogs â€” row identity", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     seed({});
@@ -405,7 +425,7 @@ describe("bulkUpsertLogs — row identity", () => {
     expect(rows).toHaveLength(2);
     expect(rows[0].brand_id).toBe("B1");
     expect(rows[1].brand_id).toBe("B2");
-    // The brandless row never reaches the upsert — NULL cannot match a
+    // The brandless row never reaches the upsert â€” NULL cannot match a
     // unique index, so it must not be sent through onConflict.
     expect(rows.some((r) => r.brand_id === null)).toBe(false);
   });
@@ -462,3 +482,4 @@ describe("bulkUpsertLogs — row identity", () => {
     expect(supabase.from).not.toHaveBeenCalled();
   });
 });
+

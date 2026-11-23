@@ -58,14 +58,23 @@ export function useAdminHandlers(state) {
     async (formArg) => {
       const f = formArg || form;
       if (!f) return;
-      return adminHandlers.addPause(
-        f.custId || modal.data?.custId,
-        f.startDate || getToday(),
-        f.endDate,
-        f.reason,
-      );
+      // FIX (2026-11-21 audit — AI-L M3): validate before insert. A NULL
+      // customer_id created an orphan pause the generator silently ignored,
+      // and an inverted range (end < start) was stored as-is — the DB has
+      // no CHECK for either.
+      const customerId = f.custId || modal.data?.custId;
+      if (!customerId) {
+        showToast("Select a customer for the pause period", "error");
+        return;
+      }
+      const startDate = f.startDate || getToday();
+      if (f.endDate && String(f.endDate) < String(startDate)) {
+        showToast("End date must be on or after the start date", "error");
+        return;
+      }
+      return adminHandlers.addPause(customerId, startDate, f.endDate, f.reason);
     },
-    [adminHandlers, form, modal],
+    [adminHandlers, form, modal, showToast],
   );
 
   const saveBrand = useCallback(
@@ -139,8 +148,11 @@ export function useAdminHandlers(state) {
           return;
         }
         const rate = Number(r.rate);
-        if (!Number.isFinite(rate) || rate < 0) {
-          showToast(`Enter a valid rate for "${type}"`, "error");
+        // ₹0 is rejected by decision (2026-11-21): free milk must be an
+        // explicit pricing decision, not a forgotten rate — a zero rate
+        // silently prices that brand's deliveries at ₹0 at billing time.
+        if (!Number.isFinite(rate) || rate <= 0) {
+          showToast(`Enter a rate greater than 0 for "${type}"`, "error");
           return;
         }
       }
@@ -192,7 +204,10 @@ export function useAdminHandlers(state) {
   const [, healthCheck] = useBusy(async () => {
     try {
       const result = await callApi("healthCheck");
-      showToast("Health check passed — V17", "success");
+      // FIX (2026-11-21 audit — AI-S L2): the hardcoded "V17" drifted from
+      // reality and contradicted the payload contract. State the fact, not
+      // a version label.
+      showToast("Health check passed", "success");
       return result;
     } catch (err) {
       showToast(err?.message || "Health check failed", "error");

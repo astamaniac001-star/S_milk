@@ -259,6 +259,7 @@ export type Database = {
       daily_logs: {
         Row: {
           brand_id: string | null
+          client_key: string | null
           created_at: string | null
           customer_id: string | null
           date: string
@@ -271,6 +272,7 @@ export type Database = {
         }
         Insert: {
           brand_id?: string | null
+          client_key?: string | null
           created_at?: string | null
           customer_id?: string | null
           date: string
@@ -283,6 +285,7 @@ export type Database = {
         }
         Update: {
           brand_id?: string | null
+          client_key?: string | null
           created_at?: string | null
           customer_id?: string | null
           date?: string
@@ -604,6 +607,7 @@ export type Database = {
       record_ad_hoc_log_rpc: {
         Args: {
           p_brand_id: string
+          p_client_key?: string
           p_customer_id: string
           p_date: string
           p_product: string

@@ -56,6 +56,10 @@ export default function Dashboard({
   todayLogs = [],
   bills = [],
   customers = [],
+  activeC = [],
+  totalRevenue = 0,
+  pendingDues = 0,
+  confirmedStock = 0,
   onSetTab,
   onOpenModal,
   onGenerateBill,
@@ -76,6 +80,41 @@ export default function Dashboard({
   return (
     // FIX M9: Replaced undefined Tailwind classes (space-y-6) with inline flex styles
     <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+      {/* FIX (2026-11-21 audit — AI-D P2-9/AI-L D1): the operator KPIs were
+          passed in but never rendered, while the README promised them. Scope
+          note: revenue/dues are computed from the VIEWED bill month's bills
+          (state.bills), stock from today's delivered logs. */}
+      <Card>
+        <StatGrid
+          items={[
+            {
+              label: "Active Customers",
+              value: activeC.length,
+              icon: <UserPlus size={20} style={{ color: "var(--info-text)" }} />,
+            },
+            {
+              label: "Collected (month)",
+              value: fmt(totalRevenue),
+              icon: (
+                <CheckCircle size={20} style={{ color: "var(--success-text)" }} />
+              ),
+            },
+            {
+              label: "Pending Dues (month)",
+              value: fmt(pendingDues),
+              icon: (
+                <XCircle size={20} style={{ color: "var(--danger-text)" }} />
+              ),
+            },
+            {
+              label: "Delivered Today (L)",
+              value: `${Number(confirmedStock).toFixed(1)} L`,
+              icon: <Droplet size={20} style={{ color: "var(--info-text)" }} />,
+            },
+          ]}
+        />
+      </Card>
+
       <Card>
         <h2
           style={{
@@ -145,7 +184,11 @@ export default function Dashboard({
                         `Generate bills for ${currentMonth}? This will create or update a bill for every customer with active subscriptions.`,
                       )
                     )
-                      onGenerateBill();
+                      // FIX (2026-11-21 audit — AI-S M1): pass the confirmed
+                      // month explicitly. The dialog text and the handler
+                      // target previously diverged (dialog said today's
+                      // month, handler ran state.billMonth).
+                      onGenerateBill(currentMonth);
                   } else {
                     onOpenModal(q.type);
                   }

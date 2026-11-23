@@ -82,9 +82,7 @@ export function useBillPayments(state) {
         });
 
         const res = await callApi("recordPayment", payload);
-        showToast(`₹${amount} recorded`, "success");
         paymentIdemRef.current = null; // consume key — next submit mints a new one
-        if (closeModal) closeModal();
 
         // Locally patch the bill (P1.3). Previously this issued a redundant
         // full-month `getBills` refetch that, on failure, produced both a
@@ -96,6 +94,19 @@ export function useBillPayments(state) {
             prev.map((b) => (b.id === updated.id ? updated : b)),
           );
         }
+
+        // FIX (2026-11-21 audit P2-6): the API layer no longer throws when
+        // the post-RPC read fails — the payment HAS landed. One truthful
+        // toast instead of a false "failed".
+        if (res?.refreshFailed) {
+          showToast(
+            `₹${amount} recorded — but reconciliation failed. Use Retry.`,
+            "warning",
+          );
+        } else {
+          showToast(`₹${amount} recorded`, "success");
+        }
+        if (closeModal) closeModal();
       } catch (e) {
         showToast(e.message, "error");
       }
@@ -158,22 +169,30 @@ export function useBillPayments(state) {
 
   const applyAdjustment = useCallback(
     async (adjustmentId, billId, version) => {
-      // ✅ FIX 1: Add version to parameters
+      // Mutation first — its failure is THE failure (single-toast rule §3).
       try {
-        // ✅ FIX 2: Pass version to the API call
         await callApi("applyAdjustment", { adjustmentId, billId, version });
-        showToast("Adjustment applied", "success");
-
+      } catch (err) {
+        showToast(err.message || "Failed to apply adjustment", "error");
+        return;
+      }
+      // Refetch second — a failed READ after a successful APPLY gets one
+      // truthful warning, not a green-then-red pair.
+      try {
         const [adjRes, billRes] = await Promise.all([
           callApi("getAdjustments", {}),
           callApi("getBills", { month: billMonth }),
         ]);
-
         setAdjustments((adjRes.adjustments || []).map(mapAdjustmentFromApi));
-        setBills(billRes.bills || []); // Cleaned up extra parentheses
-      } catch (err) {
-        showToast(err.message || "Failed to apply adjustment", "error");
+        setBills(billRes.bills || []);
+      } catch {
+        showToast(
+          "Adjustment applied — but the list refresh failed. Use Retry.",
+          "warning",
+        );
+        return;
       }
+      showToast("Adjustment applied", "success");
     },
     [showToast, setAdjustments, setBills, billMonth],
   );
@@ -182,7 +201,11 @@ export function useBillPayments(state) {
     async (creditNoteId, billId, version) => {
       try {
         await callApi("applyCreditNote", { creditNoteId, billId, version });
-        showToast("Credit note applied", "success");
+      } catch (err) {
+        showToast(err.message || "Failed to apply credit note", "error");
+        return;
+      }
+      try {
         const [cnRes, billRes] = await Promise.all([
           callApi("getCreditNotes", {}),
           callApi("getBills", { month: billMonth }),
@@ -192,9 +215,14 @@ export function useBillPayments(state) {
         // discarded, so the list kept showing a stale unapplied note.
         setCreditNotes((cnRes.creditNotes || []).map(mapCreditNoteFromApi));
         setBills(billRes.bills || []);
-      } catch (err) {
-        showToast(err.message || "Failed to apply credit note", "error");
+      } catch {
+        showToast(
+          "Credit note applied — but the list refresh failed. Use Retry.",
+          "warning",
+        );
+        return;
       }
+      showToast("Credit note applied", "success");
     },
     [showToast, setCreditNotes, setBills, billMonth],
   );
@@ -214,8 +242,24 @@ export function useBillPayments(state) {
         return;
       }
 
+      // FIX (2026-11-21 audit — AI-L H1/M6): default the date (the modal has
+      // no date field, so `data.date` was undefined → a NULL column) and
+      // resolve the VIEWED month's bill so the note is appliable from the
+      // More page. Issuing without a bill is still allowed — the note is
+      // standalone credit for the next cycle until it is applied.
+      const customerId = data.custId || data.customerId;
+      const date = data.date || getToday();
+      const targetBill = bills.find(
+        (b) => b.custId === customerId && b.month === billMonth,
+      );
+      const payload = {
+        ...data,
+        date,
+        billId: data.billId || targetBill?.id || null,
+      };
+
       try {
-        await callApi("addCreditNote", data);
+        await callApi("addCreditNote", payload);
         showToast("Credit note issued", "success");
         if (closeModal) closeModal();
         if (refresh) refresh();
@@ -223,7 +267,7 @@ export function useBillPayments(state) {
         showToast(err.message || "Failed to issue credit note", "error");
       }
     },
-    [showToast, closeModal, refresh],
+    [showToast, closeModal, refresh, bills, billMonth],
   );
 
   return {

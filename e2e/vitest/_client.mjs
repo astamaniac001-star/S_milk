@@ -6,8 +6,8 @@
 
 import { createClient } from "@supabase/supabase-js";
 import { readFileSync } from "node:fs";
-
-const DEFAULT_OPERATOR_EMAIL = "astamaniac001@gmail.com";
+// FIX (2026-11-21 audit — AI-S M7): canonical operator email source (AGENTS §9).
+import { OPERATOR_EMAIL_FALLBACK } from "../_operator.mjs";
 
 export function getEnv() {
   try {
@@ -44,7 +44,7 @@ export async function getOperatorClient() {
   const env = getEnv();
   const s = getSupabaseClient(env);
   const { error: authErr } = await s.auth.signInWithPassword({
-    email: env.E2E_OPERATOR_EMAIL || DEFAULT_OPERATOR_EMAIL,
+    email: env.E2E_OPERATOR_EMAIL || OPERATOR_EMAIL_FALLBACK,
     password: env.E2E_OPERATOR_PIN,
   });
   if (authErr) {

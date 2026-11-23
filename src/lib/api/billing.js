@@ -60,22 +60,45 @@ export async function recordPayment(payload) {
       e.code = "OVERPAY";
       throw e;
     }
+    // Raw check-violation surface (2026-11-21 audit P1-2): a 23514 on
+    // chk_bills_paid_lte_amount means the payment passed the RPC's epsilon
+    // guard but overflowed the exact constraint — report it in OVERPAY
+    // terms instead of an opaque Postgres message.
+    if (rpcError.code === "23514" || /chk_bills_paid_lte_amount/.test(rpcError.message)) {
+      const e = new Error(
+        "Payment exceeds the pending amount on this bill. Record the exact pending amount.",
+      );
+      e.code = "OVERPAY";
+      throw e;
+    }
     throw rpcError;
   }
 
-  const { data: updatedBill, error: fetchErr } = await supabase
-    .from("bills")
-    .select("*")
-    .eq("id", billId)
-    .single();
-  must(fetchErr);
+  // FIX (2026-11-21 audit P2-6): the RPC has COMMITTED at this point — a
+  // failed follow-up read must NOT surface as "payment failed" (the old
+  // must(fetchErr) turned a landed payment into an error toast). Report
+  // refreshFailed instead so the handler can warn accurately.
+  let updatedBill = null;
+  let refreshFailed = false;
+  try {
+    const { data, error: fetchErr } = await supabase
+      .from("bills")
+      .select("*")
+      .eq("id", billId)
+      .single();
+    must(fetchErr);
+    updatedBill = data;
+  } catch {
+    refreshFailed = true;
+  }
 
   return {
-    billId: updatedBill.id,
-    amountPaid: updatedBill.amount_paid,
-    status: updatedBill.status,
-    bill: mapBillFromApi(updatedBill),
+    billId,
+    amountPaid: updatedBill?.amount_paid ?? null,
+    status: updatedBill?.status ?? null,
+    bill: updatedBill ? mapBillFromApi(updatedBill) : null,
     idempotent: rpcResult?.idempotent || false,
+    refreshFailed,
   };
 }
 
@@ -95,18 +118,39 @@ export async function generateMonthBill(payload) {
       e.code = "LOCKED";
       throw e;
     }
+    // Guard added in the 2026-11-21 migration: regeneration computed an
+    // amount BELOW what was already paid — a typed error, not a raw 23514.
+    if (/less than .*already paid|REGUNDERFLOW/i.test(rpcError.message)) {
+      const e = new Error(rpcError.message);
+      e.code = "OVERPAY";
+      throw e;
+    }
     throw rpcError;
   }
 
-  const { data: billData, error: fetchErr } = await supabase
-    .from("bills")
-    .select("*")
-    .eq("customer_id", customerId)
-    .eq("month", month)
-    .single();
-  must(fetchErr);
+  // FIX (2026-11-21 audit P2-6): same refreshFailed semantics as
+  // recordPayment — the bill EXISTS once the RPC returns; a failed read
+  // must not report the generation itself as failed.
+  let billData = null;
+  let refreshFailed = false;
+  try {
+    const { data, error: fetchErr } = await supabase
+      .from("bills")
+      .select("*")
+      .eq("customer_id", customerId)
+      .eq("month", month)
+      .single();
+    must(fetchErr);
+    billData = data;
+  } catch {
+    refreshFailed = true;
+  }
 
-  return { bill: mapBillFromApi(billData), action: "generated" };
+  return {
+    bill: billData ? mapBillFromApi(billData) : null,
+    action: "generated",
+    refreshFailed,
+  };
 }
 
 export async function getBillText(payload) {

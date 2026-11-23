@@ -28,11 +28,14 @@ import More from "./More.jsx";
 
 const baseProps = {
   adjustments: [],
+  creditNotes: [],
   pauses: [],
   customers: [],
   bills: [],
+  billMonth: "2026-11",
   onOpenModal: vi.fn(),
   onApplyAdj: vi.fn(),
+  onApplyCn: vi.fn(),
   onRunDiag: vi.fn(),
   onHealthCheck: vi.fn(),
 };
@@ -122,5 +125,109 @@ describe("More page — Diagnostics live rendering (audit §3.9)", () => {
     expect(
       screen.getByText(/permission denied for table settings/),
     ).toBeInTheDocument();
+  });
+});
+
+describe("More page — Credit Notes card (2026-11-21, AI-L H1 regression)", () => {
+  it("lists credit notes with the issued amount and Applied/Pending badge", () => {
+    render(
+      <More
+        {...baseProps}
+        creditNotes={[
+          {
+            id: "CN1",
+            customerId: "C1",
+            billId: null,
+            amount: 120,
+            reason: "Spoiled delivery",
+            applied: false,
+            date: "2026-11-05",
+            version: 1,
+          },
+          {
+            id: "CN2",
+            customerId: "C2",
+            amount: 40,
+            reason: "Goodwill",
+            applied: true,
+            date: "2026-11-06",
+            version: 2,
+          },
+        ]}
+        customers={[
+          { id: "C1", name: "Ramesh", status: "Active" },
+          { id: "C2", name: "Suresh", status: "Active" },
+        ]}
+        bills={[{ id: "B1", custId: "C1", month: "2026-11", amount: 500 }]}
+      />,
+    );
+
+    expect(screen.getByText("Credit Notes")).toBeInTheDocument();
+    expect(screen.getByText(/Spoiled delivery/)).toBeInTheDocument();
+    expect(screen.getByText(/Goodwill/)).toBeInTheDocument();
+    expect(screen.getAllByTestId("badge").some((b) => b.textContent === "Applied")).toBe(true);
+  });
+
+  it("resolves the viewed month's bill for a note without a stored billId and applies with (id, billId, version)", () => {
+    const onApplyCn = vi.fn();
+    const onOpenModal = vi.fn();
+    render(
+      <More
+        {...baseProps}
+        onApplyCn={onApplyCn}
+        onOpenModal={onOpenModal}
+        creditNotes={[
+          {
+            id: "CN1",
+            customerId: "C1",
+            billId: null,
+            amount: 120,
+            reason: "Spoiled delivery",
+            applied: false,
+            date: "2026-11-05",
+            version: 3,
+          },
+        ]}
+        customers={[{ id: "C1", name: "Ramesh", status: "Active" }]}
+        bills={[{ id: "B1", custId: "C1", month: "2026-11", amount: 500 }]}
+      />,
+    );
+
+    window.confirm = vi.fn(() => true);
+    const cnCard = within(
+      screen.getByText("Credit Notes").closest('[data-testid="card"]'),
+    );
+    const apply = cnCard.getByRole("button", { name: "Apply" });
+    apply.click();
+    expect(onApplyCn).toHaveBeenCalledWith("CN1", "B1", 3);
+
+    // The + Add action opens the same modal Billing uses.
+    const add = cnCard.getByRole("button", { name: "+ Add" });
+    add.click();
+    expect(onOpenModal).toHaveBeenCalledWith("addCreditNote");
+  });
+
+  it("shows the no-bill hint instead of Apply when no target bill can be resolved", () => {
+    render(
+      <More
+        {...baseProps}
+        creditNotes={[
+          {
+            id: "CN1",
+            customerId: "C1",
+            billId: null,
+            amount: 120,
+            reason: "Spoiled delivery",
+            applied: false,
+            date: "2026-11-05",
+            version: 3,
+          },
+        ]}
+        customers={[{ id: "C1", name: "Ramesh", status: "Active" }]}
+        bills={[]}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "Apply" })).toBeNull();
+    expect(screen.getByText(/generate bills first/i)).toBeInTheDocument();
   });
 });

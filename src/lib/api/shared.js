@@ -53,8 +53,17 @@ export function isAuthError(err) {
 
 // OCC update: compare-and-set on `version`. Throws code=CONFLICT when
 // PGRST116 (no row matched) surfaces from .single() after no update.
+//
+// FIX (2026-11-21 audit): the old `toNum(expectedVersion) || 1` coerced a
+// legitimate `version = 0` to 1 (rule §5: preserve legitimate version = 0,
+// exactly like the mappers' `?? 1`). Nullish versions are now rejected
+// EXPLICITLY — a missing version must fail loudly, never silently
+// compare-and-set against row version 1.
 export async function updateWithVersion(table, id, expectedVersion, patch) {
-  const ev = toNum(expectedVersion) || 1;
+  if (expectedVersion === undefined || expectedVersion === null) {
+    throw new Error(`${table} version is required for OCC`);
+  }
+  const ev = toNum(expectedVersion);
   const { data, error } = await supabase
     .from(table)
     .update({ ...patch, version: ev + 1 })

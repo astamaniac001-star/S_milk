@@ -368,6 +368,8 @@ export function ActiveCustomerOptions({ customers }) {
 }
 
 // FIX M8: Backward-compatible inline style for inputs, now Dark Mode aware
+// FIX (2026-11-21 audit — AI-S H2): value color must be the PRIMARY text
+// color (~15:1), not the muted placeholder tone (~2.8:1 — WCAG AA fail).
 export const IS = (extra = {}) => ({
   width: "100%",
   padding: "10px 14px",
@@ -375,7 +377,7 @@ export const IS = (extra = {}) => ({
   border: "1px solid var(--border-color, #e2e8f0)",
   borderRadius: 8,
   fontSize: 14,
-  color: "var(--text-muted, #94a3b8)",
+  color: "var(--text-primary, #18181b)",
   transition: "all 0.2s ease",
   outline: "none",
   ...extra,

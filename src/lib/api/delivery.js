@@ -237,21 +237,59 @@ export async function generateDailyLogsForDate(payload) {
   }
 
   if (toInsert.length) {
-    // count in upsert options — see bulkUpsertLogs above.
-    const { count, error } = await supabase
-      .from("daily_logs")
-      .upsert(toInsert, {
-        onConflict: "customer_id,date,brand_id,product",
-        count: "exact",
-      });
-    must(error);
-    const savedCount = Number(count) || 0;
-    if (savedCount !== toInsert.length) {
-      console.warn(
-        `generateDailyLogsForDate upsert count mismatch: expected ${toInsert.length}, got ${savedCount}`,
-      );
+    // FIX (2026-11-21 audit — AI-L M5): split brandless rows out of the
+    // branded upsert, exactly like bulkUpsertLogs above. NULL never matches
+    // a unique index in PostgREST onConflict inference, so a brandless row
+    // sent through the upsert INSERTS a duplicate instead of updating — and
+    // the DB's NULL-safe expression index then rejects it with a 409 (e.g.
+    // re-generating a day that already has legacy brandless rows, or racing
+    // an ad-hoc). Brandless rows are found-then-updated-or-inserted by id.
+    const brandedRows = toInsert.filter((r) => r.brand_id);
+    const brandlessRows = toInsert.filter((r) => !r.brand_id);
+
+    if (brandedRows.length) {
+      // count in upsert options — see bulkUpsertLogs above.
+      const { count, error } = await supabase
+        .from("daily_logs")
+        .upsert(brandedRows, {
+          onConflict: "customer_id,date,brand_id,product",
+          count: "exact",
+        });
+      must(error);
+      const savedCount = Number(count) || 0;
+      if (savedCount !== brandedRows.length) {
+        console.warn(
+          `generateDailyLogsForDate upsert count mismatch: expected ${brandedRows.length}, got ${savedCount}`,
+        );
+      }
+      created += savedCount;
     }
-    created = savedCount;
+
+    for (const row of brandlessRows) {
+      const { data: existing, error: findError } = await supabase
+        .from("daily_logs")
+        .select("id")
+        .eq("customer_id", row.customer_id)
+        .eq("date", row.date)
+        .eq("product", row.product)
+        .is("brand_id", null)
+        .limit(1);
+      must(findError);
+      const match = (existing || [])[0];
+      if (match) {
+        const { error: updateError } = await supabase
+          .from("daily_logs")
+          .update({ qty: row.qty, delivered: row.delivered, note: row.note })
+          .eq("id", match.id);
+        must(updateError);
+      } else {
+        const { error: insertError } = await supabase
+          .from("daily_logs")
+          .insert([row]);
+        must(insertError);
+      }
+      created += 1;
+    }
   }
   return {
     created,
@@ -263,7 +301,8 @@ export async function generateDailyLogsForDate(payload) {
 }
 
 export async function addAdHocLog(payload) {
-  const { customerId, date, qty, reason, product, brandId } = payload;
+  const { customerId, date, qty, reason, product, brandId, clientKey } =
+    payload;
   if (!customerId || !date) throw new Error("customerId and date are required");
   const addQty = toNum(qty);
   if (!(addQty > 0)) throw new Error("qty must be > 0");
@@ -283,6 +322,10 @@ export async function addAdHocLog(payload) {
   // onto the winner). Brand-aware since 2026-11: an extra delivery records
   // the brand actually supplied (e.g. a substitute during shortage) so it
   // bills at that brand's rate.
+  // 2026-11-21 audit (AI-S M4): the RPC accepts an optional p_client_key —
+  // an accumulating write with no dedupe token double-counted liters on a
+  // network retry. The caller mints the key per submit ATTEMPT and reuses it
+  // on retry of the same submit (same lifecycle as the payment key, rule §14).
   const { data: rpcResult, error: rpcError } = await supabase.rpc(
     "record_ad_hoc_log_rpc",
     {
@@ -292,6 +335,7 @@ export async function addAdHocLog(payload) {
       p_product: product || "",
       p_brand_id: brandId || null,
       p_reason: reason || "",
+      ...(clientKey ? { p_client_key: clientKey } : {}),
     },
   );
 
@@ -316,5 +360,6 @@ export async function addAdHocLog(payload) {
     logId: rpcResult?.logId,
     qty: rpcResult?.qty,
     created: !!rpcResult?.created,
+    idempotent: !!rpcResult?.idempotent,
   };
 }

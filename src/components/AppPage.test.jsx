@@ -6,10 +6,19 @@ import { AppPage } from "./AppPage.jsx";
 // actually received — lets us assert what AppPage passes to each page
 // without needing the heavier page modules.
 
+// Capture the Dashboard's props so tests can assert the generate-bills
+// month contract (2026-11-21 fix — AI-S M1).
+let dashProps;
 vi.mock("../pages/Dashboard.jsx", () => ({
-  default: (props) => (
-    <div data-testid="dash" data-todaylogs={JSON.stringify(props.todayLogs)} />
-  ),
+  default: (props) => {
+    dashProps = props;
+    return (
+      <div
+        data-testid="dash"
+        data-todaylogs={JSON.stringify(props.todayLogs)}
+      />
+    );
+  },
 }));
 vi.mock("../pages/Delivery.jsx", () => ({
   default: (props) => (
@@ -114,5 +123,33 @@ describe("AppPage (audit 2026-07-24)", () => {
     expect(more).toBeTruthy();
     expect(more.getAttribute("data-diag")).toBe("y");
     expect(more.getAttribute("data-health")).toBe("y");
+  });
+
+  it("passes the CONFIRMED month to generateMonthlyBills from the Dashboard (2026-11-21 fix — AI-S M1)", () => {
+    const state = {
+      tab: "dashboard",
+      today: "2026-11-21",
+      billMonth: "2026-08", // operator previously viewed August
+      bills: [],
+      customers: [],
+      activeC: [],
+      totalRevenue: 0,
+      pendingDues: 0,
+      confirmedStock: 0,
+      setTab: vi.fn(),
+      openModal: vi.fn(),
+    };
+    const handlers = { generateMonthlyBills: vi.fn() };
+
+    render(<AppPage tab="dashboard" state={state} handlers={handlers} />);
+
+    expect(dashProps).toBeTruthy();
+    // The dialog confirms today's month — the handler must target EXACTLY
+    // that month, not the stale state.billMonth.
+    dashProps.onGenerateBill("2026-11");
+    expect(handlers.generateMonthlyBills).toHaveBeenCalledWith("2026-11");
+    // A no-arg invocation (defensive) still resolves deterministically.
+    dashProps.onGenerateBill();
+    expect(handlers.generateMonthlyBills).toHaveBeenLastCalledWith("2026-08");
   });
 });

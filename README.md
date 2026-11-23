@@ -229,7 +229,8 @@ Ledger-grade, always via RPC:
 
 ### 7. Imports / purchases (`lib/api/imports.js`)
 
-- Draft lifecycle: `addMilkImport` inserts a row (status `Pending`), edit is a
+- Draft lifecycle: `addMilkImport` inserts a row (status `Draft` — the DB
+  default; the RPC-confirmed states are `Confirmed`/`Reconciled`), edit is a
   version-CAS update, `total_cost = qty × rate` is computed on write.
 - **Confirm** / **delete** go through
   `confirm_milk_import_rpc` / `delete_milk_import_rpc` with
@@ -373,7 +374,7 @@ src/
 │   │   ├── shared.js        # toArray, updateWithVersion, must, isAuthError, AuthzError, dayOfWeekKolkata
 │   │   ├── customers.js / subscriptions.js / delivery.js / billing.js
 │   │   ├── adjustments.js / imports.js / admin.js
-│   ├── constants.js         # SC, DAYS, MILK_TYPES, PAY_MODES, NEW_SUB_DEFAULTS, OPERATOR_EMAIL
+│   ├── constants.js         # DAYS, MILK_TYPES, PAY_MODES, NEW_SUB_DEFAULTS, OPERATOR_EMAIL (status palette lives in ui.jsx)
 │   ├── filters.js           # Pure filters (customers/imports/bills) + month options
 │   ├── utils.js             # fmt, toNum, getToday (IST), getDaysAgoIST, cleanPhone, brandLabel, matchBrandByMilkType, generateKey
 │   ├── validation.js        # Barrel: customer + import + subscription validators
@@ -415,7 +416,7 @@ artifacts (`dist/`, `coverage/`, `e2e-test-results/`) are git-ignored.
 
 ### Prerequisites
 
-- **Node.js** 20.x or higher, npm
+- **Node.js** >= 22.12.0 (enforced via `engines` in package.json), npm
 - A **Supabase** project (cloud or local) with the schema applied
 - Supabase CLI (for the `db:*` scripts)
 
@@ -479,7 +480,8 @@ npm run dev      # http://localhost:5173
 | `test` / `test:watch` / `test:coverage`                                     | Vitest (jsdom + Testing Library); coverage has enforced thresholds                                                  |
 | `test:e2e` (+`:headed` / `:ui` / `:debug`)                                  | Playwright suite against the live app (system **Edge** channel; boots the dev server on :5173)                      |
 | `test:db` / `test:db:watch`                                                 | Vitest integration tests against the live Supabase project (separate config; self-skips without `E2E_OPERATOR_PIN`) |
-| `check-all`                                                                 | lint → test:db → test → build                                                                                       |
+| `check-all`                                                                 | lint > test > build (OFFLINE - never touches Supabase; 2026-11-21 containment)                                        |
+| `check-all:live`                                                            | `check-all` + `test:db` (MUTATES the linked project - run deliberately)                                          |
 | `test:all`                                                                  | `check-all` + `test:e2e`                                                                                            |
 | `advisor-all`                                                               | spellcheck → check-deps → fallow → test:coverage                                                                    |
 | `audit` / `circular` / `cprettier` / `check-deps` / `spellcheck` / `fallow` | Advisory tools (run individually)                                                                                   |
@@ -515,9 +517,11 @@ deliberately thin; don't assume the suite exercises a path you changed.
 - **Shapes**: DB `snake_case` ↔ UI `camelCase`, converted exactly once in
   `lib/api/mappers.js` (`mapXFromApi` / `mapXToApi`). Double-mapping silently
   turns fields into `undefined`/`0`.
-- **Statuses are PascalCase** per `SC` in `constants.js`: `Active`, `Paused`,
-  `Inactive`, `Draft`, `Confirmed`, `Paid`, `Unpaid`, `Partial`, `Pending`,
-  `Failed`, `Dead`, `Reconciled`, `Applied`, `Delivered`, `Skipped`.
+- **Statuses are PascalCase** (compared literally; the status color palette
+  lives in `components/ui.jsx`, there is no `SC` export in `constants.js`):
+  `Active`, `Paused`, `Inactive`, `Draft`, `Confirmed`, `Paid`, `Unpaid`,
+  `Partial`, `Pending`, `Failed`, `Dead`, `Reconciled`, `Applied`,
+  `Delivered`, `Skipped`.
 - **JSONB arrays**: `delivery_days` is `[0..6]` (0 = Sun). `toArray()`
   normalizes array/JSON-string/comma-string; `JSON.stringify()` on write.
 - **Dates & money**: `getToday()` / `getDaysAgoIST()` are Asia/Kolkata —

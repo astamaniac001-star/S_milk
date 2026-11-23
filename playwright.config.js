@@ -36,7 +36,12 @@ export default defineConfig({
   testIgnore: /vitest[\\/].*\.test\.js$/,
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 2 : 0,
+  // 1 local retry (2026-11-22): this host's connection to Supabase drops
+  // single fetches mid-run ("fetch failed" on login/bills/boot), which
+  // rotated random single-test failures across runs. A still-failing test
+  // now fails TWICE — real regressions still surface; a flaky-then-pass is
+  // reported by the list reporter as "flaky", not silently green.
+  retries: process.env.CI ? 2 : 1,
   workers: 1,
   timeout: 60_000,
   expect: { timeout: 10_000 },

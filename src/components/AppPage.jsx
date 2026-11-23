@@ -19,9 +19,11 @@ function renderDashboard(state, handlers, derived) {
       customers={state.customers || []}
       onSetTab={state.setTab}
       onOpenModal={state.openModal}
-      onGenerateBill={() =>
+      // FIX (2026-11-21 audit — AI-S M1): the confirmed month flows through
+      // explicitly so the dialog text and the handler target can't diverge.
+      onGenerateBill={(month) =>
         handlers.generateMonthlyBills(
-          state.billMonth || state.today.substring(0, 7),
+          month || state.billMonth || state.today.substring(0, 7),
         )
       }
     />
@@ -127,14 +129,22 @@ function renderMore(state, handlers, _derived) {
   return (
     <More
       adjustments={state.adjustments || []}
+      creditNotes={state.creditNotes || []}
       pauses={state.pauses || []}
       customers={state.customers || []}
       bills={state.bills || []}
+      billMonth={state.billMonth}
       diagRan={state.diagRan}
       diagResults={state.diagResults}
       onOpenModal={state.openModal}
       onApplyAdj={(adjId, billId, version) =>
         handlers.applyAdjustment(adjId, billId, version)
+      }
+      // FIX (2026-11-21 audit — AI-L H1): credit notes could be issued from
+      // Billing but were never listed or applied anywhere — a dead financial
+      // workflow. The More page now lists them and applies via the handler.
+      onApplyCn={(cnId, billId, version) =>
+        handlers.applyCreditNote(cnId, billId, version)
       }
       onRunDiag={handlers.runDiagnostics}
       onHealthCheck={handlers.healthCheck}

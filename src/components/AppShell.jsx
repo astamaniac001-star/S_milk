@@ -47,6 +47,27 @@ function TabButton({ tab, active, onSelect }) {
   );
 }
 
+// FIX (2026-11-21 audit — AI-D P2-5): storage can be unavailable (private
+// mode, disabled site data, WebView restrictions). The old unguarded
+// accessors crashed the shell into the ErrorBoundary; degrade gracefully
+// instead (dark-mode just won't persist). Mirrors public/apply-dark-mode.js.
+const safeStorage = {
+  get(key) {
+    try {
+      return localStorage.getItem(key);
+    } catch {
+      return null;
+    }
+  },
+  set(key, value) {
+    try {
+      localStorage.setItem(key, value);
+    } catch {
+      /* ignore — persistence is best-effort */
+    }
+  },
+};
+
 export function AppShell({
   tab,
   today,
@@ -58,7 +79,7 @@ export function AppShell({
   footer,
 }) {
   const [darkMode, setDarkMode] = useState(
-    () => localStorage.getItem("darkMode") === "true",
+    () => safeStorage.get("darkMode") === "true",
   );
   const [isOnline, setIsOnline] = useState(navigator.onLine);
 
@@ -68,7 +89,7 @@ export function AppShell({
     } else {
       document.documentElement.classList.remove("dark");
     }
-    localStorage.setItem("darkMode", darkMode);
+    safeStorage.set("darkMode", darkMode);
   }, [darkMode]);
 
   useEffect(() => {

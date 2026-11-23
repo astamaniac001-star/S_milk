@@ -11,6 +11,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { operatorEmail } from "../_operator.mjs";
 
 function readDotEnv() {
   try {
@@ -52,8 +53,9 @@ if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
 
 // Per AGENTS.md the confirmed operator account is the Supabase Auth user that
 // owns the data. Login is a 6-digit PIN used as that account's password.
-export const OPERATOR_EMAIL =
-  env.E2E_OPERATOR_EMAIL || "astamaniac001@gmail.com";
+// FIX (2026-11-21 audit — AI-S M7): the email is no longer hardcoded here —
+// it resolves through e2e/_operator.mjs (AGENTS §9: one canonical source).
+export const OPERATOR_EMAIL = operatorEmail(env.E2E_OPERATOR_EMAIL);
 export const OPERATOR_PIN = env.E2E_OPERATOR_PIN || "";
 
 if (!OPERATOR_PIN) {
@@ -63,6 +65,29 @@ if (!OPERATOR_PIN) {
     "[e2e] E2E_OPERATOR_PIN not set — login-requiring tests will be skipped. " +
       "Set it in .env (E2E_OPERATOR_PIN=....) to enable those tests.",
   );
+}
+
+// FIX (2026-11-22): this host's connection to Supabase drops requests
+// intermittently ("fetch failed") — observed in live runs and during the
+// audits. Sign-in is retried with a short backoff so one dropped fetch
+// doesn't fail an otherwise-green suite. The PIN is never logged.
+async function signInWithRetry(client, { attempts = 3 } = {}) {
+  let lastError = null;
+  for (let i = 0; i < attempts; i += 1) {
+    const { error } = await client.auth.signInWithPassword({
+      email: OPERATOR_EMAIL,
+      password: OPERATOR_PIN,
+    });
+    if (!error) return;
+    lastError = error;
+    // Auth rejections (wrong PIN) are definitive — retrying cannot help.
+    const isNetwork =
+      /fetch failed|failed to fetch|network/i.test(error.message || "") ||
+      error.name === "AuthRetryableFetchError";
+    if (!isNetwork) break;
+    await new Promise((r) => setTimeout(r, 1000 * (i + 1)));
+  }
+  throw new Error(`Operator login failed: ${lastError?.message || "unknown"}`);
 }
 
 // Build a Supabase client. Pass `withSession: true` to also run
@@ -79,11 +104,7 @@ export async function makeSupabase({ withSession = false } = {}) {
         "makeSupabase({withSession:true}): E2E_OPERATOR_PIN is not set.",
       );
     }
-    const { error } = await supabase.auth.signInWithPassword({
-      email: OPERATOR_EMAIL,
-      password: OPERATOR_PIN,
-    });
-    if (error) throw new Error(`Operator login failed: ${error.message}`);
+    await signInWithRetry(supabase);
   }
   return supabase;
 }

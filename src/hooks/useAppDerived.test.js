@@ -129,6 +129,26 @@ describe("useAppDerived — derived fields (audit 2026-07-25)", () => {
     expect(result.current.confirmedStock).toBe(5);
   });
 
+  it("uses the store's DEDICATED todayLogs snapshot when viewing a historical date (2026-11-21 fix)", () => {
+    // Regression: logs are scoped to the VIEWED date (logDate), so the old
+    // logs.filter(date === today) derivation zeroed the Dashboard whenever
+    // the operator opened a historical date. The dedicated snapshot wins.
+    const logs = [{ id: "OLD1", date: "2026-07-24", delivered: true, qty: 9 }];
+    const todayLogs = [
+      { id: "T1", date: "2026-07-25", delivered: true, qty: 6 },
+    ];
+    const { result } = setup({ logs, todayLogs, logDate: "2026-07-24" });
+    expect(result.current.todayLogs.map((l) => l.id)).toEqual(["T1"]);
+    expect(result.current.selectedDateLogs.map((l) => l.id)).toEqual(["OLD1"]);
+    expect(result.current.confirmedStock).toBe(6);
+  });
+
+  it("falls back to filtering logs by today when the dedicated snapshot is empty (boot window)", () => {
+    const logs = [{ id: "T1", date: "2026-07-25", delivered: true, qty: 3 }];
+    const { result } = setup({ logs, logDate: "2026-07-25" });
+    expect(result.current.todayLogs.map((l) => l.id)).toEqual(["T1"]);
+  });
+
   it("defaults selectedDateLogs to today when no logDate is provided (audit rule §8 — IST contract)", () => {
     const logs = [{ id: "T1", date: "2026-07-25", delivered: true, qty: 2 }];
     const { result } = setup({ logs /* no logDate */ });

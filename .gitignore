@@ -18,6 +18,15 @@ coverage
 .env
 .env.local
 .env.*.local
+.env.production
+.env.development
+
+# fallow advisory-tool binary caches (not source; bloats history)
+.fallow/
+
+# Private DB data backups from scripts/db-baseline.js --with-data
+# (contains real customer PII + financial records â€” never commit)
+supabase/_local_backups/
 
 # Editor directories and files
 .vscode/*

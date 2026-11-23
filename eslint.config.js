@@ -66,23 +66,9 @@ export default [
       "no-unused-vars": ["warn", { argsIgnorePattern: "^_" }],
     },
   },
-  // Specific overrides for Cloudflare Functions (if applicable)
-  {
-    files: ["functions/**/*.js"],
-    languageOptions: {
-      globals: {
-        Request: "readonly",
-        Response: "readonly",
-        fetch: "readonly",
-        crypto: "readonly",
-        URL: "readonly",
-        env: "readonly",
-      },
-    },
-    rules: {
-      "no-console": ["warn", { allow: ["warn", "error"] }],
-    },
-  },
+  // REMOVED (2026-11-21 audit — AI-S L8): the Cloudflare "functions/**"
+  // override referenced a directory that does not exist in this repo.
+
   // E2E test layer (Playwright + Vitest integration). Kept fully isolated
   // from app source under src/. Node globals are required here for fs/path/
   // process access; Playwright/Vitest inject their own test-scoped globals.

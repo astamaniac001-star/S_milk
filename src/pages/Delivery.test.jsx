@@ -55,6 +55,18 @@ describe("Delivery Page", () => {
     expect(screen.getByText("Suresh")).toBeInTheDocument();
   });
 
+  it("prefills the Extra Delivery modal with the VIEWED date (2026-11-21 fix — AI-D P1-7)", async () => {
+    const user = userEvent.setup();
+    render(<Delivery {...defaultProps} />);
+    const extraBtn = screen.getAllByTestId("btn").find((b) =>
+      b.textContent.includes("Extra Delivery"),
+    );
+    await user.click(extraBtn);
+    expect(defaultProps.onOpenModal).toHaveBeenCalledWith("addAdHoc", {
+      date: "2026-07-04",
+    });
+  });
+
   it("calls onToggleLog with the correct flipped delivered state when clicked (Tests F5 fix)", async () => {
     const user = userEvent.setup();
     render(<Delivery {...defaultProps} />);

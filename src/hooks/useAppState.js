@@ -113,14 +113,18 @@ export function useAppState(auth) {
   // group (rule §2).
   const importDay =
     filters.impFilter.mode === "day" ? filters.impFilter.day || null : null;
+  // today must be declared BEFORE the store call — the store needs it to
+  // keep the Dashboard's dedicated todayLogs snapshot fresh (rule §2:
+  // never reference a hook result before its declaration).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const today = useMemo(() => clampedToday(), [dayTick]);
   const entity = useEntityStore(
     auth?.token,
     ui.logDate,
     ui.billMonth,
     importDay,
+    today,
   );
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const today = useMemo(() => clampedToday(), [dayTick]);
 
   // FIX (audit 2026-07-25, UX): the previous effect reset `ui.logDate` /
   // `ui.billMonth` forward to today every minute when dayTick bumped the

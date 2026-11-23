@@ -17,7 +17,7 @@ import {
   E2E_MARKER,
   e2eName,
 } from "./helpers/supabase.js";
-import { waitForAppReady } from "./helpers/app.js";
+import { loginViaPin } from "./helpers/app.js";
 
 // Collection-time conditional skip — every test in this describe block
 // requires an operator session. Skipping at file scope means Playwright
@@ -31,14 +31,10 @@ test.describe("UI shows what DB holds", () => {
   // Playwright's TestArgs has no `skip` fixture (verified against
   // node_modules/playwright/types/test.d.ts:7809).
   test.beforeEach(async ({ page }) => {
-    // Login.
+    // Login — FIX (2026-11-22): shared retrying login (network blips no
+    // longer fail the suite) — helpers/app.js loginViaPin.
     await page.goto("/");
-    const pin = page.locator("#pin-input");
-    if (await pin.isVisible({ timeout: 8_000 }).catch(() => false)) {
-      await pin.fill(OPERATOR_PIN);
-      await page.getByRole("button", { name: "Login" }).click();
-    }
-    await waitForAppReady(page);
+    await loginViaPin(page);
   });
 
   test("every customer the DB returns appears as a Card on the Customers page", async ({

@@ -16,11 +16,25 @@ import { getToday } from "../lib/utils.js";
 // view, or null in month/range modes. Passed in from useAppState (which owns
 // impFilter) so this store's date-dependent fetch group owns the network
 // read — pages never call callApi directly (rule §1).
-export function useEntityStore(token, logDate, billMonth, importDay = null) {
+//
+// `today` (2026-11-21 audit): the IST day from useDayTick, passed in so the
+// store can keep a DEDICATED todayLogs snapshot for the Dashboard. `logs`
+// is contractually scoped to the VIEWED date (logDate) — deriving
+// todayLogs from it showed zeros on the Dashboard whenever the operator
+// viewed a historical date (and mutations could not refresh it, since the
+// setter was never exposed).
+export function useEntityStore(
+  token,
+  logDate,
+  billMonth,
+  importDay = null,
+  today = null,
+) {
   const [customers, setCustomers] = useState([]);
   const [imports, setImports] = useState([]);
   const [bills, setBills] = useState([]);
   const [logs, setLogs] = useState([]);
+  const [todayLogs, setTodayLogs] = useState([]);
   const [adjustments, setAdjustments] = useState([]);
   const [pauses, setPauses] = useState([]);
   const [brands, setBrands] = useState([]);
@@ -86,25 +100,38 @@ export function useEntityStore(token, logDate, billMonth, importDay = null) {
   }, [token, safeFetch, refreshKey]);
 
   // Separate effect for date-dependent entities — fires only on logDate /
-  // billMonth change (and on first sign-in via the `token` dep). `getDailyLogs`
-  // and `getBills` are the ONLY expensive-per-date reads.
+  // billMonth / today change (and on first sign-in via the `token` dep).
+  // `getDailyLogs` and `getBills` are the ONLY expensive-per-date reads.
+  // When the viewed date is NOT today, a second scoped read keeps the
+  // todayLogs snapshot for the Dashboard fresh (retryable via the banner's
+  // Retry, like every fetch in this store).
   useEffect(() => {
     if (!token) return;
     let cancelled = false;
+    const viewedDate = logDate || today || getToday();
     const fetchData = async () => {
-      const [bils, lgs] = await Promise.all([
+      const [bils, lgs, tdy] = await Promise.all([
         safeFetch("getBills", { month: billMonth }, "bills"),
-        safeFetch("getDailyLogs", { date: logDate || getToday() }, "logs"),
+        safeFetch("getDailyLogs", { date: viewedDate }, "logs"),
+        today && viewedDate !== today
+          ? safeFetch("getDailyLogs", { date: today }, "logs")
+          : Promise.resolve(null),
       ]);
       if (cancelled) return;
       if (bils !== null) setBills(bils);
-      if (lgs !== null) setLogs(lgs.map(mapLogFromApi));
+      if (lgs !== null) {
+        const mapped = lgs.map(mapLogFromApi);
+        setLogs(mapped);
+        // Same fetch feeds both snapshots when the operator is viewing today.
+        if (today && viewedDate === today) setTodayLogs(mapped);
+      }
+      if (tdy !== null) setTodayLogs(tdy.map(mapLogFromApi));
     };
     fetchData();
     return () => {
       cancelled = true;
     };
-  }, [token, safeFetch, refreshKey, logDate, billMonth]);
+  }, [token, safeFetch, refreshKey, logDate, billMonth, today]);
 
   // Imports page "By day" stock card (2026-11-10): daily inventory
   // (Imported/Delivered/Remaining/Shortage) via the previously-unwired
@@ -143,23 +170,47 @@ export function useEntityStore(token, logDate, billMonth, importDay = null) {
     };
   }, [token, importDay, refreshKey]);
 
-  const fetchLogs = useCallback(async (date) => {
+  const fetchLogs = useCallback(
+    async (date) => {
+      try {
+        const res = await callApi("getDailyLogs", { date });
+        const mapped = ((res && res.logs) || []).map(mapLogFromApi);
+        setLogs(mapped);
+        // Keep the Dashboard snapshot in sync: any successful fetch for
+        // today's date updates todayLogs too (delivery toggles, bulk saves,
+        // ad-hoc and generation all funnel through here).
+        if (date && date === today) setTodayLogs(mapped);
+      } catch (err) {
+        console.error("Failed to fetch logs for date:", date, err);
+        // Audit 2026-11-09 (F15): this refetch runs after ad-hoc/generate
+        // mutations OUTSIDE safeFetch, so a failure was invisible. Surface it
+        // in the loadErrors banner (error layer §10.1) so the operator gets a
+        // visible Retry affordance instead of silently stale logs. The
+        // mutation itself already showed its success toast — no second toast
+        // here (one clear feedback per action, rule §3).
+        setLoadErrors((prev) =>
+          prev.includes("getDailyLogs") ? prev : [...prev, "getDailyLogs"],
+        );
+      }
+    },
+    [today],
+  );
+
+  // Dashboard-only refresh: fetch today's logs into todayLogs WITHOUT
+  // touching `logs` (which must stay scoped to the viewed date). Used after
+  // mutations that targeted a different date than the one being viewed.
+  const refreshTodayLogs = useCallback(async () => {
+    if (!today) return;
     try {
-      const res = await callApi("getDailyLogs", { date });
-      setLogs((res && res.logs ? res.logs : []).map(mapLogFromApi));
+      const res = await callApi("getDailyLogs", { date: today });
+      setTodayLogs(((res && res.logs) || []).map(mapLogFromApi));
     } catch (err) {
-      console.error("Failed to fetch logs for date:", date, err);
-      // Audit 2026-11-09 (F15): this refetch runs after ad-hoc/generate
-      // mutations OUTSIDE safeFetch, so a failure was invisible. Surface it
-      // in the loadErrors banner (error layer §10.1) so the operator gets a
-      // visible Retry affordance instead of silently stale logs. The
-      // mutation itself already showed its success toast — no second toast
-      // here (one clear feedback per action, rule §3).
+      console.error("Failed to fetch today's logs:", err);
       setLoadErrors((prev) =>
         prev.includes("getDailyLogs") ? prev : [...prev, "getDailyLogs"],
       );
     }
-  }, []);
+  }, [today]);
 
   return {
     customers,
@@ -170,6 +221,8 @@ export function useEntityStore(token, logDate, billMonth, importDay = null) {
     setBills,
     logs,
     setLogs,
+    todayLogs,
+    setTodayLogs,
     adjustments,
     setAdjustments,
     pauses,
@@ -179,6 +232,7 @@ export function useEntityStore(token, logDate, billMonth, importDay = null) {
     subscriptions,
     setSubscriptions,
     fetchLogs,
+    refreshTodayLogs,
     dailyInventory,
     creditNotes,
     setCreditNotes,

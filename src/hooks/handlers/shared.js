@@ -26,18 +26,28 @@ export function useHelpers(state) {
         console.warn(
           `🔥 EXECUTE API: action="${action}", getList="${getList}", resKey="${resKey}"`,
         );
+      // 1. Perform the mutation. A failure here is THE error for this action.
       try {
-        // 1. Perform the action (add, update, etc.)
         const actionRes = await callApi(action, payload);
         if (import.meta.env.DEV) console.warn("✅ ACTION RESULT:", actionRes);
+      } catch (e) {
+        if (import.meta.env.DEV) console.error("❌ EXECUTE API ERROR:", e);
+        showToast(e.message || "Unknown error", "error");
+        return false;
+      }
 
-        showToast(successMsg, "success");
-        // Guard: some callers (e.g. deactivateCustomer from the Customers
-        // page) are not invoked from a modal. Closing is a no-op there but
-        // must not throw if `closeModal` is ever undefined on `state`.
-        if (closeModal) closeModal();
+      // Guard: some callers (e.g. deactivateCustomer from the Customers
+      // page) are not invoked from a modal. Closing is a no-op there but
+      // must not throw if `closeModal` is ever undefined on `state`.
+      if (closeModal) closeModal();
 
-        // 2. Fetch the updated list
+      // 2. Fetch the updated list — SEPARATELY from the mutation (FIX
+      // 2026-11-21 audit, single-toast rule §3): the old code toasted
+      // success BEFORE the refetch inside one try/catch, so a failed READ
+      // after a successful WRITE produced a green-then-red double toast.
+      // Now: mutation failure → one error toast; refetch failure → one
+      // warning toast that says the save landed but the list is stale.
+      try {
         const res = await callApi(getList, {});
         if (import.meta.env.DEV) {
           console.warn("📦 RAW LIST RESPONSE (res):", res);
@@ -57,12 +67,19 @@ export function useHelpers(state) {
         if (import.meta.env.DEV) console.warn("✨ MAPPED DATA:", mappedData);
 
         setList(mappedData);
-        return true; // success signal for callers that manage their own UI state
       } catch (e) {
-        if (import.meta.env.DEV) console.error("❌ EXECUTE API ERROR:", e);
-        showToast(e.message || "Unknown error", "error");
-        return false;
+        if (import.meta.env.DEV) console.error("❌ REFETCH ERROR:", e);
+        showToast(
+          "Saved — but the list refresh failed. Use Retry to reload it.",
+          "warning",
+        );
+        // The MUTATION succeeded — report success so callers that manage
+        // their own UI state (e.g. clearing form flags) don't roll back.
+        return true;
       }
+
+      showToast(successMsg, "success");
+      return true; // success signal for callers that manage their own UI state
     },
     [showToast, closeModal],
   );
@@ -94,35 +111,6 @@ export function useHelpers(state) {
       );
     },
     [form, executeApiAction],
-  );
-
-  const handleIdAction = useCallback(
-    async (
-      action,
-      idKey,
-      id,
-      successMsg,
-      getList,
-      setList,
-      mapFromApi,
-      resKey,
-      fallbackErrMsg,
-    ) => {
-      if (import.meta.env.DEV)
-        console.warn("🆔 HANDLE ID ACTION:", action, idKey, id);
-      try {
-        await callApi(action, { [idKey]: id });
-        showToast(successMsg, "success");
-        const res = await callApi(getList, {});
-        if (import.meta.env.DEV)
-          console.warn("📦 RAW LIST RESPONSE (res):", res);
-        setList((res ? res[resKey] || [] : []).map(mapFromApi));
-      } catch (err) {
-        if (import.meta.env.DEV) console.error("❌ ID ACTION ERROR:", err);
-        showToast(fallbackErrMsg || err.message, "error");
-      }
-    },
-    [showToast],
   );
 
   const saveWithValidation = useCallback(
@@ -168,7 +156,6 @@ export function useHelpers(state) {
     showToast,
     executeApiAction,
     handleFormAction,
-    handleIdAction,
     saveWithValidation,
   };
 }

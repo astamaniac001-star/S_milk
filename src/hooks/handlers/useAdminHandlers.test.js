@@ -108,7 +108,7 @@ describe("useAdminHandlers — diagnostics + health + rotatePin (audit 2026-07-2
     expect(s.setDiagResults).not.toHaveBeenCalled();
   });
 
-  it("healthCheck toasts 'Health check passed — V17' on success", async () => {
+  it("healthCheck toasts 'Health check passed' on success (no hardcoded version label)", async () => {
     callApi.mockResolvedValue({ status: "Healthy" });
     const s = baseState();
     const { result } = renderHook(() => useAdminHandlers(s));
@@ -116,10 +116,7 @@ describe("useAdminHandlers — diagnostics + health + rotatePin (audit 2026-07-2
       await result.current.healthCheck();
     });
     expect(callApi).toHaveBeenCalledWith("healthCheck");
-    expect(s.toast$).toHaveBeenCalledWith(
-      "Health check passed — V17",
-      "success",
-    );
+    expect(s.toast$).toHaveBeenCalledWith("Health check passed", "success");
   });
 
   it("healthCheck toasts the error message on failure", async () => {
@@ -286,7 +283,7 @@ describe("useAdminHandlers — saveBrand (brand-aware rates)", () => {
     );
   });
 
-  it("refuses a negative rate", async () => {
+  it("refuses a non-positive rate (negative AND ₹0 — decision 2026-11-21)", async () => {
     const s = baseState({ form: { name: "Amul" } });
     const { result } = renderHook(() => useAdminHandlers(s));
     await act(async () => {
@@ -297,7 +294,21 @@ describe("useAdminHandlers — saveBrand (brand-aware rates)", () => {
     });
     expect(callApi).not.toHaveBeenCalled();
     expect(s.toast$).toHaveBeenCalledWith(
-      'Enter a valid rate for "Full Cream"',
+      'Enter a rate greater than 0 for "Full Cream"',
+      "error",
+    );
+
+    const s2 = baseState({ form: { name: "Amul" } });
+    const { result: r2 } = renderHook(() => useAdminHandlers(s2));
+    await act(async () => {
+      await r2.current.saveBrand({
+        name: "Amul",
+        rates: [{ milkType: "Full Cream", rate: 0 }],
+      });
+    });
+    expect(callApi).not.toHaveBeenCalled();
+    expect(s2.toast$).toHaveBeenCalledWith(
+      'Enter a rate greater than 0 for "Full Cream"',
       "error",
     );
   });

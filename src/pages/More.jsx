@@ -75,6 +75,119 @@ function AdjustmentActions({ applied, onApply }) {
   );
 }
 
+// FIX (2026-11-21 audit — AI-L H1): credit notes could be issued from the
+// Billing page but were never listed or applied anywhere — a note could
+// never reduce a bill from the UI. This card mirrors the Adjustments card:
+// list, badge, and an Apply action that resolves the target bill (the note's
+// stored billId, or the viewed month's bill for that customer).
+function CreditNoteItem({ cn, onApplyCn, resolveCustomer, targetBillId }) {
+  return (
+    <div
+      key={cn.id}
+      style={{
+        padding: "8px 0",
+        borderBottom: "1px solid var(--border-color, #f3f4f6)",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "flex-start",
+        }}
+      >
+        <div>
+          <div
+            style={{
+              fontSize: 13,
+              fontWeight: 500,
+              color: "var(--text-main, #111)",
+            }}
+          >
+            {resolveCustomer.customerNameById(cn.customerId)}
+          </div>
+          <div style={{ fontSize: 12, color: "var(--text-muted, #6b7280)" }}>
+            {cn.date || "—"} · {cn.reason}
+          </div>
+          <div style={{ fontSize: 13, color: "#166534", fontWeight: 600 }}>
+            {fmt(cn.amount)}
+          </div>
+          {!cn.applied && !targetBillId && (
+            <div style={{ fontSize: 11, color: "#92400e", marginTop: 2 }}>
+              No {cn.date?.substring(0, 7) || "current"}-month bill found for
+              this customer yet — generate bills first.
+            </div>
+          )}
+        </div>
+        {/* Hide Apply entirely when no target bill can be resolved — a
+            silent no-op button (the old adjustment behavior AI-L flagged)
+            teaches operators that Apply is broken. */}
+        {cn.applied || targetBillId ? (
+          <AdjustmentActions
+            applied={!!cn.applied}
+            onApply={() => {
+              if (
+                window.confirm(
+                  `Apply this credit note to the ${cn.date?.substring(0, 7) || "current"}-month bill? This action is irreversible.`,
+                )
+              ) {
+                onApplyCn(cn.id, targetBillId, cn.version);
+              }
+            }}
+          />
+        ) : (
+          <Badge label="Pending" />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CreditNotesCard({
+  creditNotes,
+  bills,
+  billMonth,
+  onOpenModal,
+  onApplyCn,
+  resolveCustomer,
+}) {
+  // Resolve each note's apply target up front so the Apply button state is
+  // honest: stored billId wins; otherwise the viewed month's bill.
+  const targets = new Map();
+  for (const cn of creditNotes || []) {
+    if (cn.applied) continue;
+    const bill =
+      (cn.billId && bills.find((b) => b.id === cn.billId)) ||
+      bills.find((b) => b.custId === cn.customerId && b.month === billMonth);
+    if (bill) targets.set(cn.id, bill.id);
+  }
+  return (
+    <Card>
+      <CardHeader
+        title="Credit Notes"
+        action={
+          <Btn small onClick={() => onOpenModal("addCreditNote")}>
+            + Add
+          </Btn>
+        }
+      />
+      {creditNotes.length === 0 ? (
+        <Empty msg="No credit notes" />
+      ) : (
+        creditNotes.map((cn) => (
+          <CreditNoteItem
+            key={cn.id}
+            cn={cn}
+            onApplyCn={onApplyCn}
+            resolveCustomer={resolveCustomer}
+            targetBillId={targets.get(cn.id)}
+          />
+        ))
+      )}
+    </Card>
+  );
+}
+
 // fallow-ignore-next-line complexity
 function buildAdjusterResolver(customers, bills) {
   const customerById = new Map();
@@ -417,13 +530,16 @@ function SystemHealthCard({ onHealthCheck }) {
 
 export default function More({
   adjustments = [],
+  creditNotes = [],
   pauses = [],
   customers = [],
   bills = [],
+  billMonth,
   diagRan,
   diagResults,
   onOpenModal,
   onApplyAdj,
+  onApplyCn,
   onRunDiag,
   onHealthCheck,
 }) {
@@ -439,6 +555,14 @@ export default function More({
         adjustments={adjustments}
         onOpenModal={onOpenModal}
         onApplyAdj={onApplyAdj}
+        resolveCustomer={resolveCustomer}
+      />
+      <CreditNotesCard
+        creditNotes={creditNotes}
+        bills={bills}
+        billMonth={billMonth}
+        onOpenModal={onOpenModal}
+        onApplyCn={onApplyCn}
         resolveCustomer={resolveCustomer}
       />
       <PausePeriodsCard

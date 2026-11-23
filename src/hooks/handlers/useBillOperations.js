@@ -53,22 +53,38 @@ export function useBillOperations(state) {
         const failedCount = results.filter(
           (r) => r.status === "rejected",
         ).length;
+
+        // FIX (2026-11-21 audit): refetch the VIEWED month only when the
+        // generated month IS the viewed month. The old code always refetched
+        // `billMonth`, so generating for another month silently left the
+        // KPIs stale — and a blind refetch of the wrong scope is exactly the
+        // month-scoping trap rule §14/§4 warn about (state.bills must stay
+        // scoped to billMonth).
+        let refreshFailed = false;
+        if (month === billMonth) {
+          try {
+            const res = await callApi("getBills", { month: billMonth });
+            setBills(res.bills || []);
+          } catch {
+            refreshFailed = true;
+          }
+        }
+
+        // Single toast per outcome (rule §3): per-bill failures win over a
+        // stale-list warning; a plain success only when both are clean.
         if (failedCount > 0) {
           showToast(
             `Generated bills, but ${failedCount} failed. Check logs.`,
             "warning",
           );
+        } else if (refreshFailed) {
+          showToast(
+            "Bills generated — but the list refresh failed. Use Retry.",
+            "warning",
+          );
         } else {
           showToast("All monthly bills generated successfully!", "success");
         }
-
-        // FIX (audit 2026-07-27): scope the refetch to billMonth so we don't
-        // overwrite state.bills with every bill ever. `getBills` filters
-        // server-side when `month` is provided (lib/api/billing.js:17). The
-        // post-store handler does NOT re-map because `getBills` already
-        // returns UI shape via `mapBillFromApi` (rule §4 — single mapping).
-        const res = await callApi("getBills", { month: billMonth });
-        setBills(res.bills || []);
       } catch (e) {
         showToast(e.message, "error");
       }
@@ -78,58 +94,72 @@ export function useBillOperations(state) {
 
   const lockBill = useCallback(
     async (billId) => {
-      try {
-        // 1. Find the bill in state to get its current version
-        const billToLock = state.bills?.find((b) => b.id === billId);
-        if (!billToLock) {
-          showToast("Bill not found in state", "error");
-          return;
-        }
+      // 1. Find the bill in state to get its current version
+      const billToLock = state.bills?.find((b) => b.id === billId);
+      if (!billToLock) {
+        showToast("Bill not found in state", "error");
+        return;
+      }
 
-        // 2. Call the API, explicitly passing the version
+      // 2. Mutate with the version, THEN refetch, THEN toast (single-toast
+      // rule §3 — a failed refetch must not show a green-then-red pair).
+      try {
         await callApi("lockBill", {
           billId: billToLock.id,
           version: billToLock.version,
         });
-
-        showToast("Bill locked", "success");
-
-        // 3. Refresh the bills list (api.js already maps this, so we just set it).
-        // FIX (audit 2026-07-27): scope to billMonth — see generateMonthlyBills.
-        const res = await callApi("getBills", { month: billMonth });
-        setBills(res.bills || []);
       } catch (err) {
         showToast(err.message || "Failed to lock bill", "error");
+        return;
       }
+      try {
+        // Scope to billMonth — see generateMonthlyBills (rule §4: getBills
+        // already returns UI shape; no re-mapping here).
+        const res = await callApi("getBills", { month: billMonth });
+        setBills(res.bills || []);
+      } catch {
+        showToast(
+          "Bill locked — but the list refresh failed. Use Retry.",
+          "warning",
+        );
+        return;
+      }
+      showToast("Bill locked", "success");
     },
     [state.bills, setBills, showToast, billMonth],
   );
 
   const unlockBill = useCallback(
     async (billId) => {
-      try {
-        // 1. Find the bill in state to get its current version
-        const billToUnlock = state.bills?.find((b) => b.id === billId);
-        if (!billToUnlock) {
-          showToast("Bill not found in state", "error");
-          return;
-        }
+      // 1. Find the bill in state to get its current version
+      const billToUnlock = state.bills?.find((b) => b.id === billId);
+      if (!billToUnlock) {
+        showToast("Bill not found in state", "error");
+        return;
+      }
 
-        // 2. Call the API, explicitly passing the version
+      // 2. Mutate → refetch → toast (see lockBill).
+      try {
         await callApi("unlockBill", {
           billId: billToUnlock.id,
           version: billToUnlock.version,
         });
-
-        showToast("Bill unlocked", "success");
-
-        // 3. Refresh the bills list
-        // FIX (audit 2026-07-27): scope to billMonth — see generateMonthlyBills.
-        const res = await callApi("getBills", { month: billMonth });
-        setBills(res.bills || []);
       } catch (err) {
         showToast(err.message || "Failed to unlock bill", "error");
+        return;
       }
+      try {
+        // Scope to billMonth — see generateMonthlyBills.
+        const res = await callApi("getBills", { month: billMonth });
+        setBills(res.bills || []);
+      } catch {
+        showToast(
+          "Bill unlocked — but the list refresh failed. Use Retry.",
+          "warning",
+        );
+        return;
+      }
+      showToast("Bill unlocked", "success");
     },
     [state.bills, setBills, showToast, billMonth],
   );

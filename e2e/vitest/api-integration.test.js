@@ -12,12 +12,14 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { createClient } from "@supabase/supabase-js";
 import { getEnv } from "./_client.mjs";
+// FIX (2026-11-21 audit — AI-S M7): canonical operator email source (AGENTS §9).
+import { operatorEmail } from "../_operator.mjs";
 
 const env = getEnv();
 const URL = env.SUPABASE_URL || env.VITE_SUPABASE_URL;
 const KEY = env.SUPABASE_ANON_KEY || env.VITE_SUPABASE_ANON_KEY;
 const PIN = env.E2E_OPERATOR_PIN;
-const EMAIL = env.E2E_OPERATOR_EMAIL || "astamaniac001@gmail.com";
+const EMAIL = operatorEmail(env.E2E_OPERATOR_EMAIL);
 
 const shouldRun = !!(URL && KEY);
 

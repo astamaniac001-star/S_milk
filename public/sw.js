@@ -1,6 +1,10 @@
 // fallow-ignore-file unused-file
 /* ============================================================================
- * MILK DELIVERY ADMIN — V22 (Security Patched)
+ * MILK DELIVERY ADMIN — Service Worker
+ * (The old "V22" header label drifted from the real CACHE name; retired
+ * 2026-11-21. The CACHE constant below is the single version marker — bump
+ * it on every shell-changing release; docs never quote its value, per
+ * AGENTS §19.)
  * FILE 1: sw.js  (Service Worker — place in project root / public/)
  * ============================================================================
  *
@@ -26,12 +30,14 @@
 // previous bump: the shell handler is strictly cache-first, so the cached
 // `/index.html` still points at the OLD content-hashed bundles and returning
 // operators would keep running the previous build until the cache is evicted.
-const CACHE = "milk-v27"; // Bumped from v26: Imports day/date-range views + Confirmed-only daily stock card
+const CACHE = "milk-v28"; // Bumped from v27: audit-fix release — shell hygiene (KPI tiles, contrast, credit-note card, sign-out fix)
 const SHELL = [
   "/",
   "/index.html",
   "/app.css",
   "/apply-dark-mode.js",
+  "/manifest.json",
+  "/register-sw.js",
   "/favicon.svg",
   "/icons.svg",
   "/apple-touch-icon.png",

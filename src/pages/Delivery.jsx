@@ -309,7 +309,13 @@ export default function Delivery({
               {busy ? "⏳ Generating..." : "⚡ Generate Deliveries"}
             </Btn>
             <Btn
-              onClick={() => onOpenModal("addAdHoc")}
+              onClick={() =>
+                // FIX (2026-11-21 audit — AI-D P1-7/AI-L M1): prefill the
+                // modal with the VIEWED date. Without it, CustomerDateFields
+                // fell back to today, so an extra intended for a historical
+                // date was silently recorded on today's date.
+                onOpenModal("addAdHoc", { date: logDate })
+              }
               style={{ whiteSpace: "nowrap", flex: "0 0 auto" }}
             >
               + Extra Delivery

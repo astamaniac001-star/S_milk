@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { useAuth } from "./useAuth";
+import { OPERATOR_EMAIL } from "../lib/constants.js";
 
 // Stub supabaseClient BEFORE the hook imports it. Vitest hoists vi.mock, so we
 // declare an in-test factory that exposes the auth methods we exercise.
@@ -168,8 +169,11 @@ describe("useAuth — login()(pin) — 6-digit PIN contract (audit rule §9)", (
       await result.current.login("12-34ab56");
     });
     expect(signInWithPasswordMock).toHaveBeenCalledTimes(1);
+    // FIX (2026-11-21 audit — AI-S M7): assert against the canonical
+    // OPERATOR_EMAIL constant instead of hardcoding the address a second
+    // time (AGENTS §9).
     expect(signInWithPasswordMock).toHaveBeenCalledWith({
-      email: import.meta.env.VITE_OPERATOR_EMAIL || "astamaniac001@gmail.com",
+      email: OPERATOR_EMAIL,
       password: "123456",
     });
     // Per documented contract: never log PINs to console or persist them.
