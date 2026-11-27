@@ -156,7 +156,9 @@ export function filterBills(
         nameOf(a).localeCompare(nameOf(b)),
     );
   } else if (sort === "due") {
-    rows.sort((a, b) => dueOf(b) - dueOf(a) || nameOf(a).localeCompare(nameOf(b)));
+    rows.sort(
+      (a, b) => dueOf(b) - dueOf(a) || nameOf(a).localeCompare(nameOf(b)),
+    );
   } else if (sort === "name") {
     rows.sort((a, b) => nameOf(a).localeCompare(nameOf(b)));
   }

@@ -45,6 +45,44 @@ export async function updateLogEntry(payload) {
   return { data: mapLogFromApi(data) };
 }
 
+// Rows WITHOUT a brand (legacy/unbranded) must not go through the PostgREST
+// upsert: NULL never matches in a unique index, so the upsert would INSERT a
+// duplicate row instead of updating (and the DB's NULL-safe unique expression
+// index would reject it with a 409). Each row is found by
+// (customer_id, date, product) and updated by id — or inserted when no
+// brandless row exists yet. Shared by bulkUpsertLogs and
+// generateDailyLogsForDate so the two write paths cannot drift.
+async function upsertBrandlessRow(row) {
+  const { data: existing, error: findError } = await supabase
+    .from("daily_logs")
+    .select("id")
+    .eq("customer_id", row.customer_id)
+    .eq("date", row.date)
+    .eq("product", row.product)
+    .is("brand_id", null)
+    .limit(1);
+  must(findError);
+  const match = (existing || [])[0];
+  if (match) {
+    const { error: updateError } = await supabase
+      .from("daily_logs")
+      .update({ qty: row.qty, delivered: row.delivered, note: row.note })
+      .eq("id", match.id);
+    must(updateError);
+    return;
+  }
+  const { error: insertError } = await supabase
+    .from("daily_logs")
+    .insert([row]);
+  must(insertError);
+}
+
+async function upsertBrandlessRows(rows) {
+  for (const row of rows) {
+    await upsertBrandlessRow(row);
+  }
+}
+
 export async function bulkUpsertLogs(payload) {
   if (!Array.isArray(payload.logs) || payload.logs.length === 0) {
     return { saved: 0 };
@@ -69,11 +107,8 @@ export async function bulkUpsertLogs(payload) {
   // product) — a customer can receive several milk types and several brands
   // of the same type on the same day.
   //
-  // Rows WITHOUT a brand (legacy/unbranded) must not go through the upsert:
-  // NULL never matches in a unique index, so the upsert would INSERT a
-  // duplicate row instead of updating (and the DB's NULL-safe unique index
-  // would reject it with a 409). Those rows are updated by id — or inserted
-  // when no brandless row exists yet for that (customer, date, product).
+  // Rows WITHOUT a brand go through the find-then-update-or-insert path
+  // (upsertBrandlessRows) — see that helper for why.
   const brandedRows = rows.filter((r) => r.brand_id);
   const brandlessRows = rows.filter((r) => !r.brand_id);
 
@@ -90,31 +125,8 @@ export async function bulkUpsertLogs(payload) {
     saved += Number(count) || 0;
   }
 
-  for (const row of brandlessRows) {
-    const { data: existing, error: findError } = await supabase
-      .from("daily_logs")
-      .select("id")
-      .eq("customer_id", row.customer_id)
-      .eq("date", row.date)
-      .eq("product", row.product)
-      .is("brand_id", null)
-      .limit(1);
-    must(findError);
-    const match = (existing || [])[0];
-    if (match) {
-      const { error: updateError } = await supabase
-        .from("daily_logs")
-        .update({ qty: row.qty, delivered: row.delivered, note: row.note })
-        .eq("id", match.id);
-      must(updateError);
-    } else {
-      const { error: insertError } = await supabase
-        .from("daily_logs")
-        .insert([row]);
-      must(insertError);
-    }
-    saved += 1;
-  }
+  await upsertBrandlessRows(brandlessRows);
+  saved += brandlessRows.length;
 
   if (saved !== rows.length) {
     console.warn(
@@ -122,6 +134,92 @@ export async function bulkUpsertLogs(payload) {
     );
   }
   return { saved };
+}
+
+// Merge one customer's subscriptions that fall on `dow` into one quantity per
+// (brand, product) key. Same-type subs from different brands stay separate so
+// each bills at its own rate; same (brand, type) subs SUM (the DB's
+// uniq_sub_customer_brand_type_active index guarantees at most one active
+// row per key, so summing is the merge the generator expects).
+function mergeSameDayQtyByProduct(subs, dow) {
+  const qtyByProductKey = new Map();
+  for (const s of subs) {
+    if (!toArray(s.delivery_days).map(Number).includes(dow)) continue;
+    const product = s.milk_type || "Full Cream";
+    const brandId = s.brand_id ?? "";
+    const key = `${brandId}|${product}`;
+    const entry = qtyByProductKey.get(key) || { brandId, product, qty: 0 };
+    entry.qty += toNum(s.qty || 0);
+    qtyByProductKey.set(key, entry);
+  }
+  return qtyByProductKey;
+}
+
+// Pure scheduling rules: which daily_logs rows does this date need? Extracted
+// from generateDailyLogsForDate so the rules are unit-testable without
+// Supabase mocks. Returns the rows to write plus the skip counters the
+// Generate button's summary reports. No I/O, no mutation of its inputs.
+export function buildDailyLogRows({
+  date,
+  dow,
+  subscriptions,
+  activeCustomerIds,
+  pausedCustomerIds,
+  existingKeys,
+}) {
+  const subsByCustomer = new Map();
+  for (const s of subscriptions || []) {
+    if (!subsByCustomer.has(s.customer_id))
+      subsByCustomer.set(s.customer_id, []);
+    subsByCustomer.get(s.customer_id).push(s);
+  }
+
+  const counters = {
+    skippedExisting: 0,
+    skippedPaused: 0,
+    skippedWrongDay: 0,
+    skippedInactiveCust: 0,
+  };
+  const rows = [];
+
+  // Subscription-centric: logs are generated from active subscriptions only.
+  // The legacy customer-default fallback (customers.delivery_days/daily_qty/
+  // product) is gone — a customer with no active subscription simply has no
+  // scheduled delivery.
+  for (const [custId, subs] of subsByCustomer) {
+    if (!activeCustomerIds.has(custId)) {
+      counters.skippedInactiveCust++;
+      continue;
+    }
+    if (pausedCustomerIds.has(custId)) {
+      counters.skippedPaused++;
+      continue;
+    }
+
+    const qtyByProductKey = mergeSameDayQtyByProduct(subs, dow);
+    if (qtyByProductKey.size === 0) {
+      counters.skippedWrongDay++;
+      continue;
+    }
+
+    for (const { brandId, product, qty } of qtyByProductKey.values()) {
+      if (existingKeys.has(`${custId}|${brandId}|${product}`)) {
+        counters.skippedExisting++;
+        continue;
+      }
+      rows.push({
+        customer_id: custId,
+        date,
+        product,
+        brand_id: brandId || null,
+        qty,
+        delivered: false,
+        note: "Auto-generated (Sub)",
+      });
+    }
+  }
+
+  return { rows, counters };
 }
 
 export async function generateDailyLogsForDate(payload) {
@@ -158,20 +256,7 @@ export async function generateDailyLogsForDate(payload) {
   const activeCustomerIds = new Set(
     (custRes.data || []).filter((c) => c.status === "Active").map((c) => c.id),
   );
-  const subsByCustomer = new Map();
-  for (const s of subRes.data || []) {
-    // Multiple subscriptions per customer are supported — same milk type
-    // from DIFFERENT brands is expected (each becomes its own daily_logs row
-    // so billing can price it at that brand's rate). The DB partial unique
-    // index uniq_sub_customer_brand_type_active guarantees at most one
-    // active sub per (customer, brand, milk_type), so same-key subs below
-    // are merged by SUMMING qty and never collide with the
-    // (customer_id, date, brand_id, product) constraint.
-    if (!subsByCustomer.has(s.customer_id))
-      subsByCustomer.set(s.customer_id, []);
-    subsByCustomer.get(s.customer_id).push(s);
-  }
-  const paused = new Set(
+  const pausedCustomerIds = new Set(
     (pauseRes.data || [])
       .filter(
         (p) => p.start_date <= date && (!p.end_date || p.end_date >= date),
@@ -179,62 +264,17 @@ export async function generateDailyLogsForDate(payload) {
       .map((p) => p.customer_id),
   );
 
-  let created = 0,
-    skippedExisting = 0,
-    skippedPaused = 0,
-    skippedWrongDay = 0,
-    skippedInactiveCust = 0;
-  const toInsert = [];
+  // Pure scheduling rules — see buildDailyLogRows above.
+  const { rows: toInsert, counters } = buildDailyLogRows({
+    date,
+    dow,
+    subscriptions: subRes.data,
+    activeCustomerIds,
+    pausedCustomerIds,
+    existingKeys: existing,
+  });
 
-  // Subscription-centric: logs are generated from active subscriptions only.
-  // The legacy customer-default fallback (customers.delivery_days/daily_qty/
-  // product) is gone — a customer with no active subscription simply has no
-  // scheduled delivery.
-  for (const [custId, subs] of subsByCustomer) {
-    if (!activeCustomerIds.has(custId)) {
-      skippedInactiveCust++;
-      continue;
-    }
-    if (paused.has(custId)) {
-      skippedPaused++;
-      continue;
-    }
-
-    // Merge same-day quantities per (brand, product) into one row per key —
-    // the daily_logs row identity is customer+date+brand+product. Two
-    // different brands of the same milk type become two rows (correct: each
-    // is priced at its own brand's rate).
-    const qtyByProductKey = new Map();
-    for (const s of subs) {
-      if (!toArray(s.delivery_days).map(Number).includes(dow)) continue;
-      const product = s.milk_type || "Full Cream";
-      const brandId = s.brand_id ?? "";
-      const key = `${brandId}|${product}`;
-      const entry = qtyByProductKey.get(key) || { brandId, product, qty: 0 };
-      entry.qty += toNum(s.qty || 0);
-      qtyByProductKey.set(key, entry);
-    }
-    if (qtyByProductKey.size === 0) {
-      skippedWrongDay++;
-      continue;
-    }
-
-    for (const { brandId, product, qty } of qtyByProductKey.values()) {
-      if (existing.has(`${custId}|${brandId}|${product}`)) {
-        skippedExisting++;
-        continue;
-      }
-      toInsert.push({
-        customer_id: custId,
-        date,
-        product,
-        brand_id: brandId || null,
-        qty,
-        delivered: false,
-        note: "Auto-generated (Sub)",
-      });
-    }
-  }
+  let created = 0;
 
   if (toInsert.length) {
     // FIX (2026-11-21 audit — AI-L M5): split brandless rows out of the
@@ -265,39 +305,10 @@ export async function generateDailyLogsForDate(payload) {
       created += savedCount;
     }
 
-    for (const row of brandlessRows) {
-      const { data: existing, error: findError } = await supabase
-        .from("daily_logs")
-        .select("id")
-        .eq("customer_id", row.customer_id)
-        .eq("date", row.date)
-        .eq("product", row.product)
-        .is("brand_id", null)
-        .limit(1);
-      must(findError);
-      const match = (existing || [])[0];
-      if (match) {
-        const { error: updateError } = await supabase
-          .from("daily_logs")
-          .update({ qty: row.qty, delivered: row.delivered, note: row.note })
-          .eq("id", match.id);
-        must(updateError);
-      } else {
-        const { error: insertError } = await supabase
-          .from("daily_logs")
-          .insert([row]);
-        must(insertError);
-      }
-      created += 1;
-    }
+    await upsertBrandlessRows(brandlessRows);
+    created += brandlessRows.length;
   }
-  return {
-    created,
-    skippedExisting,
-    skippedPaused,
-    skippedWrongDay,
-    skippedInactiveCust,
-  };
+  return { created, ...counters };
 }
 
 export async function addAdHocLog(payload) {

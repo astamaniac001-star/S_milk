@@ -15,7 +15,6 @@ vi.mock("../components/ui.jsx", () => ({
       {children}
     </div>
   ),
-  IS: () => ({}),
   Empty: ({ message }) => <div data-testid="empty">{message}</div>,
   Btn: ({ children, onClick, disabled }) => (
     <button onClick={onClick} disabled={disabled} data-testid="btn">
@@ -58,9 +57,9 @@ describe("Delivery Page", () => {
   it("prefills the Extra Delivery modal with the VIEWED date (2026-11-21 fix — AI-D P1-7)", async () => {
     const user = userEvent.setup();
     render(<Delivery {...defaultProps} />);
-    const extraBtn = screen.getAllByTestId("btn").find((b) =>
-      b.textContent.includes("Extra Delivery"),
-    );
+    const extraBtn = screen
+      .getAllByTestId("btn")
+      .find((b) => b.textContent.includes("Extra Delivery"));
     await user.click(extraBtn);
     expect(defaultProps.onOpenModal).toHaveBeenCalledWith("addAdHoc", {
       date: "2026-07-04",

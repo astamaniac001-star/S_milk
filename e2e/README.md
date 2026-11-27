@@ -102,11 +102,11 @@ ffmpeg binaries just to collect the suite.
 All values read from your LOCAL `.env` (git-ignored â€” not committed; each
 operator keeps their own copy; see the repo root README):
 
-| Var                      | Required for      | Notes                                            |
-| ------------------------ | ----------------- | ------------------------------------------------ |
+| Var                      | Required for      | Notes                                             |
+| ------------------------ | ----------------- | ------------------------------------------------- |
 | `VITE_SUPABASE_URL`      | everything        | your local .env copy (git-ignored, NOT committed) |
 | `VITE_SUPABASE_ANON_KEY` | everything        | your local .env copy (git-ignored, NOT committed) |
-| `E2E_OPERATOR_PIN`       | all UI + DB tests | the operator's 6-digit Auth PIN                  |
+| `E2E_OPERATOR_PIN`       | all UI + DB tests | the operator's 6-digit Auth PIN                   |
 | `E2E_OPERATOR_EMAIL`     | optional override | resolves through `e2e/_operator.mjs` (AGENTS Â§9) |
 
 Set a private PIN value for `E2E_OPERATOR_PIN` in your local `.env` (which is
@@ -142,4 +142,3 @@ These suites run against a LINKED project that holds real operator data:
    Supabase; live suites run via `check-all:live` / `test:db` / `test:e2e`
    deliberately, and CI keeps them behind dedicated secrets targeting a
    disposable project.
-

@@ -4,6 +4,11 @@ import {
   validateImportForm,
   parseImportValues,
   parseOptionalRate,
+  resolveBrandName,
+  findDuplicateBrand,
+  normalizeBrandRates,
+  validateBrandName,
+  validateBrandRates,
 } from "./validation.js";
 
 describe("validateCustomerForm", () => {
@@ -99,5 +104,92 @@ describe("parseOptionalRate", () => {
   it("parses numeric strings", () => {
     expect(parseOptionalRate("36.5")).toBe(36.5);
     expect(parseOptionalRate(40)).toBe(40);
+  });
+});
+
+describe("brand validation", () => {
+  it("resolves the name from the form or the edit target", () => {
+    expect(resolveBrandName({ name: "Amul" })).toBe("Amul");
+    expect(resolveBrandName({ brandName: "Amul" })).toBe("Amul");
+    expect(resolveBrandName({}, { name: "Amul" })).toBe("Amul");
+    expect(resolveBrandName({}, { brandName: "Amul" })).toBe("Amul");
+    expect(resolveBrandName({}, {})).toBe("");
+  });
+
+  it("flags a duplicate name but lets an edit keep its own name", () => {
+    const brands = [
+      { id: "B1", name: "Amul" },
+      { id: "B2", name: "Mother Dairy" },
+    ];
+    expect(findDuplicateBrand(brands, "amul", undefined)?.id).toBe("B1");
+    expect(findDuplicateBrand(brands, "  AMUL  ", "B2")?.id).toBe("B1");
+    expect(findDuplicateBrand(brands, "Amul", "B1")).toBeUndefined();
+    expect(findDuplicateBrand(brands, "New Brand", undefined)).toBeUndefined();
+    expect(findDuplicateBrand(undefined, "Amul")).toBeUndefined();
+  });
+
+  it("normalizes the rates array and the legacy single-rate shape", () => {
+    expect(
+      normalizeBrandRates({
+        rates: [
+          { milkType: "Full Cream", rate: 60 },
+          { milkType: "  ", rate: 55 },
+        ],
+      }),
+    ).toEqual([{ milkType: "Full Cream", rate: 60 }]);
+    expect(normalizeBrandRates({ rate: "55" })).toEqual([
+      { milkType: "Full Cream", rate: 55 },
+    ]);
+    expect(normalizeBrandRates({ rate: "", rates: undefined })).toEqual([]);
+    expect(normalizeBrandRates({})).toEqual([]);
+  });
+
+  it("validates the brand name", () => {
+    expect(validateBrandName("Amul")).toBeNull();
+    expect(validateBrandName("")).toBe("Brand name is required");
+    expect(validateBrandName("   ")).toBe("Brand name is required");
+    expect(validateBrandName(undefined)).toBe("Brand name is required");
+  });
+
+  it("requires at least one rate", () => {
+    expect(validateBrandRates([])).toBe(
+      "Enter a rate for at least one milk type",
+    );
+    expect(validateBrandRates(undefined)).toBe(
+      "Enter a rate for at least one milk type",
+    );
+  });
+
+  it("rejects duplicate milk types, empty rates, and non-positive rates", () => {
+    expect(
+      validateBrandRates([
+        { milkType: "Full Cream", rate: 60 },
+        { milkType: "Full Cream", rate: 70 },
+      ]),
+    ).toBe('"Full Cream" already has a rate for this brand');
+    expect(validateBrandRates([{ milkType: "Toned", rate: "" }])).toBe(
+      'Enter a rate for "Toned"',
+    );
+    expect(validateBrandRates([{ milkType: "Toned", rate: null }])).toBe(
+      'Enter a rate for "Toned"',
+    );
+    expect(validateBrandRates([{ milkType: "Toned", rate: 0 }])).toBe(
+      'Enter a rate greater than 0 for "Toned"',
+    );
+    expect(validateBrandRates([{ milkType: "Toned", rate: -1 }])).toBe(
+      'Enter a rate greater than 0 for "Toned"',
+    );
+    expect(validateBrandRates([{ milkType: "Toned", rate: Number.NaN }])).toBe(
+      'Enter a rate greater than 0 for "Toned"',
+    );
+  });
+
+  it("accepts a valid multi-type rate list", () => {
+    expect(
+      validateBrandRates([
+        { milkType: "Full Cream", rate: 60 },
+        { milkType: "Toned", rate: 55 },
+      ]),
+    ).toBeNull();
   });
 });

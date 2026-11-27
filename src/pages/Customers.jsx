@@ -47,9 +47,7 @@ function CustomerSubLines({ subs, brands = [] }) {
             key={s.id}
             className="row-sub"
             style={{
-              color: s.isActive
-                ? "var(--text-secondary)"
-                : "var(--text-muted)",
+              color: s.isActive ? "var(--text-secondary)" : "var(--text-muted)",
             }}
           >
             <Milk size={12} aria-hidden="true" />

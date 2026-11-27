@@ -73,6 +73,7 @@
     "affordances",
     "precached",
     "fallowignore",
+    "fallowrc",
     "Postg",
     "nullsafe",
     "plpgsql",

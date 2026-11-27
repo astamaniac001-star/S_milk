@@ -7,5 +7,4 @@
 // imports from this module.
 export const OPERATOR_EMAIL_FALLBACK = "astamaniac001@gmail.com";
 
-export const operatorEmail = (envValue) =>
-  envValue || OPERATOR_EMAIL_FALLBACK;
+export const operatorEmail = (envValue) => envValue || OPERATOR_EMAIL_FALLBACK;

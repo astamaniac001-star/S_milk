@@ -39,7 +39,7 @@ It's **not** a customer-facing app: single-operator, installable PWA, offline-to
 | Routing    | Tab-based (no react-router)                                          | State field `tab` in `useAppUi`                             |
 | Tests      | Vitest 4 + jsdom 29 + Testing Library; Playwright 1.62 (browser e2e) | Coverage thresholds enforced separately                     |
 | Lint       | ESLint 10 flat config + react-hooks + react-refresh                  | `no-console` warn (warn/error allowed)                      |
-| Other      | cspell, fallow, madge, prettier, depcheck                            | Advisory; not all are in `check-all`                        |
+| Other      | cspell, fallow, madge, prettier, depcheck                            | Only `fallow` gates `check-all` (`.fallowrc.jsonc`)         |
 
 ## Repository layout
 
@@ -70,7 +70,7 @@ src/
 â”‚   â”‚                    # bill search + newest/due/name sort (filterBills)
 â”‚   â”œâ”€â”€ utils.js             # toNum, fmt, getToday [Asia/Kolkata], getDaysAgoIST, shiftDate, cleanPhone, dayLabels, matchBrandByMilkType, brandLabel, generateKey
 â”‚   â”œâ”€â”€ validation.js        # Barrel re-exporting validation/*
-â”‚   â”œâ”€â”€ validation/          # customer.js, import.js, subscription.js (validateSubscriptionForm)
+â”‚   â”œâ”€â”€ validation/          # customer.js, import.js, subscription.js, brand.js (validateBrandName/Rates, resolveBrandName, findDuplicateBrand, normalizeBrandRates)
 â”‚   â””â”€â”€ database.types.ts    # Generated current Supabase types; never edit manually
 â”œâ”€â”€ hooks/
 â”‚   â”œâ”€â”€ useAuth.js           # Supabase Auth session + 6-digit operator PIN login
@@ -92,6 +92,8 @@ src/
 â”‚       â”œâ”€â”€ useAdminHandlers.js     # Pauses + brands + diagnostics + health + PIN rotate
 â”‚       â””â”€â”€ useSubscriptionHandlers.js
 â”œâ”€â”€ pages/                   # Dashboard, Customers, Subscriptions, Delivery, Imports, Billing, More (+ tests)
+â”‚   â””â”€â”€ imports/              # Imports page-local components: ImportFilters, DayStockCard, ImportStats,
+                             # ImportList, BrandList, BrandImportRow, breakdowns (modals)
 â”œâ”€â”€ components/
 â”‚   â”œâ”€â”€ AppShell.jsx         # TABS (7), header, bottom nav, load-error banner, dark mode, online badge
 â”‚   â”œâ”€â”€ AppPage.jsx          # PAGE_RENDERERS: tab â†’ page
@@ -101,8 +103,8 @@ src/
 â”‚   â”œâ”€â”€ ui.jsx               # Badge, Toast, Modal (focus trap + footer slot), Btn, Field, Card,
 â”‚   â”‚                    # CardHeader (icon/subtitle), Empty, Section, StatGrid (accent),
 â”‚   â”‚                    # ActiveBrandOptions (valueKey="id"), ActiveCustomerOptions,
-â”‚   â”‚                    # + redesign primitives: IconButton, Toolbar, SearchInput, ChipRow,
-â”‚   â”‚                    #   Skeleton, ProgressRing, MiniBars
+â”‚   â”‚                    # + redesign primitives: Toolbar, SearchInput, ChipRow,
+â”‚   â”‚                    #   Skeleton, ProgressRing
 â”‚   â”œâ”€â”€ forms.jsx            # Barrel re-exporting 11 modals from modals/
 â”‚   â””â”€â”€ modals/              # 12 modal components (incl. shared.jsx); ChangePinModal imported directly
 â”œâ”€â”€ assets/                  # Static images (vite.svg, react.svg, hero.png)
@@ -502,8 +504,8 @@ brand prices each milk type independently.
 
 - `brand_rates (brand_id, milk_type, rate_per_liter)` is the rate table â€”
   `UNIQUE (brand_id, milk_type)`, `CHECK rate_per_liter > 0` (NOT VALID until
-the operator validates legacy rows â€” 2026-11-21 migration), operator-only
-RLS. The
+  the operator validates legacy rows â€” 2026-11-21 migration), operator-only
+  RLS. The
   legacy `milk_brands.default_milk_type`/`rate_per_liter` columns exist and
   are kept in sync by `save_brand_rpc` (they drive the NULL-brand pricing
   fallback) â€” never use them as the rate source for a branded delivery.
@@ -587,12 +589,18 @@ drift) â€” reference objects by name.
 ### Run all checks
 
 ```bash
-npm run check-all      # OFFLINE gate: lint → test → build (never touches Supabase)
+npm run check-all      # OFFLINE gate: lint → test → build → fallow:gate (never touches Supabase)
 npm run check-all:live # + test:db - MUTATES the linked project; run deliberately
 npm run test:coverage  # enforced thresholds; run and report separately
 npm run advisor-all    # spellcheck â†’ check-deps â†’ fallow â†’ test:coverage
 npm run test:e2e       # browser e2e (Edge channel)
 ```
+
+`fallow:gate` = `fallow` (dead code must stay at zero; complexity is `warn`
+until the refactor plan lands) + `fallow dupes --fail-on-issues`. Config and
+the rationale for every ignore live in `.fallowrc.jsonc`; `src/lib/database.types.ts`
+is excluded from clone detection because it is generated. Do not add a new
+suppression without a reason — `fallow` reports `stale-suppressions`.
 
 Other advisory scripts: `audit`, `circular`, `cprettier`, `check-deps`,
 `fallow`, `spellcheck`. Inspect `package.json` before describing what an
@@ -686,4 +694,3 @@ older ones for context. Review the generated artifacts after applying.
 7. Review the regenerated artifacts for stale overloads, permissive policies,
    grants to `anon`, invalid triggers, missing constraints, type drift.
 8. Commit the migration + both regenerated artifacts together.
-

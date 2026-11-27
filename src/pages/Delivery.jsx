@@ -330,9 +330,7 @@ export default function Delivery({
         ) : (
           <Card>
             <div className="section-head">
-              <h3 className="card-head-title">
-                Brand × Milk Type — {logDate}
-              </h3>
+              <h3 className="card-head-title">Brand × Milk Type — {logDate}</h3>
               <span className="pill accent tnum">
                 {stats.totalLiters} delivered
               </span>
@@ -397,7 +395,10 @@ export default function Delivery({
           {[0, 1, 2].map((i) => (
             <div key={i} className="row">
               <div className="row-main">
-                <div className="skeleton" style={{ width: "38%", height: 15 }} />
+                <div
+                  className="skeleton"
+                  style={{ width: "38%", height: 15 }}
+                />
                 <div
                   className="skeleton"
                   style={{ width: "55%", height: 12, marginTop: 8 }}

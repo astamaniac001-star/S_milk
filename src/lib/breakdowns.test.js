@@ -42,9 +42,7 @@ describe("buildQuantityBreakdown", () => {
     const rows = buildQuantityBreakdown([
       { brand: "Amul", type: undefined, qty: "3", total: "90" },
     ]);
-    expect(rows).toEqual([
-      { brand: "Amul", type: "Mixed", qty: 3, cost: 90 },
-    ]);
+    expect(rows).toEqual([{ brand: "Amul", type: "Mixed", qty: 3, cost: 90 }]);
   });
 
   it("returns an empty list for null/undefined input", () => {
@@ -137,7 +135,13 @@ describe("buildStockBreakdown", () => {
       date: "2026-11-03",
     });
     expect(rows).toEqual([
-      { brand: "Amul", type: "Full Cream", imported: 0, delivered: 2, balance: -2 },
+      {
+        brand: "Amul",
+        type: "Full Cream",
+        imported: 0,
+        delivered: 2,
+        balance: -2,
+      },
       {
         brand: "Mother Dairy",
         type: "Toned",

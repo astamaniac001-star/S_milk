@@ -172,7 +172,9 @@ describe("More page — Credit Notes card (2026-11-21, AI-L H1 regression)", () 
     expect(screen.getByText("Credit Notes")).toBeInTheDocument();
     expect(screen.getByText(/Spoiled delivery/)).toBeInTheDocument();
     expect(screen.getByText(/Goodwill/)).toBeInTheDocument();
-    expect(screen.getAllByTestId("badge").some((b) => b.textContent === "Applied")).toBe(true);
+    expect(
+      screen.getAllByTestId("badge").some((b) => b.textContent === "Applied"),
+    ).toBe(true);
   });
 
   it("resolves the viewed month's bill for a note without a stored billId and applies with (id, billId, version)", () => {

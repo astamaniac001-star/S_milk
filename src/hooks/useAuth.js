@@ -68,7 +68,8 @@ export function useAuth() {
           try {
             const { data: fallback } = await supabase.auth.getSession();
             const s = fallback?.session;
-            const notExpired = s?.expires_at && s.expires_at * 1000 > Date.now();
+            const notExpired =
+              s?.expires_at && s.expires_at * 1000 > Date.now();
             if (s && notExpired) {
               console.warn(
                 "getUser() failed at network level — trusting the unexpired persisted session (offline mode).",

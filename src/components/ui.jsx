@@ -65,7 +65,11 @@ export function Toast({ msg, type, onClose }) {
   const ariaLive = type === "error" ? "assertive" : "polite";
 
   return (
-    <div className={`toast toast-${type || "info"}`} role={role} aria-live={ariaLive}>
+    <div
+      className={`toast toast-${type || "info"}`}
+      role={role}
+      aria-live={ariaLive}
+    >
       {msg}
       <button
         className="close-btn"
@@ -375,51 +379,9 @@ export function ActiveCustomerOptions({ customers }) {
     ));
 }
 
-// FIX M8: Backward-compatible inline style for inputs, now Dark Mode aware
-// FIX (2026-11-21 audit — AI-S H2): value color must be the PRIMARY text
-// color (~15:1), not the muted placeholder tone (~2.8:1 — WCAG AA fail).
-export const IS = (extra = {}) => ({
-  width: "100%",
-  padding: "10px 14px",
-  background: "var(--bg-main, #ffffff)",
-  border: "1px solid var(--border-color, #e2e8f0)",
-  borderRadius: 8,
-  fontSize: 14,
-  color: "var(--text-primary, #18181b)",
-  transition: "all 0.2s ease",
-  outline: "none",
-  ...extra,
-});
-
 /* ==========================================================================
    Redesign primitives (2026-11) — additive only; nothing above changed shape.
    ========================================================================== */
-
-// Square/circular icon-only chrome button. Always label it for a11y.
-export function IconButton({
-  label,
-  onClick,
-  children,
-  title,
-  active,
-  square = true,
-  className = "",
-  ...rest
-}) {
-  return (
-    <button
-      type="button"
-      className={`icon-btn ${square ? "square" : ""} ${active ? "active" : ""} ${className}`}
-      onClick={onClick}
-      aria-label={label}
-      aria-pressed={active === undefined ? undefined : !!active}
-      title={title || label}
-      {...rest}
-    >
-      {children}
-    </button>
-  );
-}
 
 // Toolbar wrapper for a page's search + filter + primary action row.
 export function Toolbar({ children, className = "" }) {
@@ -456,7 +418,13 @@ export function SearchInput({
 
 // Segmented filter chips. `options`: strings or { value, label };
 // `counts`: { [value]: number } renders the small count suffix.
-export function ChipRow({ options, value, onChange, counts, ariaLabel = "Filter" }) {
+export function ChipRow({
+  options,
+  value,
+  onChange,
+  counts,
+  ariaLabel = "Filter",
+}) {
   return (
     <div className="chip-row" role="group" aria-label={ariaLabel}>
       {options.map((opt) => {
@@ -551,67 +519,5 @@ export function ProgressRing({
       </text>
       {children}
     </svg>
-  );
-}
-
-// Tiny bar chart. `data`: [{ label, value }] — render only what callers
-// pass; no invented metrics.
-export function MiniBars({ data = [], height = 56, title }) {
-  const max = Math.max(1, ...data.map((d) => Number(d.value) || 0));
-  return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "flex-end",
-        gap: 6,
-        height,
-        width: "100%",
-      }}
-      role={title ? "img" : undefined}
-      aria-label={title}
-    >
-      {data.map((d, i) => {
-        const v = Number(d.value) || 0;
-        return (
-          <div
-            key={`${d.label}-${i}`}
-            title={`${d.label}: ${v}`}
-            style={{
-              flex: 1,
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              gap: 4,
-              minWidth: 0,
-              height: "100%",
-              justifyContent: "flex-end",
-            }}
-          >
-            <div
-              style={{
-                width: "100%",
-                maxWidth: 26,
-                height: Math.max(3, (v / max) * (height - 22)),
-                borderRadius: 4,
-                background: "var(--brand-500, #2c6a4a)",
-                opacity: 0.85,
-              }}
-            />
-            <span
-              style={{
-                fontSize: 10,
-                color: "var(--text-muted, #6b7280)",
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                maxWidth: "100%",
-              }}
-            >
-              {d.label}
-            </span>
-          </div>
-        );
-      })}
-    </div>
   );
 }

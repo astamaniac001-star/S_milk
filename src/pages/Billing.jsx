@@ -274,7 +274,11 @@ export default function Billing({
           </label>
         </div>
 
-        <div className="chip-row" role="group" aria-label="Filter bills by status">
+        <div
+          className="chip-row"
+          role="group"
+          aria-label="Filter bills by status"
+        >
           {STATUS_FILTERS.map((s) => {
             const active = billFilter === s;
             return (

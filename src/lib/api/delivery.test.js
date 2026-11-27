@@ -1,5 +1,9 @@
 ﻿import { describe, it, expect, vi, beforeEach } from "vitest";
-import { generateDailyLogsForDate, bulkUpsertLogs } from "./delivery.js";
+import {
+  generateDailyLogsForDate,
+  bulkUpsertLogs,
+  buildDailyLogRows,
+} from "./delivery.js";
 import { supabase, __mock } from "../supabaseClient.js";
 
 // Mock Supabase with a thenable chain so `await supabase.from(t).select(...)`
@@ -483,3 +487,257 @@ describe("bulkUpsertLogs â€” row identity", () => {
   });
 });
 
+// The pure scheduling step, extracted from generateDailyLogsForDate so the
+// rules are testable without Supabase mocks. Every Monday = dow 1.
+const DOW_MON = 1;
+
+describe("buildDailyLogRows — pure scheduling rules", () => {
+  const baseArgs = {
+    date: "2026-08-03",
+    dow: DOW_MON,
+    subscriptions: [],
+    activeCustomerIds: new Set(),
+    pausedCustomerIds: new Set(),
+    existingKeys: new Set(),
+  };
+
+  it("merges same-brand same-type subscriptions into one summed row", () => {
+    const { rows, counters } = buildDailyLogRows({
+      ...baseArgs,
+      subscriptions: [
+        {
+          customer_id: "C1",
+          delivery_days: [1, 2],
+          qty: 1,
+          milk_type: "Full Cream",
+          brand_id: "B1",
+        },
+        {
+          customer_id: "C1",
+          delivery_days: [1, 2],
+          qty: 2.5,
+          milk_type: "Full Cream",
+          brand_id: "B1",
+        },
+      ],
+      activeCustomerIds: new Set(["C1"]),
+    });
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      customer_id: "C1",
+      date: "2026-08-03",
+      product: "Full Cream",
+      brand_id: "B1",
+      qty: 3.5,
+      delivered: false,
+      note: "Auto-generated (Sub)",
+    });
+    expect(counters).toEqual({
+      skippedExisting: 0,
+      skippedPaused: 0,
+      skippedWrongDay: 0,
+      skippedInactiveCust: 0,
+    });
+  });
+
+  it("keeps the same milk type from different brands as separate rows", () => {
+    const { rows } = buildDailyLogRows({
+      ...baseArgs,
+      subscriptions: [
+        {
+          customer_id: "C1",
+          delivery_days: [1],
+          qty: 1,
+          milk_type: "Full Cream",
+          brand_id: "B1",
+        },
+        {
+          customer_id: "C1",
+          delivery_days: [1],
+          qty: 2,
+          milk_type: "Full Cream",
+          brand_id: "B2",
+        },
+      ],
+      activeCustomerIds: new Set(["C1"]),
+    });
+
+    expect(rows.map((r) => [r.brand_id, r.qty])).toEqual([
+      ["B1", 1],
+      ["B2", 2],
+    ]);
+  });
+
+  it("emits brand_id null for legacy unbranded substitutions", () => {
+    const { rows } = buildDailyLogRows({
+      ...baseArgs,
+      subscriptions: [
+        {
+          customer_id: "C1",
+          delivery_days: [1],
+          qty: 2,
+          milk_type: "Standard",
+          brand_id: null,
+        },
+      ],
+      activeCustomerIds: new Set(["C1"]),
+    });
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].brand_id).toBeNull();
+    expect(rows[0].product).toBe("Standard");
+  });
+
+  it("skips subs whose delivery days exclude the weekday", () => {
+    const { rows, counters } = buildDailyLogRows({
+      ...baseArgs,
+      subscriptions: [
+        {
+          customer_id: "C1",
+          delivery_days: [3, 4],
+          qty: 1,
+          milk_type: "Full Cream",
+          brand_id: "B1",
+        },
+      ],
+      activeCustomerIds: new Set(["C1"]),
+    });
+
+    expect(rows).toEqual([]);
+    expect(counters.skippedWrongDay).toBe(1);
+  });
+
+  it("skips inactive customers and paused customers", () => {
+    const subs = [
+      {
+        customer_id: "CI",
+        delivery_days: [1],
+        qty: 1,
+        milk_type: "Full Cream",
+        brand_id: "B1",
+      },
+      {
+        customer_id: "CP",
+        delivery_days: [1],
+        qty: 1,
+        milk_type: "Full Cream",
+        brand_id: "B1",
+      },
+      {
+        customer_id: "CO",
+        delivery_days: [1],
+        qty: 1,
+        milk_type: "Full Cream",
+        brand_id: "B1",
+      },
+    ];
+    const { rows, counters } = buildDailyLogRows({
+      ...baseArgs,
+      subscriptions: subs,
+      // CP is both paused AND inactive — the active check runs first.
+      activeCustomerIds: new Set(["CO", "CP"]),
+      pausedCustomerIds: new Set(["CP"]),
+    });
+
+    expect(rows.map((r) => r.customer_id)).toEqual(["CO"]);
+    expect(counters.skippedInactiveCust).toBe(1);
+    expect(counters.skippedPaused).toBe(1);
+  });
+
+  it("skips rows whose (customer, brand, type) key already exists", () => {
+    const { rows, counters } = buildDailyLogRows({
+      ...baseArgs,
+      subscriptions: [
+        {
+          customer_id: "C1",
+          delivery_days: [1],
+          qty: 1,
+          milk_type: "Full Cream",
+          brand_id: "B1",
+        },
+        {
+          customer_id: "C1",
+          delivery_days: [1],
+          qty: 2,
+          milk_type: "Toned",
+          brand_id: "B1",
+        },
+      ],
+      activeCustomerIds: new Set(["C1"]),
+      existingKeys: new Set(["C1|B1|Full Cream"]),
+    });
+
+    expect(rows.map((r) => r.product)).toEqual(["Toned"]);
+    expect(counters.skippedExisting).toBe(1);
+  });
+
+  it("treats a null-brand existing key as the empty-string key", () => {
+    const { rows, counters } = buildDailyLogRows({
+      ...baseArgs,
+      subscriptions: [
+        {
+          customer_id: "C1",
+          delivery_days: [1],
+          qty: 1,
+          milk_type: "Full Cream",
+          brand_id: null,
+        },
+      ],
+      activeCustomerIds: new Set(["C1"]),
+      existingKeys: new Set(["C1||Full Cream"]),
+    });
+
+    expect(rows).toEqual([]);
+    expect(counters.skippedExisting).toBe(1);
+  });
+
+  it("ignores customers with no active subscription at all", () => {
+    const { rows, counters } = buildDailyLogRows({
+      ...baseArgs,
+      activeCustomerIds: new Set(["C1"]),
+    });
+
+    expect(rows).toEqual([]);
+    expect(counters).toEqual({
+      skippedExisting: 0,
+      skippedPaused: 0,
+      skippedWrongDay: 0,
+      skippedInactiveCust: 0,
+    });
+  });
+
+  it("does not mutate its inputs", () => {
+    const subscriptions = [
+      {
+        customer_id: "C1",
+        delivery_days: [1],
+        qty: 1,
+        milk_type: "Full Cream",
+        brand_id: "B1",
+      },
+    ];
+    const snapshot = JSON.stringify(subscriptions);
+    const existingKeys = new Set(["nope"]);
+    buildDailyLogRows({
+      ...baseArgs,
+      subscriptions,
+      activeCustomerIds: new Set(["C1"]),
+      existingKeys,
+    });
+    expect(JSON.stringify(subscriptions)).toBe(snapshot);
+    expect(existingKeys).toEqual(new Set(["nope"]));
+  });
+
+  it("defaults a missing milk_type to Full Cream", () => {
+    const { rows } = buildDailyLogRows({
+      ...baseArgs,
+      subscriptions: [
+        { customer_id: "C1", delivery_days: [1], qty: 1, brand_id: "B1" },
+      ],
+      activeCustomerIds: new Set(["C1"]),
+    });
+
+    expect(rows[0].product).toBe("Full Cream");
+  });
+});

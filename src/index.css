@@ -455,42 +455,6 @@ select.input {
   opacity: 0.7;
 }
 
-/* Icon button (header chrome) -------------------------------------------- */
-.icon-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  height: 32px;
-  padding: 0 10px;
-  border-radius: var(--radius-md);
-  border: 1px solid transparent;
-  background: transparent;
-  color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 500;
-  font-family: var(--font-ui);
-  cursor: pointer;
-  transition:
-    background-color 0.12s ease,
-    color 0.12s ease,
-    border-color 0.12s ease;
-}
-.icon-btn:hover {
-  background: var(--bg-muted);
-  color: var(--text-primary);
-  border-color: var(--border-color);
-}
-.icon-btn.square {
-  width: 32px;
-  padding: 0;
-}
-.icon-btn.active {
-  background: var(--brand-50);
-  color: var(--brand-700);
-  border-color: transparent;
-}
-
 /* Toolbar / search -------------------------------------------------------- */
 .page-toolbar {
   display: flex;
@@ -830,7 +794,10 @@ button.stat-tile:hover {
 /* Billing page ------------------------------------------------------------ */
 .billing-controls {
   display: grid;
-  grid-template-columns: minmax(170px, 1fr) minmax(200px, 2fr) minmax(140px, 1fr);
+  grid-template-columns: minmax(170px, 1fr) minmax(200px, 2fr) minmax(
+      140px,
+      1fr
+    );
   gap: 10px;
   align-items: end;
   margin-bottom: 12px;

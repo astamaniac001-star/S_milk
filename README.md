@@ -128,7 +128,7 @@ accent, and structure carried by rules rather than decoration.
   lock, Escape/backdrop close and a `footer` action slot; `Field` with
   automatic label association and error ARIA; `StatGrid` (with per-tile
   accent), `ChipRow`, `SearchInput`, `Toolbar`, `Skeleton`, `ProgressRing`,
-  `MiniBars`, `IconButton`, `Empty` (icon/title/hint). Icons are lucide only
+  `Empty` (icon/title/hint). Icons are lucide only
   — no emoji in product chrome.
 - **Modals** — bottom sheets on phones, centered cards on desktop; all 12
   modal components share the same footer/field styling while preserving
@@ -148,15 +148,15 @@ Tab-based routing (no react-router): `AppShell` renders 7 bottom-nav tabs,
 modal components in `src/components/modals/`, re-exported by `forms.jsx`
 except `ChangePinModal` which is imported directly).
 
-| Tab           | Page                | What it does                                                                                                                                                                              | Opens                                                                                  |
-| :------------ | :------------------ | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------- |
-| **Home**      | `Dashboard.jsx`     | KPI tiles (active customers, collected revenue, pending dues, delivered stock today — with a completion ring), today's log list, clickable recent bills, quick actions                     | `addCustomer`, `addImport`, **Generate Bills**, `addAdj`, `addPause`, `addBrand`       |
-| **Customers** | `Customers.jsx`     | Identity-only customer cards (name, address, phone, status, balance) with search + status chips with counts, WhatsApp share, deactivate (OCC-guarded), each card lists that customer's subscriptions | `editCustomer`, `addSubscription` (prefilled with the customer id)            |
-| **Subs**      | `Subscriptions.jsx` | Full subscription management: search/filter chips, add / edit / delete (version-checked) / history                                                                                        | `addSubscription` (with `NEW_SUB_DEFAULTS`), `editSubscription`, `subscriptionHistory` |
-| **Delivery**  | `Delivery.jsx`      | The daily driver page: date stepper (prev/next/Today), clickable stat tiles that switch the list view (scheduled / delivered / skipped / brand × type stock table), per-log done/skip toggle with search, add extra delivery | `addAdHoc`                                                    |
-| **Imports**   | `Imports.jsx`       | Milk purchases from suppliers: draft → **Confirm** / delete (both via OCC RPCs), month/day/range views + brand/status filters, day-stock card, qty & cost breakdown, brand manager (add + edit per-milk-type rates) | `addImport` (add _and_ edit — the modal handles both), `addBrand`, `editBrand` |
-| **Billing**   | `Billing.jsx`       | Monthly bills per customer: month picker, text search + status chips with counts + sort (newest/due/name), KPIs, lock/unlock, record payment, bill detail, WhatsApp share, issue credit note | `payment`, `billDetail`, `addCreditNote`                                             |
-| **More**      | `More.jsx`          | Admin back office: Security (PIN rotation), Adjustments ledger + **Apply**, Credit Notes + **Apply**, pause periods, live diagnostics, health check                                                       | `addAdj`, `addPause`, `changePin`, `addCreditNote`                             |
+| Tab           | Page                | What it does                                                                                                                                                                                                                 | Opens                                                                                  |
+| :------------ | :------------------ | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------- |
+| **Home**      | `Dashboard.jsx`     | KPI tiles (active customers, collected revenue, pending dues, delivered stock today — with a completion ring), today's log list, clickable recent bills, quick actions                                                       | `addCustomer`, `addImport`, **Generate Bills**, `addAdj`, `addPause`, `addBrand`       |
+| **Customers** | `Customers.jsx`     | Identity-only customer cards (name, address, phone, status, balance) with search + status chips with counts, WhatsApp share, deactivate (OCC-guarded), each card lists that customer's subscriptions                         | `editCustomer`, `addSubscription` (prefilled with the customer id)                     |
+| **Subs**      | `Subscriptions.jsx` | Full subscription management: search/filter chips, add / edit / delete (version-checked) / history                                                                                                                           | `addSubscription` (with `NEW_SUB_DEFAULTS`), `editSubscription`, `subscriptionHistory` |
+| **Delivery**  | `Delivery.jsx`      | The daily driver page: date stepper (prev/next/Today), clickable stat tiles that switch the list view (scheduled / delivered / skipped / brand × type stock table), per-log done/skip toggle with search, add extra delivery | `addAdHoc`                                                                             |
+| **Imports**   | `Imports.jsx`       | Milk purchases from suppliers: draft → **Confirm** / delete (both via OCC RPCs), month/day/range views + brand/status filters, day-stock card, qty & cost breakdown, brand manager (add + edit per-milk-type rates)          | `addImport` (add _and_ edit — the modal handles both), `addBrand`, `editBrand`         |
+| **Billing**   | `Billing.jsx`       | Monthly bills per customer: month picker, text search + status chips with counts + sort (newest/due/name), KPIs, lock/unlock, record payment, bill detail, WhatsApp share, issue credit note                                 | `payment`, `billDetail`, `addCreditNote`                                               |
+| **More**      | `More.jsx`          | Admin back office: Security (PIN rotation), Adjustments ledger + **Apply**, Credit Notes + **Apply**, pause periods, live diagnostics, health check                                                                          | `addAdj`, `addPause`, `changePin`, `addCreditNote`                                     |
 
 `App.jsx` is the mount point: `useAuth` → `useAppState` → `useAppHandlers` →
 `ErrorBoundary` → `AppShell` → page + modals + `Toast`. The login screen is
@@ -440,6 +440,8 @@ src/
 │   ├── useBusy.js           # Re-entrancy guard + SyntheticEvent filter
 │   └── handlers/            # shared.js (useHelpers) + 6 domain handler hooks
 ├── pages/                   # 7 tab pages (+ *.test.jsx)
+│   └── imports/              # Imports page-local components (ImportFilters, DayStockCard,
+                             #   ImportStats, ImportList, BrandList, BrandImportRow, breakdowns)
 ├── components/
 │   ├── AppShell.jsx         # Header, bottom nav, load-error banner, dark mode, online badge
 │   ├── AppPage.jsx / AppModals.jsx  # PAGE_RENDERERS / MODAL_RENDERERS tables
@@ -531,8 +533,8 @@ npm run dev      # http://localhost:5173
 | `test` / `test:watch` / `test:coverage`                                     | Vitest (jsdom + Testing Library); coverage has enforced thresholds                                                  |
 | `test:e2e` (+`:headed` / `:ui` / `:debug`)                                  | Playwright suite against the live app (system **Edge** channel; boots the dev server on :5173)                      |
 | `test:db` / `test:db:watch`                                                 | Vitest integration tests against the live Supabase project (separate config; self-skips without `E2E_OPERATOR_PIN`) |
-| `check-all`                                                                 | lint > test > build (OFFLINE - never touches Supabase; 2026-11-21 containment)                                        |
-| `check-all:live`                                                            | `check-all` + `test:db` (MUTATES the linked project - run deliberately)                                          |
+| `check-all`                                                                 | lint > test > build > fallow:gate (OFFLINE - never touches Supabase; 2026-11-21 containment)                        |
+| `check-all:live`                                                            | `check-all` + `test:db` (MUTATES the linked project - run deliberately)                                             |
 | `test:all`                                                                  | `check-all` + `test:e2e`                                                                                            |
 | `advisor-all`                                                               | spellcheck → check-deps → fallow → test:coverage                                                                    |
 | `audit` / `circular` / `cprettier` / `check-deps` / `spellcheck` / `fallow` | Advisory tools (run individually)                                                                                   |

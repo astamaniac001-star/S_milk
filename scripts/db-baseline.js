@@ -74,9 +74,7 @@ try {
     const backupsDir = path.join("supabase", "_local_backups");
     fs.mkdirSync(backupsDir, { recursive: true });
     const dataFile = path.join(backupsDir, `${baseTs}_data_backup.sql`);
-    console.log(
-      "⏳ Dumping business data to a PRIVATE backup (git-ignored)…",
-    );
+    console.log("⏳ Dumping business data to a PRIVATE backup (git-ignored)…");
     console.log(
       "   ⚠️  This file contains real customer PII and financial records.",
     );

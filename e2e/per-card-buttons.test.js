@@ -182,7 +182,11 @@ test("Customers: Edit button opens the Edit Customer modal pre-filled with the e
     await page.getByRole("button", { name: "Cancel" }).click();
     await expect(page.getByRole("dialog")).toHaveCount(0);
   } finally {
-    await supabase.from("customers").delete().eq("phone", phone).like("name", `${E2E_MARKER}%`);
+    await supabase
+      .from("customers")
+      .delete()
+      .eq("phone", phone)
+      .like("name", `${E2E_MARKER}%`);
   }
 });
 
@@ -232,7 +236,8 @@ test("Customers: Deactivate button calls deactivateCustomer → customer.status=
       const { data, error } = await supabase
         .from("customers")
         .select("status")
-        .eq("phone", phone).like("name", `${E2E_MARKER}%`)
+        .eq("phone", phone)
+        .like("name", `${E2E_MARKER}%`)
         .maybeSingle();
       expect(error).toBeNull();
       expect(data.status, "customer was NOT deactivated in DB").toBe(
@@ -243,7 +248,11 @@ test("Customers: Deactivate button calls deactivateCustomer → customer.status=
       true,
     );
   } finally {
-    await supabase.from("customers").delete().eq("phone", phone).like("name", `${E2E_MARKER}%`);
+    await supabase
+      .from("customers")
+      .delete()
+      .eq("phone", phone)
+      .like("name", `${E2E_MARKER}%`);
   }
 });
 
@@ -273,7 +282,8 @@ test("Customers: Pause button opens Add Pause modal; saving inserts a pause_peri
     const { data: custRow } = await supabase
       .from("customers")
       .select("id")
-      .eq("phone", phone).like("name", `${E2E_MARKER}%`)
+      .eq("phone", phone)
+      .like("name", `${E2E_MARKER}%`)
       .maybeSingle();
     const custId = custRow.id;
 
@@ -318,7 +328,9 @@ test("Customers: Pause button opens Add Pause modal; saving inserts a pause_peri
         el.dispatchEvent(new Event("change", { bubbles: true }));
       }, today);
     await page.getByLabel("End Date").fill(nextWeek);
-    await page.getByPlaceholder("Out of town, Travel…").fill("__e2e__ probe pause");
+    await page
+      .getByPlaceholder("Out of town, Travel…")
+      .fill("__e2e__ probe pause");
     await page.getByRole("button", { name: "Save" }).click();
     await expect(page.getByRole("dialog")).toHaveCount(0, { timeout: 10_000 });
 
@@ -339,13 +351,18 @@ test("Customers: Pause button opens Add Pause modal; saving inserts a pause_peri
     const { data: cust } = await supabase
       .from("customers")
       .select("id")
-      .eq("phone", phone).like("name", `${E2E_MARKER}%`)
+      .eq("phone", phone)
+      .like("name", `${E2E_MARKER}%`)
       .maybeSingle();
     if (cust) {
       await supabase.from("pause_periods").delete().eq("customer_id", cust.id);
       await supabase.from("customers").delete().eq("id", cust.id);
     } else {
-      await supabase.from("customers").delete().eq("phone", phone).like("name", `${E2E_MARKER}%`);
+      await supabase
+        .from("customers")
+        .delete()
+        .eq("phone", phone)
+        .like("name", `${E2E_MARKER}%`);
     }
   }
 });
@@ -380,7 +397,8 @@ test("Customers: WhatsApp button opens https://wa.me/<phone> in a new tab/popup"
   const { data: custRow } = await supabase
     .from("customers")
     .select("id")
-    .eq("phone", phone).like("name", `${E2E_MARKER}%`)
+    .eq("phone", phone)
+    .like("name", `${E2E_MARKER}%`)
     .maybeSingle();
   await supabase.from("bills").insert({
     customer_id: custRow.id,
@@ -447,7 +465,11 @@ test("Customers: WhatsApp button opens https://wa.me/<phone> in a new tab/popup"
       });
   } finally {
     await supabase.from("bills").delete().eq("customer_id", custRow.id);
-    await supabase.from("customers").delete().eq("phone", phone).like("name", `${E2E_MARKER}%`);
+    await supabase
+      .from("customers")
+      .delete()
+      .eq("phone", phone)
+      .like("name", `${E2E_MARKER}%`);
   }
 });
 
@@ -484,7 +506,8 @@ test("Subscriptions: Subscriptions tab + Add Subscription inserts a subscription
   const { data: custRow } = await supabase
     .from("customers")
     .select("id")
-    .eq("phone", phone).like("name", `${E2E_MARKER}%`)
+    .eq("phone", phone)
+    .like("name", `${E2E_MARKER}%`)
     .maybeSingle();
   const custId = custRow.id;
 
@@ -550,7 +573,11 @@ test("Subscriptions: Subscriptions tab + Add Subscription inserts a subscription
     await page.getByRole("button", { name: "Cancel" }).click();
   } finally {
     await supabase.from("subscriptions").delete().eq("customer_id", custId);
-    await supabase.from("customers").delete().eq("phone", phone).like("name", `${E2E_MARKER}%`);
+    await supabase
+      .from("customers")
+      .delete()
+      .eq("phone", phone)
+      .like("name", `${E2E_MARKER}%`);
     await supabase.from("milk_brands").delete().eq("id", brandRow.id);
   }
 });
@@ -572,7 +599,8 @@ test("Delivery: + Extra Delivery → AdHocLogModal save inserts an extra daily_l
   const { data: custRow } = await supabase
     .from("customers")
     .select("id")
-    .eq("phone", phone).like("name", `${E2E_MARKER}%`)
+    .eq("phone", phone)
+    .like("name", `${E2E_MARKER}%`)
     .maybeSingle();
   const custId = custRow.id;
   const today = new Date().toLocaleDateString("en-CA", {
@@ -608,7 +636,9 @@ test("Delivery: + Extra Delivery → AdHocLogModal save inserts an extra daily_l
         el.dispatchEvent(new Event("change", { bubbles: true }));
       }, today);
     await page.locator('.modal-overlay input[type="number"]').fill("2");
-    await page.getByPlaceholder("Guests, Festival...").fill("__e2e__ probe extra");
+    await page
+      .getByPlaceholder("Guests, Festival...")
+      .fill("__e2e__ probe extra");
     await page.getByRole("button", { name: "Add Delivery" }).click();
     await expect(page.getByRole("dialog")).toHaveCount(0, { timeout: 15_000 });
 
@@ -626,7 +656,11 @@ test("Delivery: + Extra Delivery → AdHocLogModal save inserts an extra daily_l
     }).toPass({ timeout: 15_000, intervals: [500, 1000, 2000] });
   } finally {
     await supabase.from("daily_logs").delete().eq("customer_id", custId);
-    await supabase.from("customers").delete().eq("phone", phone).like("name", `${E2E_MARKER}%`);
+    await supabase
+      .from("customers")
+      .delete()
+      .eq("phone", phone)
+      .like("name", `${E2E_MARKER}%`);
   }
 });
 
@@ -647,7 +681,8 @@ test("Delivery: per-row ✓ Done / ✗ Skip toggle flips delivered in DB", async
   const { data: custRow } = await supabase
     .from("customers")
     .select("id")
-    .eq("phone", phone).like("name", `${E2E_MARKER}%`)
+    .eq("phone", phone)
+    .like("name", `${E2E_MARKER}%`)
     .maybeSingle();
   const custId = custRow.id;
   const today = new Date().toLocaleDateString("en-CA", {
@@ -709,7 +744,11 @@ test("Delivery: per-row ✓ Done / ✗ Skip toggle flips delivered in DB", async
     }).toPass({ timeout: 10_000, intervals: [500, 1000, 2000] });
   } finally {
     await supabase.from("daily_logs").delete().eq("customer_id", custId);
-    await supabase.from("customers").delete().eq("phone", phone).like("name", `${E2E_MARKER}%`);
+    await supabase
+      .from("customers")
+      .delete()
+      .eq("phone", phone)
+      .like("name", `${E2E_MARKER}%`);
   }
 });
 
@@ -935,7 +974,8 @@ test("Billing: Add Credit Note → save inserts a credit_notes row (applied=fals
   const { data: custRow } = await supabase
     .from("customers")
     .select("id")
-    .eq("phone", phone).like("name", `${E2E_MARKER}%`)
+    .eq("phone", phone)
+    .like("name", `${E2E_MARKER}%`)
     .maybeSingle();
   const custId = custRow.id;
 
@@ -968,7 +1008,11 @@ test("Billing: Add Credit Note → save inserts a credit_notes row (applied=fals
     }).toPass({ timeout: 10_000, intervals: [500, 1000, 2000] });
   } finally {
     await supabase.from("credit_notes").delete().eq("customer_id", custId);
-    await supabase.from("customers").delete().eq("phone", phone).like("name", `${E2E_MARKER}%`);
+    await supabase
+      .from("customers")
+      .delete()
+      .eq("phone", phone)
+      .like("name", `${E2E_MARKER}%`);
   }
 });
 
@@ -991,7 +1035,8 @@ test("Billing: View opens the BillDetailModal for an existing bill", async ({
   const { data: c } = await supabase
     .from("customers")
     .select("id")
-    .eq("phone", phone).like("name", `${E2E_MARKER}%`)
+    .eq("phone", phone)
+    .like("name", `${E2E_MARKER}%`)
     .maybeSingle();
   const { data: b } = await supabase
     .from("bills")
@@ -1026,7 +1071,11 @@ test("Billing: View opens the BillDetailModal for an existing bill", async ({
     await expect(page.getByRole("dialog")).toHaveCount(0);
   } finally {
     await supabase.from("bills").delete().eq("id", billId);
-    await supabase.from("customers").delete().eq("phone", phone).like("name", `${E2E_MARKER}%`);
+    await supabase
+      .from("customers")
+      .delete()
+      .eq("phone", phone)
+      .like("name", `${E2E_MARKER}%`);
   }
 });
 
@@ -1110,7 +1159,8 @@ test("More: Adjustments + Add → AdjustmentModal save inserts an adjustments ro
   const { data: custRow } = await supabase
     .from("customers")
     .select("id")
-    .eq("phone", phone).like("name", `${E2E_MARKER}%`)
+    .eq("phone", phone)
+    .like("name", `${E2E_MARKER}%`)
     .maybeSingle();
   const custId = custRow.id;
   const _today = new Date().toLocaleDateString("en-CA", {
@@ -1167,6 +1217,10 @@ test("More: Adjustments + Add → AdjustmentModal save inserts an adjustments ro
   } finally {
     await supabase.from("adjustments").delete().eq("customer_id", custId);
     await supabase.from("bills").delete().eq("customer_id", custId);
-    await supabase.from("customers").delete().eq("phone", phone).like("name", `${E2E_MARKER}%`);
+    await supabase
+      .from("customers")
+      .delete()
+      .eq("phone", phone)
+      .like("name", `${E2E_MARKER}%`);
   }
 });

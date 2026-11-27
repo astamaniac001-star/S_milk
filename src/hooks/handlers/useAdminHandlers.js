@@ -6,6 +6,13 @@ import {
   callApi,
 } from "../../lib/api.js";
 import { getToday } from "../../lib/utils.js";
+import {
+  resolveBrandName,
+  findDuplicateBrand,
+  normalizeBrandRates,
+  validateBrandName,
+  validateBrandRates,
+} from "../../lib/validation.js";
 import { useHelpers } from "./shared.js";
 import { useBusy } from "../useBusy.js";
 
@@ -81,80 +88,27 @@ export function useAdminHandlers(state) {
     async (formArg) => {
       const f = formArg || form;
       if (!f) return;
-      const brandName =
-        f.name ||
-        f.brandName ||
-        modal.data?.name ||
-        modal.data?.brandName ||
-        "";
-      if (!brandName || !String(brandName).trim()) {
-        showToast("Brand name is required", "error");
+      const brandName = resolveBrandName(f, modal.data);
+      const nameError = validateBrandName(brandName);
+      if (nameError) {
+        showToast(nameError, "error");
         return;
       }
-      // Audit 2026-11-09 (F13): duplicate brand names make the name-based
-      // import prefill ambiguous. save_brand_rpc deliberately has no
-      // name-unique constraint (renames must not break existing name
-      // references in milk_imports), so the guard lives here: block a new
-      // duplicate and block renaming onto another brand's name, while an
-      // edit that keeps its own name still passes.
+      // Audit 2026-11-09 (F13): duplicate-name guard — see
+      // lib/validation/brand.js#findDuplicateBrand for the rationale.
       const editId = f.id ?? modal.data?.id;
-      const duplicate = (brands || []).find(
-        (b) =>
-          String(b.name || "")
-            .trim()
-            .toLowerCase() === String(brandName).trim().toLowerCase() &&
-          b.id !== editId,
-      );
+      const duplicate = findDuplicateBrand(brands, brandName, editId);
       if (duplicate) {
         showToast(`A brand named "${duplicate.name}" already exists`, "error");
         return;
       }
-      // Rates: BrandModal sends a rates array ({milkType, rate} rows). A
-      // legacy single {defaultType, rate} form shape is mapped into one row
-      // so both contracts land on save_brand_rpc's replace-all semantics.
-      // A brand with NO rate is rejected — saving a 0 rate would price that
-      // brand's deliveries at ₹0 without the operator asking for it.
-      const rawRates = Array.isArray(f.rates)
-        ? f.rates
-        : f.rate !== undefined && f.rate !== ""
-          ? [
-              {
-                milkType: f.defaultType || "Full Cream",
-                rate: Number(f.rate),
-              },
-            ]
-          : [];
-      const rates = rawRates.filter(
-        (r) => String(r?.milkType ?? "").trim() !== "",
-      );
-      if (rates.length === 0) {
-        showToast("Enter a rate for at least one milk type", "error");
+      // Rates: canonical shape + every pricing guard live in
+      // lib/validation/brand.js so they are unit-testable without React.
+      const rates = normalizeBrandRates(f);
+      const ratesError = validateBrandRates(rates);
+      if (ratesError) {
+        showToast(ratesError, "error");
         return;
-      }
-      // One rate per milk type per brand (brand_rates UNIQUE
-      // (brand_id, milk_type)). The RPC rejects duplicates, but failing here
-      // keeps the operator in the editor with an actionable message instead of
-      // a server-side "duplicate milk type" error.
-      const seenTypes = new Set();
-      for (const r of rates) {
-        const type = String(r.milkType).trim();
-        if (seenTypes.has(type)) {
-          showToast(`"${type}" already has a rate for this brand`, "error");
-          return;
-        }
-        seenTypes.add(type);
-        if (r.rate === "" || r.rate === undefined || r.rate === null) {
-          showToast(`Enter a rate for "${type}"`, "error");
-          return;
-        }
-        const rate = Number(r.rate);
-        // ₹0 is rejected by decision (2026-11-21): free milk must be an
-        // explicit pricing decision, not a forgotten rate — a zero rate
-        // silently prices that brand's deliveries at ₹0 at billing time.
-        if (!Number.isFinite(rate) || rate <= 0) {
-          showToast(`Enter a rate greater than 0 for "${type}"`, "error");
-          return;
-        }
       }
       try {
         await callApi(

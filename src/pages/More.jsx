@@ -94,8 +94,8 @@ function CreditNoteItem({ cn, onApplyCn, resolveCustomer, targetBillId }) {
         <div className="ledger-amount tnum pos">{fmt(cn.amount)}</div>
         {!cn.applied && !targetBillId && (
           <div className="ledger-hint">
-            No {cn.date?.substring(0, 7) || "current"}-month bill found for
-            this customer yet — generate bills first.
+            No {cn.date?.substring(0, 7) || "current"}-month bill found for this
+            customer yet — generate bills first.
           </div>
         )}
       </div>

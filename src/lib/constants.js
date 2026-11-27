@@ -1,14 +1,12 @@
 // ── constants.js ──────────────────────────────────────────────────────────────
 // Brand + palette constants shared across UI primitives and pages.
 
-// Primary palette — indigo accent for the modern-minimal refresh.
-// (Legacy name `BLUE` kept to avoid churn across importers.)
-export const BLUE = "#4f46e5";
-export const BLUE_L = "#eef2ff";
-
 // Status → badge colors. Used by <Badge> to pick background/text.
 // (audit 2026-11-09: removed the unused `SC` export — ui.jsx owns the
 // dark-mode-aware status palette; this static copy had no consumers.)
+// (audit 2026-11-27: removed the unused `BLUE`/`BLUE_L` indigo leftovers —
+// the "Ledger" design system's accent is pine-green and lives in index.css
+// tokens; nothing imported these.)
 
 // Day-of-week labels (en-IN). Month names live inline in utils.js#monthLabel.
 export const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];

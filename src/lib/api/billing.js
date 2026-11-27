@@ -64,7 +64,10 @@ export async function recordPayment(payload) {
     // chk_bills_paid_lte_amount means the payment passed the RPC's epsilon
     // guard but overflowed the exact constraint — report it in OVERPAY
     // terms instead of an opaque Postgres message.
-    if (rpcError.code === "23514" || /chk_bills_paid_lte_amount/.test(rpcError.message)) {
+    if (
+      rpcError.code === "23514" ||
+      /chk_bills_paid_lte_amount/.test(rpcError.message)
+    ) {
       const e = new Error(
         "Payment exceeds the pending amount on this bill. Record the exact pending amount.",
       );
