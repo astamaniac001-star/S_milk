@@ -1,4 +1,4 @@
-import { Field, Modal, Btn, IS } from "../ui.jsx";
+import { Field, Modal, Btn } from "../ui.jsx";
 import { useBusy } from "../../hooks/useBusy.js";
 import { CustomerDateFields } from "./shared";
 
@@ -14,7 +14,20 @@ export function AdjustmentModal({
 }) {
   const [busy, save] = useBusy(onSave);
   return (
-    <Modal title="Add Adjustment" onClose={onClose}>
+    <Modal
+      title="Add Adjustment"
+      onClose={onClose}
+      footer={
+        <>
+          <Btn onClick={save} disabled={busy}>
+            {busy ? "Saving..." : "Save"}
+          </Btn>
+          <Btn variant="secondary" onClick={onClose} disabled={busy}>
+            Cancel
+          </Btn>
+        </>
+      }
+    >
       <CustomerDateFields
         form={form}
         data={data}
@@ -28,7 +41,7 @@ export function AdjustmentModal({
       <Field label="Amount (₹, positive = reduces bill) *">
         <input
           type="number"
-          style={IS()}
+          className="input"
           value={form?.amount ?? ""}
           onChange={onChange("amount")}
           placeholder="50 reduces · -50 adds"
@@ -36,20 +49,12 @@ export function AdjustmentModal({
       </Field>
       <Field label="Reason *">
         <input
-          style={IS()}
+          className="input"
           value={form?.reason ?? ""}
           onChange={onChange("reason")}
           placeholder="Half delivery, Quality issue…"
         />
       </Field>
-      <div style={{ display: "flex", gap: 8 }}>
-        <Btn onClick={save} disabled={busy}>
-          {busy ? "Saving..." : "Save"}
-        </Btn>
-        <Btn variant="secondary" onClick={onClose} disabled={busy}>
-          Cancel
-        </Btn>
-      </div>
     </Modal>
   );
 }

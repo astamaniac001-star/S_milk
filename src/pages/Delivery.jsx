@@ -1,8 +1,27 @@
 // ── Delivery.jsx ──────────────────────────────────────────────────────────────
+// Daily delivery route: pick a date, generate the day's scheduled logs, mark
+// each customer delivered/skipped, add an ad-hoc extra, and inspect the
+// brand × milk-type stock balance for the day.
+
 import { useMemo, useState } from "react";
 import { useBusy } from "../hooks/useBusy.js";
-import { brandLabel } from "../lib/utils.js";
-import { Card, Field, IS, Empty, Btn } from "../components/ui.jsx";
+import { brandLabel, getToday, shiftDate } from "../lib/utils.js";
+import { buildStockBreakdown } from "../lib/breakdowns.js";
+import { Card, Empty, Btn } from "../components/ui.jsx";
+import {
+  CalendarDays,
+  Check,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  Droplets,
+  Loader2,
+  Search,
+  Truck,
+  X,
+  XCircle,
+  Zap,
+} from "lucide-react";
 
 function calculateDeliveryStats(logs) {
   const safeLogs = Array.isArray(logs) ? logs : [];
@@ -16,73 +35,47 @@ function calculateDeliveryStats(logs) {
   };
 }
 
-function getToggleButtonStyle(delivered) {
-  return {
-    background: delivered
-      ? "var(--success-bg, #dcfce7)"
-      : "var(--danger-bg, #fee2e2)",
-    border: "none",
-    borderRadius: 8,
-    padding: "12px 16px",
-    fontSize: 14,
-    fontWeight: 600,
-    cursor: "pointer",
-    color: delivered
-      ? "var(--success-text, #166534)"
-      : "var(--danger-text, #991b1b)",
-    minWidth: "90px",
-    textAlign: "center",
-    transition: "opacity 0.2s",
-  };
-}
-
 function getToggleButtonText(delivered) {
-  return delivered ? "✓ Done" : "✗ Skip";
+  return delivered ? "Done" : "Skip";
 }
 
 function DeliveryLogItem({
   id,
   name,
+  brand,
   product,
   qty,
   delivered,
   onToggle,
   readOnly,
 }) {
+  const ToggleIcon = delivered ? Check : X;
   return (
-    <div
-      style={{
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-        padding: "12px 0",
-        borderBottom: "1px solid var(--border-color, #e5e7eb)",
-      }}
-    >
-      <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-        <span style={{ fontWeight: 600, color: "var(--text-main, #111827)" }}>
-          {name}
-        </span>
-        <span style={{ fontSize: 14, color: "var(--text-muted, #6b7280)" }}>
+    <div className="row">
+      <div className="row-main">
+        <div className="row-title">{name}</div>
+        <div className="row-sub">
+          {brand ? `${brand} · ` : ""}
           {product} · {qty}L
-        </span>
+        </div>
       </div>
       {readOnly ? (
-        <div
-          style={{
-            ...getToggleButtonStyle(delivered),
-            cursor: "default",
-            opacity: 0.85,
-          }}
+        <span
+          className={`delivery-status ${delivered ? "done" : "skip"}`}
+          aria-label={`${name} ${delivered ? "delivered" : "skipped"}`}
         >
+          <ToggleIcon size={12} aria-hidden="true" />
           {getToggleButtonText(delivered)}
-        </div>
+        </span>
       ) : (
         <button
+          type="button"
           onClick={() => onToggle(id, !delivered)}
-          style={getToggleButtonStyle(delivered)}
+          className={`delivery-toggle ${delivered ? "done" : "skip"}`}
           aria-label={`Mark ${name} as ${delivered ? "skipped" : "delivered"}`}
+          aria-pressed={delivered}
         >
+          <ToggleIcon size={12} aria-hidden="true" />
           {getToggleButtonText(delivered)}
         </button>
       )}
@@ -90,7 +83,7 @@ function DeliveryLogItem({
   );
 }
 
-function resolveLog(l, customerMap) {
+function resolveLog(l, customerMap, brands) {
   const c = customerMap[l.custId];
   return {
     id: l.id,
@@ -99,92 +92,26 @@ function resolveLog(l, customerMap) {
     // customers.product column is deprecated and never mapped — audit
     // 2026-11-09 removed the dead `c?.product` reference.
     product: l.product ?? "Milk",
+    // Only show a brand when the row actually resolves one — legacy/brandless
+    // rows would otherwise read "Unknown brand · Milk".
+    brand: l.brandId ? brandLabel(l, brands) : "",
     qty: Number(l.qty || 0),
     delivered: Boolean(l.delivered),
     custId: l.custId,
   };
 }
 
-// Aggregates the Total view: group imports and delivered logs by brand x milk
-// type so the operator sees how much of each brand/type was bought vs delivered
-// on the selected date. `imports` are deliveries from milk_brands (UI shape:
-// {brand, type, qty, date}); `logs` are customer deliveries for the day.
-function buildTotalBreakdown(imports, logs, brands, logDate) {
-  const dayImports = (imports || []).filter(
-    (i) => i.status === "Confirmed" && i.date === logDate,
-  );
-
-  // Build brand → { milkType → { imported, delivered } }
-  const brandMap = new Map();
-
-  const ensureBrand = (brandName) => {
-    if (!brandMap.has(brandName)) brandMap.set(brandName, new Map());
-    return brandMap.get(brandName);
-  };
-
-  const ensureMilk = (brandMapEntry, milkType) => {
-    if (!brandMapEntry.has(milkType)) {
-      brandMapEntry.set(milkType, { imported: 0, delivered: 0 });
-    }
-    return brandMapEntry.get(milkType);
-  };
-
-  // 1. Imports per brand/type
-  dayImports.forEach((imp) => {
-    if (!imp.brand) return;
-    const milkType = imp.type || "Mixed";
-    const m = ensureMilk(ensureBrand(imp.brand), milkType);
-    m.imported += Number(imp.qty || 0);
-  });
-
-  // 2. Delivered logs — brand-aware: a log's brandId resolves the brand
-  // directly; legacy/unbranded rows fall back to the milk-type heuristic
-  // (matchBrandByMilkType inside brandLabel). Unresolvable → "Unknown brand".
-  const deliveredLogs = (logs || []).filter((l) => l.delivered);
-  deliveredLogs.forEach((l) => {
-    const milkType = l.product || "Milk";
-    const brandName = brandLabel(l, brands);
-    const m = ensureMilk(ensureBrand(brandName), milkType);
-    m.delivered += Number(l.qty || 0);
-  });
-
-  // Flatten to a sorted list of rows
-  const rows = [];
-  for (const [brandName, milkEntries] of brandMap.entries()) {
-    for (const [milkType, agg] of milkEntries.entries()) {
-      rows.push({
-        brand: brandName,
-        milkType,
-        imported: agg.imported,
-        delivered: agg.delivered,
-        balance: agg.imported - agg.delivered,
-      });
-    }
-  }
-  // Stable sort: brand name, then milk type
-  rows.sort((a, b) =>
-    a.brand === b.brand
-      ? a.milkType.localeCompare(b.milkType)
-      : a.brand.localeCompare(b.brand),
-  );
-
-  const totals = rows.reduce(
-    (acc, r) => {
-      acc.imported += r.imported;
-      acc.delivered += r.delivered;
-      return acc;
-    },
-    { imported: 0, delivered: 0 },
-  );
-
-  return { rows, totals };
-}
+// Aggregates the Total view (shared pure builder in lib/breakdowns.js):
+// confirmed imports + delivered logs for the viewed date, grouped by
+// brand × milk type. Delivery's logs are already date-scoped by the store,
+// so no per-log date filter is applied here (preserves historical behavior).
 
 // fallow-ignore-next-line complexity
 export default function Delivery({
   logDate,
   onLogDateChange,
   logs = [],
+  loading = false,
   onToggleLog,
   generateDailyLogs,
   onOpenModal,
@@ -206,8 +133,8 @@ export default function Delivery({
   }, [customers]);
 
   const resolvedLogs = useMemo(
-    () => safeLogs.map((l) => resolveLog(l, customerMap)),
-    [safeLogs, customerMap],
+    () => safeLogs.map((l) => resolveLog(l, customerMap, brands)),
+    [safeLogs, customerMap, brands],
   );
 
   const stats = calculateDeliveryStats(safeLogs);
@@ -226,12 +153,20 @@ export default function Delivery({
     return list.filter(
       (l) =>
         l.name.toLowerCase().includes(q) ||
-        (l.product || "").toLowerCase().includes(q),
+        (l.product || "").toLowerCase().includes(q) ||
+        (l.brand || "").toLowerCase().includes(q),
     );
   }, [resolvedLogs, activeView, q]);
 
   const totalBreakdown = useMemo(
-    () => buildTotalBreakdown(imports, safeLogs, brands, logDate),
+    () =>
+      buildStockBreakdown({
+        imports,
+        logs: safeLogs,
+        brands,
+        date: logDate,
+        filterLogsByDate: false,
+      }),
     [imports, safeLogs, brands, logDate],
   );
 
@@ -240,29 +175,29 @@ export default function Delivery({
       key: "scheduled",
       label: "Scheduled",
       value: stats.scheduled,
-      icon: "📅",
-      bg: "var(--bg-surface)",
+      icon: <CalendarDays size={13} aria-hidden="true" />,
+      accent: "var(--brand-500)",
     },
     {
       key: "delivered",
       label: "Delivered",
       value: stats.deliveredCount,
-      icon: "✅",
-      bg: "var(--success-bg, #ecfdf5)",
+      icon: <CheckCircle2 size={13} aria-hidden="true" />,
+      accent: "var(--success-text)",
     },
     {
       key: "skipped",
       label: "Skipped",
       value: stats.skippedCount,
-      icon: "❌",
-      bg: "var(--danger-bg, #fef2f2)",
+      icon: <XCircle size={13} aria-hidden="true" />,
+      accent: "var(--danger-text)",
     },
     {
       key: "total",
       label: "Total",
       value: stats.totalLiters,
-      icon: "🥛",
-      bg: "var(--info-bg, #eef2ff)",
+      icon: <Droplets size={13} aria-hidden="true" />,
+      accent: "var(--info-text)",
     },
   ];
 
@@ -272,43 +207,68 @@ export default function Delivery({
     }
   });
 
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-      <Card>
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: "12px",
-            alignItems: "flex-end",
-          }}
-        >
-          <Field label="Date" style={{ flex: 1, width: "100%" }}>
-            <input
-              type="date"
-              value={logDate}
-              onChange={(e) => onLogDateChange(e.target.value)}
-              style={{ ...IS(), width: "100%" }}
-            />
-          </Field>
+  const goToDate = (next) => {
+    if (onLogDateChange && next) onLogDateChange(next);
+  };
 
-          <div
-            style={{
-              display: "flex",
-              gap: "8px",
-              flexWrap: "wrap",
-              width: "100%",
-              justifyContent: "flex-end",
-            }}
-          >
-            <Btn
-              onClick={handleGenerate}
-              disabled={busy}
-              style={{ flex: "1 1 auto", minWidth: "150px" }}
+  return (
+    <div className="page-stack">
+      <Card>
+        <div className="control-bar">
+          <div className="date-nav">
+            <button
+              type="button"
+              className="icon-btn square"
+              aria-label="Previous day"
+              onClick={() => goToDate(shiftDate(logDate, -1))}
             >
-              {busy ? "⏳ Generating..." : "⚡ Generate Deliveries"}
+              <ChevronLeft size={16} aria-hidden="true" />
+            </button>
+            <label htmlFor="delivery-date" className="visually-hidden">
+              Delivery date
+            </label>
+            <input
+              id="delivery-date"
+              name="delivery-date"
+              type="date"
+              className="input date-input"
+              value={logDate || ""}
+              onChange={(e) => goToDate(e.target.value)}
+            />
+            <button
+              type="button"
+              className="icon-btn square"
+              aria-label="Next day"
+              onClick={() => goToDate(shiftDate(logDate, 1))}
+            >
+              <ChevronRight size={16} aria-hidden="true" />
+            </button>
+            <Btn
+              small
+              variant="subtle"
+              onClick={() => goToDate(getToday())}
+              title="Jump to today"
+            >
+              Today
+            </Btn>
+          </div>
+
+          <div className="toolbar-actions">
+            <Btn onClick={handleGenerate} disabled={busy}>
+              {busy ? (
+                <>
+                  <Loader2 className="spin" size={14} aria-hidden="true" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <Zap size={14} aria-hidden="true" />
+                  Generate Deliveries
+                </>
+              )}
             </Btn>
             <Btn
+              variant="secondary"
               onClick={() =>
                 // FIX (2026-11-21 audit — AI-D P1-7/AI-L M1): prefill the
                 // modal with the VIEWED date. Without it, CustomerDateFields
@@ -316,7 +276,6 @@ export default function Delivery({
                 // date was silently recorded on today's date.
                 onOpenModal("addAdHoc", { date: logDate })
               }
-              style={{ whiteSpace: "nowrap", flex: "0 0 auto" }}
             >
               + Extra Delivery
             </Btn>
@@ -333,20 +292,10 @@ export default function Delivery({
               key={tile.key}
               type="button"
               onClick={() => setActiveView(tile.key)}
-              className="stat-tile"
+              className={`stat-tile ${isActive ? "active" : ""}`}
               aria-pressed={isActive}
               aria-label={`${tile.label}: ${tile.value}`}
-              style={{
-                background: tile.bg || "var(--bg-surface)",
-                border: isActive
-                  ? "2px solid var(--brand-600, #4f46e5)"
-                  : "1px solid var(--border-color)",
-                cursor: "pointer",
-                boxShadow: isActive
-                  ? "0 0 0 2px rgb(99 102 241 / 0.25)"
-                  : "none",
-                textAlign: "left",
-              }}
+              style={{ "--accent": tile.accent, textAlign: "left" }}
             >
               <div className="stat-label">
                 {tile.icon} {tile.label}
@@ -359,14 +308,19 @@ export default function Delivery({
 
       {/* Search bar — hidden on the "total" view since it's aggregated */}
       {activeView !== "total" && (
-        <input
-          id="delivery-search"
-          name="delivery-search"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search by customer or product…"
-          style={{ ...IS() }}
-        />
+        <div className="search-box">
+          <Search size={15} aria-hidden="true" />
+          <input
+            id="delivery-search"
+            name="delivery-search"
+            type="search"
+            className="input"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by customer or product…"
+            aria-label="Search deliveries"
+          />
+        </div>
       )}
 
       {/* Content area driven by the active stat tile */}
@@ -375,70 +329,39 @@ export default function Delivery({
           <Empty message="No confirmed imports or delivered logs for this date." />
         ) : (
           <Card>
-            <div
-              style={{
-                fontWeight: 600,
-                fontSize: 14,
-                marginBottom: 8,
-                color: "var(--text-main)",
-              }}
-            >
-              Brand × Milk Type — {logDate}
+            <div className="section-head">
+              <h3 className="card-head-title">
+                Brand × Milk Type — {logDate}
+              </h3>
+              <span className="pill accent tnum">
+                {stats.totalLiters} delivered
+              </span>
             </div>
             <div style={{ overflowX: "auto" }}>
-              <table
-                style={{
-                  width: "100%",
-                  borderCollapse: "collapse",
-                  fontSize: 13,
-                  color: "var(--text-main)",
-                }}
-              >
+              <table className="data-table">
                 <thead>
-                  <tr
-                    style={{
-                      borderBottom: "2px solid var(--border-color)",
-                      textAlign: "left",
-                    }}
-                  >
-                    <th style={{ padding: "8px 6px" }}>Brand</th>
-                    <th style={{ padding: "8px 6px" }}>Milk Type</th>
-                    <th style={{ padding: "8px 6px", textAlign: "right" }}>
-                      Imported (L)
-                    </th>
-                    <th style={{ padding: "8px 6px", textAlign: "right" }}>
-                      Delivered (L)
-                    </th>
-                    <th style={{ padding: "8px 6px", textAlign: "right" }}>
-                      Balance (L)
-                    </th>
+                  <tr>
+                    <th>Brand</th>
+                    <th>Milk Type</th>
+                    <th className="num">Imported (L)</th>
+                    <th className="num">Delivered (L)</th>
+                    <th className="num">Balance (L)</th>
                   </tr>
                 </thead>
                 <tbody>
                   {totalBreakdown.rows.map((r) => (
-                    <tr
-                      key={`${r.brand}|${r.milkType}`}
-                      style={{
-                        borderBottom: "1px solid var(--border-color)",
-                      }}
-                    >
-                      <td style={{ padding: "8px 6px", fontWeight: 600 }}>
-                        {r.brand}
-                      </td>
-                      <td style={{ padding: "8px 6px" }}>{r.milkType}</td>
-                      <td style={{ padding: "8px 6px", textAlign: "right" }}>
-                        {r.imported.toFixed(1)}
-                      </td>
-                      <td style={{ padding: "8px 6px", textAlign: "right" }}>
-                        {r.delivered.toFixed(1)}
-                      </td>
+                    <tr key={`${r.brand}|${r.type}`}>
+                      <td style={{ fontWeight: 600 }}>{r.brand}</td>
+                      <td>{r.type}</td>
+                      <td className="num">{r.imported.toFixed(1)}</td>
+                      <td className="num">{r.delivered.toFixed(1)}</td>
                       <td
+                        className="num"
                         style={{
-                          padding: "8px 6px",
-                          textAlign: "right",
                           color:
-                            r.balance >= 0 ? "var(--text-main)" : "#991b1b",
-                          fontWeight: 600,
+                            r.balance >= 0
+                              ? "var(--text-primary)"
+                              : "var(--danger-text)",
                         }}
                       >
                         {r.balance >= 0 ? "+" : ""}
@@ -448,21 +371,16 @@ export default function Delivery({
                   ))}
                 </tbody>
                 <tfoot>
-                  <tr
-                    style={{
-                      borderTop: "2px solid var(--border-color)",
-                      fontWeight: 700,
-                    }}
-                  >
-                    <td style={{ padding: "10px 6px" }}>Total</td>
-                    <td style={{ padding: "10px 6px" }} />
-                    <td style={{ padding: "10px 6px", textAlign: "right" }}>
+                  <tr>
+                    <td>Total</td>
+                    <td />
+                    <td className="num">
                       {totalBreakdown.totals.imported.toFixed(1)}
                     </td>
-                    <td style={{ padding: "10px 6px", textAlign: "right" }}>
+                    <td className="num">
                       {totalBreakdown.totals.delivered.toFixed(1)}
                     </td>
-                    <td style={{ padding: "10px 6px", textAlign: "right" }}>
+                    <td className="num">
                       {(
                         totalBreakdown.totals.imported -
                         totalBreakdown.totals.delivered
@@ -474,6 +392,24 @@ export default function Delivery({
             </div>
           </Card>
         )
+      ) : loading && safeLogs.length === 0 ? (
+        <div className="list" aria-hidden="true">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="row">
+              <div className="row-main">
+                <div className="skeleton" style={{ width: "38%", height: 15 }} />
+                <div
+                  className="skeleton"
+                  style={{ width: "55%", height: 12, marginTop: 8 }}
+                />
+              </div>
+              <div
+                className="skeleton"
+                style={{ width: 92, height: 34, borderRadius: 999 }}
+              />
+            </div>
+          ))}
+        </div>
       ) : visibleLogs.length === 0 ? (
         <Empty
           message={
@@ -487,13 +423,24 @@ export default function Delivery({
           }
         />
       ) : (
-        <Card>
-          <div style={{ display: "flex", flexDirection: "column" }}>
+        <>
+          <div className="list-head">
+            <span className="row-sub" style={{ marginTop: 0 }}>
+              {visibleLogs.length}{" "}
+              {visibleLogs.length === 1 ? "delivery" : "deliveries"}
+              {activeView === "scheduled" ? " · tap to flip" : ""}
+            </span>
+            {activeView !== "scheduled" && (
+              <span className="pill">{activeView}</span>
+            )}
+          </div>
+          <div className="list">
             {visibleLogs.map((l) => (
               <DeliveryLogItem
                 key={l.id}
                 id={l.id}
                 name={l.name}
+                brand={l.brand}
                 product={l.product}
                 qty={l.qty}
                 delivered={l.delivered}
@@ -502,7 +449,13 @@ export default function Delivery({
               />
             ))}
           </div>
-        </Card>
+        </>
+      )}
+
+      {activeView !== "total" && safeLogs.length > 0 && (
+        <div className="row-sub" style={{ marginTop: -4 }}>
+          <Truck size={13} aria-hidden="true" /> Route for {logDate}
+        </div>
       )}
     </div>
   );

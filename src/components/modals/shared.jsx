@@ -1,5 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
-import { Field, IS, ActiveCustomerOptions } from "../ui.jsx";
+import { Field, ActiveCustomerOptions } from "../ui.jsx";
 
 export const DAYS_OF_WEEK = [
   { value: 0, label: "Sun" },
@@ -26,7 +26,7 @@ export function CustomerDateFields({
     <>
       <Field label="Customer *">
         <select
-          style={IS()}
+          className="input"
           value={form?.custId ?? data?.custId ?? ""}
           onChange={onChange("custId")}
         >
@@ -37,7 +37,7 @@ export function CustomerDateFields({
       <Field label={dateLabel}>
         <input
           type="date"
-          style={IS()}
+          className="input"
           value={form?.[dateKey] ?? today ?? ""}
           onChange={onChange(dateKey)}
         />

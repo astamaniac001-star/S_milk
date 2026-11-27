@@ -1,8 +1,7 @@
 import { useEffect } from "react";
-import { Field, Modal, Btn, IS } from "../ui.jsx";
+import { Field, Modal, Btn } from "../ui.jsx";
 import { useBusy } from "../../hooks/useBusy.js";
 import { fmt, getToday } from "../../lib/utils.js";
-import { BLUE_L, BLUE } from "../../lib/constants.js";
 
 // fallow-ignore-next-line complexity
 export function PaymentModal({
@@ -29,31 +28,37 @@ export function PaymentModal({
   }, [data, form, onChange, today]);
 
   return (
-    <Modal title={"Record Payment — " + customerName} onClose={onClose}>
-      <div
-        style={{
-          background: BLUE_L,
-          borderRadius: 8,
-          padding: "10px 12px",
-          fontSize: 13,
-          color: BLUE,
-          marginBottom: 14,
-        }}
-      >
+    <Modal
+      title={"Record Payment — " + customerName}
+      onClose={onClose}
+      footer={
+        <>
+          <Btn onClick={save} disabled={busy}>
+            {busy
+              ? "Recording..."
+              : `Record ${form?.payAmt ? fmt(form.payAmt) : ""}`}
+          </Btn>
+          <Btn variant="secondary" onClick={onClose} disabled={busy}>
+            Cancel
+          </Btn>
+        </>
+      }
+    >
+      <div className="payment-summary tnum">
         Bill: {fmt(data.amount)} · Paid: {fmt(data.paid)} ·{" "}
         <strong>Pending: {fmt(data.amount - data.paid)}</strong>
       </div>
       <Field label="Amount (₹) *">
         <input
           type="number"
-          style={IS()}
+          className="input"
           value={form?.payAmt ?? data.amount - data.paid}
           onChange={onChange("payAmt")}
         />
       </Field>
       <Field label="Payment Mode">
         <select
-          style={IS()}
+          className="input"
           value={form?.payMode ?? "Cash"}
           onChange={onChange("payMode")}
         >
@@ -65,29 +70,19 @@ export function PaymentModal({
       <Field label="Date">
         <input
           type="date"
-          style={IS()}
+          className="input"
           value={form?.payDate ?? today ?? ""}
           onChange={onChange("payDate")}
         />
       </Field>
       <Field label="Notes (optional)">
         <input
-          style={IS()}
+          className="input"
           value={form?.payNote ?? ""}
           onChange={onChange("payNote")}
           placeholder="Ref no., remarks…"
         />
       </Field>
-      <div style={{ display: "flex", gap: 8 }}>
-        <Btn onClick={save} disabled={busy}>
-          {busy
-            ? "Recording..."
-            : `Record ${form?.payAmt ? fmt(form.payAmt) : ""}`}
-        </Btn>
-        <Btn variant="secondary" onClick={onClose} disabled={busy}>
-          Cancel
-        </Btn>
-      </div>
     </Modal>
   );
 }

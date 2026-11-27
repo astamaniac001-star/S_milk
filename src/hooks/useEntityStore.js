@@ -43,6 +43,14 @@ export function useEntityStore(
   const [refreshKey, setRefreshKey] = useState(0);
   const [creditNotes, setCreditNotes] = useState([]);
   const [dailyInventory, setDailyInventory] = useState(null);
+  // Redesign (2026-11): hydration flags so pages can show skeletons instead
+  // of a false "no data" empty state during the first fetch. Split per fetch
+  // group; `loading` is true until BOTH first groups have settled. Manual
+  // refreshes do NOT re-raise the flag (no skeleton flash on Retry), and
+  // date changes don't either (existing rows stay on screen). The flags start
+  // true for the initial mount; the fetch effects clear them when they settle.
+  const [coreLoading, setCoreLoading] = useState(true);
+  const [dateLoading, setDateLoading] = useState(true);
 
   const refresh = useCallback(() => {
     setLoadErrors([]);
@@ -93,7 +101,9 @@ export function useEntityStore(
       if (subs !== null) setSubscriptions(subs.map(mapSubscriptionFromApi));
       if (cns !== null) setCreditNotes(cns.map(mapCreditNoteFromApi));
     };
-    fetchData();
+    fetchData().finally(() => {
+      if (!cancelled) setCoreLoading(false);
+    });
     return () => {
       cancelled = true;
     };
@@ -127,7 +137,9 @@ export function useEntityStore(
       }
       if (tdy !== null) setTodayLogs(tdy.map(mapLogFromApi));
     };
-    fetchData();
+    fetchData().finally(() => {
+      if (!cancelled) setDateLoading(false);
+    });
     return () => {
       cancelled = true;
     };
@@ -238,6 +250,10 @@ export function useEntityStore(
     setCreditNotes,
     loadErrors,
     refresh,
+    // Initial hydration (both first fetch groups settled at least once).
+    loading: coreLoading || dateLoading,
+    coreLoading,
+    dateLoading,
   };
 }
 
@@ -256,6 +272,8 @@ export function useFilterState() {
     to: "", //  on mode switch = first of previous month → today)
   });
   const [billFilter, setBillFilter] = useState("All");
+  const [billSearch, setBillSearch] = useState("");
+  const [billSort, setBillSort] = useState("newest");
   const [diagRan, setDiagRan] = useState(false);
   const [diagResults, setDiagResults] = useState(null);
 
@@ -272,6 +290,10 @@ export function useFilterState() {
     setImpFilter,
     billFilter,
     setBillFilter,
+    billSearch,
+    setBillSearch,
+    billSort,
+    setBillSort,
     diagRan,
     setDiagRan,
     diagResults,

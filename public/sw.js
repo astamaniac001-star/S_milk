@@ -30,7 +30,7 @@
 // previous bump: the shell handler is strictly cache-first, so the cached
 // `/index.html` still points at the OLD content-hashed bundles and returning
 // operators would keep running the previous build until the cache is evicted.
-const CACHE = "milk-v28"; // Bumped from v27: audit-fix release — shell hygiene (KPI tiles, contrast, credit-note card, sign-out fix)
+const CACHE = "milk-v30"; // Bumped from v29: "Ledger" redesign — new tokens, shell, and icon set
 const SHELL = [
   "/",
   "/index.html",

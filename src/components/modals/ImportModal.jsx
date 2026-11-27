@@ -1,4 +1,4 @@
-import { Field, Modal, Btn, IS, ActiveBrandOptions } from "../ui.jsx";
+import { Field, Modal, Btn, ActiveBrandOptions } from "../ui.jsx";
 import { useBusy } from "../../hooks/useBusy.js";
 import { fmt } from "../../lib/utils.js";
 
@@ -15,7 +15,7 @@ function ImportDateField({ data, form, today, onChange }) {
     <Field label="Date *">
       <input
         type="date"
-        style={IS()}
+        className="input"
         value={form?.date ?? data?.date ?? today ?? ""}
         onChange={onChange("date")}
       />
@@ -28,7 +28,7 @@ function ImportBrandField({ data, form, brands, onChange }) {
   return (
     <Field label="Brand *">
       <select
-        style={IS()}
+        className="input"
         value={form?.brand ?? data?.brand ?? ""}
         onChange={onChange("brand")}
       >
@@ -44,7 +44,7 @@ function ImportTypeField({ data, form, milkTypes, onChange }) {
   return (
     <Field label="Milk Type *">
       <select
-        style={IS()}
+        className="input"
         value={form?.type ?? data?.type ?? ""}
         onChange={onChange("type")}
       >
@@ -60,11 +60,11 @@ function ImportTypeField({ data, form, milkTypes, onChange }) {
 // fallow-ignore-next-line complexity
 function ImportQtyRateField({ data, form, onChange }) {
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+    <div className="form-grid-2">
       <Field label="Qty (L) *">
         <input
           type="number"
-          style={IS()}
+          className="input"
           value={form?.qty ?? data?.qty ?? ""}
           onChange={onChange("qty")}
           placeholder="100"
@@ -74,7 +74,7 @@ function ImportQtyRateField({ data, form, onChange }) {
         <input
           type="number"
           step="0.5"
-          style={IS()}
+          className="input"
           value={form?.rate ?? data?.rate ?? ""}
           onChange={onChange("rate")}
           placeholder="36"
@@ -90,7 +90,7 @@ function ImportMetaFields({ data, form, onChange }) {
     <>
       <Field label="Supplier">
         <input
-          style={IS()}
+          className="input"
           value={form?.supplier ?? data?.supplier ?? ""}
           onChange={onChange("supplier")}
         />
@@ -102,18 +102,8 @@ function ImportMetaFields({ data, form, onChange }) {
 // fallow-ignore-next-line complexity
 function ImportTotalDisplay({ total }) {
   return (
-    <div
-      style={{
-        background: "#f0fdf4",
-        border: "1px solid #bbf7d0",
-        borderRadius: 8,
-        padding: "8px 12px",
-        fontSize: 13,
-        color: "#166534",
-        marginBottom: 12,
-      }}
-    >
-      Total: {fmt(total)}
+    <div className="modal-total">
+      Total: <strong>{fmt(total)}</strong>
     </div>
   );
 }
@@ -134,7 +124,20 @@ export function ImportModal({
     <Modal
       title={data.id ? "Edit Import" : "Add Milk Import"}
       onClose={onClose}
+      footer={
+        <>
+          <Btn onClick={save} disabled={busy}>
+            {busy ? "Saving..." : data.id ? "Update" : "Save Draft"}
+          </Btn>
+          <Btn variant="secondary" onClick={onClose} disabled={busy}>
+            Cancel
+          </Btn>
+        </>
+      }
     >
+      {/* Field order matters for the e2e suite: date input, then brand select
+          (first <select>), then type select (second), then qty (first number
+          input) and rate (second) — see per-card-buttons.test.js. */}
       <ImportDateField
         data={data}
         form={form}
@@ -156,14 +159,6 @@ export function ImportModal({
       <ImportQtyRateField data={data} form={form} onChange={onChange} />
       <ImportMetaFields data={data} form={form} onChange={onChange} />
       <ImportTotalDisplay total={total} />
-      <div style={{ display: "flex", gap: 8 }}>
-        <Btn onClick={save} disabled={busy}>
-          {busy ? "Saving..." : data.id ? "Update" : "Save Draft"}
-        </Btn>
-        <Btn variant="secondary" onClick={onClose} disabled={busy}>
-          Cancel
-        </Btn>
-      </div>
     </Modal>
   );
 }

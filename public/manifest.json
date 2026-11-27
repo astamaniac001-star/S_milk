@@ -5,9 +5,9 @@
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "orientation": "portrait",
-  "background_color": "#ffffff",
-  "theme_color": "#fafafa",
+  "orientation": "any",
+  "background_color": "#f4f4f0",
+  "theme_color": "#f4f4f0",
   "lang": "en-IN",
   "dir": "ltr",
   "icons": [
@@ -35,6 +35,5 @@
       "type": "image/png",
       "purpose": "any maskable"
     }
-  ],
-  "categories": ["business", "productivity", "utilities"]
+  ]
 }

@@ -67,43 +67,19 @@ export function SubscriptionHistoryModal({
 
   // fallow-ignore-next-line complexity
   const renderHistoryItem = (item, idx) => {
+    const created = item.action === "CREATED";
     return (
-      <div key={item.id} style={{ display: "flex", gap: 12, marginBottom: 16 }}>
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-          }}
-        >
-          <div
-            style={{
-              width: 10,
-              height: 10,
-              borderRadius: "50%",
-              background: item.action === "CREATED" ? "#10b981" : "#3b82f6",
-            }}
-          />
-          {idx !== history.length - 1 && (
-            <div
-              style={{ width: 2, flex: 1, background: "#e5e7eb", marginTop: 4 }}
-            />
-          )}
+      <div className="timeline-item" key={item.id}>
+        <div className="timeline-rail">
+          <div className={`timeline-dot ${created ? "created" : ""}`} />
+          {idx !== history.length - 1 && <div className="timeline-line" />}
         </div>
-        <div style={{ flex: 1, paddingBottom: 8 }}>
-          <div
-            style={{
-              fontSize: 12,
-              fontWeight: 600,
-              color: item.action === "CREATED" ? "#059669" : "#1e40af",
-            }}
-          >
+        <div style={{ flex: 1, paddingBottom: 8, minWidth: 0 }}>
+          <div className={`timeline-action ${created ? "created" : "updated"}`}>
             {item.action}
           </div>
-          <div style={{ fontSize: 13, color: "#111", marginTop: 2 }}>
-            {item.details}
-          </div>
-          <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 4 }}>
+          <div className="timeline-details">{item.details}</div>
+          <div className="timeline-time">
             {new Date(item.timestamp).toLocaleString("en-IN")}
           </div>
         </div>
@@ -114,17 +90,11 @@ export function SubscriptionHistoryModal({
   return (
     <Modal title={title} onClose={onClose} wide>
       {loading ? (
-        <div style={{ padding: 20, textAlign: "center", color: "#6b7280" }}>
-          Loading timeline...
-        </div>
+        <div className="diag-placeholder">Loading timeline...</div>
       ) : history.length === 0 ? (
-        <div style={{ padding: 20, textAlign: "center", color: "#9ca3af" }}>
-          No changes recorded yet.
-        </div>
+        <div className="diag-placeholder">No changes recorded yet.</div>
       ) : (
-        <div style={{ maxHeight: 400, overflowY: "auto", padding: "0 8px" }}>
-          {history.map(renderHistoryItem)}
-        </div>
+        <div className="timeline">{history.map(renderHistoryItem)}</div>
       )}
     </Modal>
   );

@@ -48,6 +48,23 @@ export const getDaysAgoIST = (days) => {
   return shifted.toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
 };
 
+// Shift a YYYY-MM-DD calendar date by whole days. Timezone-invariant: the
+// string is anchored at noon UTC (same strategy as getDaysAgoIST) and
+// formatted back in UTC, so the calendar date never drifts with the device
+// timezone. Invalid input is returned unchanged — callers can render it
+// without a guard.
+export const shiftDate = (dateStr, days = 0) => {
+  if (typeof dateStr !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    return dateStr;
+  }
+  const n = Number(days);
+  if (!Number.isFinite(n)) return dateStr;
+  const anchor = new Date(`${dateStr}T12:00:00Z`);
+  if (Number.isNaN(anchor.getTime())) return dateStr;
+  const shifted = new Date(anchor.getTime() + Math.trunc(n) * 86_400_000);
+  return shifted.toISOString().slice(0, 10);
+};
+
 export const cleanPhone = (p) => String(p || "").replace(/\D/g, "");
 
 // Human-readable delivery-day labels for a subscription's delivery_days

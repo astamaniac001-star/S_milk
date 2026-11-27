@@ -6,7 +6,18 @@
 import { useMemo, useState } from "react";
 import { dayLabels } from "../lib/utils.js";
 import { NEW_SUB_DEFAULTS } from "../lib/constants.js";
-import { Card, Btn, IS, Section, Empty, Badge } from "../components/ui.jsx";
+import {
+  Card,
+  Btn,
+  Section,
+  Empty,
+  Badge,
+  Toolbar,
+  SearchInput,
+  ChipRow,
+  Skeleton,
+} from "../components/ui.jsx";
+import { Repeat, Milk, Pencil, History, Trash2 } from "lucide-react";
 
 const SUB_FILTERS = ["All", "Active", "Paused"];
 
@@ -21,6 +32,7 @@ export default function Subscriptions({
   subscriptions = [],
   customers = [],
   brands = [],
+  loading = false,
   search = "",
   onSearchChange,
   filter = "All",
@@ -64,6 +76,11 @@ export default function Subscriptions({
   }, [subscriptions, customers, brandMap, filter, q]);
 
   const activeCount = subscriptions.filter((s) => s.isActive).length;
+  const statusCounts = {
+    All: subscriptions.length,
+    Active: activeCount,
+    Paused: subscriptions.length - activeCount,
+  };
 
   const handleDelete = async (sub) => {
     if (deletingId) return; // busy guard
@@ -93,96 +110,120 @@ export default function Subscriptions({
           </Btn>
         }
       />
-      <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
-        <input
+
+      <Toolbar>
+        <SearchInput
           id="subscription-search"
-          name="subscription-search"
           value={search}
           onChange={(e) => onSearchChange(e.target.value)}
           placeholder="Search by customer, brand or milk type…"
-          style={{ ...IS(), flex: 1 }}
+          label="Search subscriptions"
         />
-        <select
-          id="subscription-filter"
-          name="subscription-filter"
+      </Toolbar>
+
+      <div style={{ marginBottom: 10 }}>
+        <ChipRow
+          options={SUB_FILTERS}
           value={filter}
-          onChange={(e) => onFilterChange(e.target.value)}
-          style={{ ...IS(), width: 100 }}
-        >
-          {SUB_FILTERS.map((f) => (
-            <option key={f}>{f}</option>
-          ))}
-        </select>
+          onChange={onFilterChange}
+          counts={statusCounts}
+          ariaLabel="Filter subscriptions by status"
+        />
       </div>
-      <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 8 }}>
+
+      <div className="row-sub" style={{ marginBottom: 10 }}>
         {filtered.length} subscription(s) · {activeCount} active
       </div>
-      {filtered.length === 0 ? (
+
+      {loading && subscriptions.length === 0 ? (
+        <div className="list" aria-hidden="true">
+          {[0, 1, 2].map((i) => (
+            <Card key={i}>
+              <Skeleton w="40%" h={16} />
+              <div style={{ height: 10 }} />
+              <Skeleton w="65%" h={12} />
+              <div style={{ height: 6 }} />
+              <Skeleton w="45%" h={11} />
+              <div style={{ height: 14 }} />
+              <Skeleton w="85%" h={32} radius={8} />
+            </Card>
+          ))}
+        </div>
+      ) : filtered.length === 0 ? (
         <Empty
           msg={
             subscriptions.length === 0
               ? 'No subscriptions yet. Click "Add" to create one.'
               : "No subscriptions match your search."
           }
+          icon={Repeat}
         />
       ) : (
-        filtered.map((sub) => (
-          <Card key={sub.id}>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "flex-start",
-              }}
-            >
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 600, fontSize: 14, color: "#111" }}>
-                  {customerMap.get(sub.customerId)?.name || "Unknown Customer"}
+        <div className="list">
+          {filtered.map((sub) => {
+            const brandName = brandMap.get(sub.brandId)?.name || "No brand";
+            return (
+              <Card key={sub.id}>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "flex-start",
+                    gap: 10,
+                  }}
+                >
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div className="row-title">
+                      {customerMap.get(sub.customerId)?.name ||
+                        "Unknown Customer"}
+                    </div>
+                    <div className="row-sub" style={{ marginTop: 3 }}>
+                      <Milk size={12} aria-hidden="true" />
+                      {`${brandName} · ${sub.milkType} · ${sub.qty ?? 0}L/day`}
+                    </div>
+                    <div
+                      className="row-sub"
+                      style={{ fontSize: 11, marginTop: 3 }}
+                    >
+                      {dayLabels(sub.deliveryDays)}
+                    </div>
+                  </div>
+                  <Badge label={sub.isActive ? "Active" : "Paused"} />
                 </div>
-                <div style={{ fontSize: 12, color: "#6b7280", marginTop: 2 }}>
-                  🥛 {brandMap.get(sub.brandId)?.name || "No brand"} ·{" "}
-                  {sub.milkType} · {sub.qty ?? 0}L/day
+
+                <div
+                  className="row-actions"
+                  style={{ marginTop: 12, justifyContent: "flex-start" }}
+                >
+                  <Btn
+                    small
+                    variant="secondary"
+                    onClick={() => onOpenModal("editSubscription", sub)}
+                  >
+                    <Pencil size={13} aria-hidden="true" /> Edit
+                  </Btn>
+                  <Btn
+                    small
+                    variant="secondary"
+                    onClick={() => onOpenModal("subscriptionHistory", sub)}
+                  >
+                    <History size={13} aria-hidden="true" /> History
+                  </Btn>
+                  <Btn
+                    small
+                    variant="danger"
+                    disabled={deletingId === sub.id}
+                    title={sub.version ? `v${sub.version}` : undefined}
+                    onClick={() => handleDelete(sub)}
+                  >
+                    <Trash2 size={13} aria-hidden="true" />{" "}
+                    {deletingId === sub.id ? "…" : "Delete"}
+                  </Btn>
                 </div>
-                <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 2 }}>
-                  {dayLabels(sub.deliveryDays)}
-                </div>
-              </div>
-              <Badge label={sub.isActive ? "Active" : "Paused"} />
-            </div>
-            <div
-              style={{
-                display: "flex",
-                gap: 6,
-                marginTop: 10,
-                flexWrap: "wrap",
-              }}
-            >
-              <Btn
-                small
-                variant="secondary"
-                onClick={() => onOpenModal("editSubscription", sub)}
-              >
-                Edit
-              </Btn>
-              <Btn
-                small
-                variant="secondary"
-                onClick={() => onOpenModal("subscriptionHistory", sub)}
-              >
-                History
-              </Btn>
-              <Btn
-                small
-                variant="danger"
-                disabled={deletingId === sub.id}
-                title={sub.version ? `v${sub.version}` : undefined}
-                onClick={() => handleDelete(sub)}
-              >
-                {deletingId === sub.id ? "…" : "Delete"}
-              </Btn>
-            </div>
-          </Card>
-        ))
+              </Card>
+            );
+          })}
+        </div>
       )}
     </div>
   );

@@ -1,4 +1,4 @@
-import { Field, Modal, Btn, IS } from "../ui.jsx";
+import { Field, Modal, Btn } from "../ui.jsx";
 import { useBusy } from "../../hooks/useBusy.js";
 import { CustomerDateFields } from "./shared";
 
@@ -19,7 +19,20 @@ export function PauseModal({
     end && start && end < start ? "End date can't be before start" : null;
 
   return (
-    <Modal title="Add Pause Period" onClose={onClose}>
+    <Modal
+      title="Add Pause Period"
+      onClose={onClose}
+      footer={
+        <>
+          <Btn onClick={save} disabled={busy || !!endError}>
+            {busy ? "Saving..." : "Save"}
+          </Btn>
+          <Btn variant="secondary" onClick={onClose} disabled={busy}>
+            Cancel
+          </Btn>
+        </>
+      }
+    >
       <CustomerDateFields
         form={form}
         data={data}
@@ -32,29 +45,21 @@ export function PauseModal({
       <Field label="End Date" error={endError}>
         <input
           type="date"
-          value={form.endDate || ""}
+          className="input"
+          value={form?.endDate || ""}
           onChange={onChange("endDate")}
-          min={form.startDate || ""}
+          min={form?.startDate || ""}
           aria-invalid={!!endError}
-          style={IS()}
         />
       </Field>
       <Field label="Reason">
         <input
-          style={IS()}
+          className="input"
           value={form?.reason ?? ""}
           onChange={onChange("reason")}
           placeholder="Out of town, Travel…"
         />
       </Field>
-      <div style={{ display: "flex", gap: 8 }}>
-        <Btn onClick={save} disabled={busy || !!endError}>
-          {busy ? "Saving..." : "Save"}
-        </Btn>
-        <Btn variant="secondary" onClick={onClose} disabled={busy}>
-          Cancel
-        </Btn>
-      </div>
     </Modal>
   );
 }

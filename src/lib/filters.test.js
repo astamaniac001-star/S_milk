@@ -109,6 +109,72 @@ describe("filterBills", () => {
     expect(filterBills(bills, "Unpaid")).toEqual([bills[1]]);
     expect(filterBills(bills, "Partial")).toEqual([bills[2]]);
   });
+
+  it("searches by customer name, month, or status", () => {
+    const rows = [
+      { id: "B1", custId: "C1", month: "2026-11", status: "Unpaid", amount: 100, paid: 0 },
+      { id: "B2", custId: "C2", month: "2026-10", status: "Paid", amount: 200, paid: 200 },
+    ];
+    const names = new Map([
+      ["C1", "Ramesh Sharma"],
+      ["C2", "Priya Patel"],
+    ]);
+    expect(filterBills(rows, "All", "ramesh", names).map((b) => b.id)).toEqual([
+      "B1",
+    ]);
+    expect(filterBills(rows, "All", "2026-10", names).map((b) => b.id)).toEqual([
+      "B2",
+    ]);
+    expect(filterBills(rows, "All", "unpaid", names).map((b) => b.id)).toEqual([
+      "B1",
+    ]);
+    expect(filterBills(rows, "All", "nobody", names)).toEqual([]);
+  });
+
+  it("composes search with the status filter", () => {
+    const rows = [
+      { id: "B1", custId: "C1", month: "2026-11", status: "Unpaid", amount: 100, paid: 0 },
+      { id: "B2", custId: "C1", month: "2026-11", status: "Paid", amount: 200, paid: 200 },
+    ];
+    const names = new Map([["C1", "Ramesh"]]);
+    expect(
+      filterBills(rows, "Paid", "ramesh", names).map((b) => b.id),
+    ).toEqual(["B2"]);
+  });
+
+  it("sorts by newest month, highest due, or customer name without mutating input", () => {
+    const rows = [
+      { id: "B1", custId: "C2", month: "2026-10", status: "Unpaid", amount: 100, paid: 40 },
+      { id: "B2", custId: "C1", month: "2026-11", status: "Unpaid", amount: 300, paid: 0 },
+      { id: "B3", custId: "C3", month: "2026-11", status: "Paid", amount: 50, paid: 50 },
+    ];
+    const names = new Map([
+      ["C1", "Amit"],
+      ["C2", "Zara"],
+      ["C3", "Mohan"],
+    ]);
+    expect(filterBills(rows, "All", "", names, "newest").map((b) => b.id)).toEqual([
+      "B2",
+      "B3",
+      "B1",
+    ]);
+    expect(filterBills(rows, "All", "", names, "due").map((b) => b.id)).toEqual([
+      "B2",
+      "B1",
+      "B3",
+    ]);
+    expect(filterBills(rows, "All", "", names, "name").map((b) => b.id)).toEqual([
+      "B2",
+      "B3",
+      "B1",
+    ]);
+    expect(rows.map((b) => b.id)).toEqual(["B1", "B2", "B3"]);
+  });
+
+  it("returns a safe empty list for missing input", () => {
+    expect(filterBills(undefined, "All")).toEqual([]);
+    expect(filterBills(null, "Paid")).toEqual([]);
+  });
 });
 
 describe("buildMonthOptions", () => {

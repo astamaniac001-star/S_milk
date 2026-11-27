@@ -10,6 +10,7 @@ function renderDashboard(state, handlers, derived) {
   return (
     <Dashboard
       today={state.today}
+      loading={state.loading}
       activeC={state.activeC || []}
       totalRevenue={state.totalRevenue || 0}
       pendingDues={state.pendingDues || 0}
@@ -30,11 +31,15 @@ function renderDashboard(state, handlers, derived) {
   );
 }
 
-function renderCustomers(state, handlers, _derived) {
+function renderCustomers(state, handlers, derived) {
   return (
     <Customers
       filtered={state.filteredC || []}
-      total={(state.filteredC || []).length}
+      // TRUE total (unfiltered) — the header count must not move as the
+      // operator types in the search box.
+      total={derived?.totalCustomers ?? (state.customers || []).length}
+      statusCounts={derived?.custStatusCounts}
+      loading={state.loading}
       bills={state.bills || []}
       subsByCustomer={state.subsByCustomer || {}}
       brands={state.brands || []}
@@ -53,6 +58,7 @@ function renderSubscriptions(state, handlers, _derived) {
   return (
     <Subscriptions
       subscriptions={state.subscriptions || []}
+      loading={state.loading}
       customers={state.customers || []}
       brands={state.brands || []}
       search={state.subSearch || ""}
@@ -71,6 +77,7 @@ function renderDelivery(state, handlers, derived) {
       logDate={state.logDate}
       onLogDateChange={state.setLogDate}
       logs={derived?.selectedDateLogs || state.selectedDateLogs || []}
+      loading={state.dateLoading}
       onToggleLog={handlers.toggleDeliveryLog}
       generateDailyLogs={handlers.generateDailyLogs}
       onOpenModal={state.openModal}
@@ -106,11 +113,16 @@ function renderBilling(state, handlers, _derived) {
     <Billing
       bills={state.bills || []}
       filtered={state.filteredB || []}
+      loading={state.dateLoading}
       billFilter={state.billFilter || "All"}
+      billSearch={state.billSearch || ""}
+      billSort={state.billSort || "newest"}
       billMonth={state.billMonth}
       pendingDues={state.pendingDues || 0}
       customers={state.customers || []}
       onBillFilterChange={state.setBillFilter}
+      onBillSearchChange={state.setBillSearch}
+      onBillSortChange={state.setBillSort}
       onBillMonthChange={state.setBillMonth}
       onOpenModal={state.openModal}
       onLock={handlers.lockBill}

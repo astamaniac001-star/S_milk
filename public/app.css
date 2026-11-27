@@ -1,19 +1,22 @@
-/* Minimal global stylesheet for login screen and app shell.
+/* Minimal global stylesheet for the login screen and app shell.
    Loaded BEFORE the React bundle, so it carries the base tokens needed for
    first paint — including a dark variant keyed off the `.dark` class that
-   apply-dark-mode.js adds to <html> before paint (FOUC fix). */
+   apply-dark-mode.js adds to <html> before paint (FOUC fix).
+   Palette mirrors src/index.css ("Ledger" design system). */
 :root {
-  --app-bg: #fafafa;
-  --app-fg: #18181b;
+  --app-bg: #f4f4f0;
+  --app-fg: #181b18;
 }
 .dark {
-  --app-bg: #09090b;
-  --app-fg: #fafafa;
+  --app-bg: #111311;
+  --app-fg: #e9ece6;
 }
 body {
   margin: 0;
   min-height: 100vh;
-  font-family: "Inter", system-ui, sans-serif;
+  font-family:
+    "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    sans-serif;
   background: var(--app-bg);
   color: var(--app-fg);
 }

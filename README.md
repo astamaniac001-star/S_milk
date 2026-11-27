@@ -88,6 +88,56 @@ Every fetch goes through `safeFetch`, which turns failures into entries in
 instead of crashing the app. Mutations, by contrast, throw and surface as
 error toasts inside the handler that called them.
 
+While the first fetches are in flight, `useEntityStore` exposes hydration
+flags (`coreLoading` / `dateLoading` / `loading`) so pages show **skeleton
+lists** instead of a false "no data" empty state. The flags are only raised
+on mount — manual refreshes and date changes keep existing rows on screen.
+
+### UI design system — "Ledger" (2026-11 rebuild)
+
+The visual layer is a token-driven design system in `src/index.css`. It is
+deliberately a **working tool, not a pitch deck**: warm paper, ink, one
+accent, and structure carried by rules rather than decoration.
+
+- **Themes** — a warm-paper light theme (`#f4f4f0` ground, white surfaces)
+  and an ink dark theme, both defined as CSS variables on `:root` / `.dark`.
+  A stored `darkMode` preference always wins; with no stored value the OS
+  `prefers-color-scheme` decides. `public/apply-dark-mode.js` applies the
+  theme before first paint (no flash), and `AppShell` keeps the
+  `<meta name="theme-color">` in sync.
+- **Type** — IBM Plex Sans for UI text; IBM Plex Mono for labels, dates,
+  literals, and money (tabular figures). There is no display/numeral face:
+  hierarchy comes from weight, size, and spacing. `--font-display` is kept
+  as an alias of the UI face for older components.
+- **Chrome** — 1px hairline borders, 4–8px radii, and exactly one pine-green
+  accent (`--brand-500/600/700`). No gradients, glass, glow, or ambient
+  decoration. Lists are continuous divided panels, stat tiles form one ruled
+  KPI strip, and filter chips are segmented controls.
+- **Navigation** — one `.bottom-nav` element switched purely in CSS: a bottom
+  bar on phones with a 2px active underline, a left rail on desktop with a
+  2px pine rule on the active item (no filled active card).
+- **Login** — an asymmetric two-column desktop page (wordmark, `h1`, lede,
+  operator metadata beside a bordered sign-in panel) that collapses to a
+  single stacked column on phones.
+- **Pages render state, not derivation** — search/sort/filter inputs live in
+  `useFilterState`, flow through the pure filters in `lib/filters.js`
+  (`filterBills` supports text search + newest/due/name sort), and are
+  computed once in `useAppDerived`. Shared aggregations (brand × milk-type
+  stock/quantity math for Delivery and Imports) live in `lib/breakdowns.js`.
+- **Primitives** (`components/ui.jsx`) — `Modal` with focus trap, scroll
+  lock, Escape/backdrop close and a `footer` action slot; `Field` with
+  automatic label association and error ARIA; `StatGrid` (with per-tile
+  accent), `ChipRow`, `SearchInput`, `Toolbar`, `Skeleton`, `ProgressRing`,
+  `MiniBars`, `IconButton`, `Empty` (icon/title/hint). Icons are lucide only
+  — no emoji in product chrome.
+- **Modals** — bottom sheets on phones, centered cards on desktop; all 12
+  modal components share the same footer/field styling while preserving
+  every label, placeholder, and test/e2e contract.
+- **Accessibility bar** — Lighthouse 1.0/1.0/1.0 on the login screen
+  (`<main>` landmark, 4.5:1-calibrated text tokens, `public/robots.txt`
+  opting the internal tool out of indexing), `prefers-reduced-motion`
+  support, and visible focus rings throughout.
+
 ---
 
 ## App tour — pages and modals
@@ -100,13 +150,13 @@ except `ChangePinModal` which is imported directly).
 
 | Tab           | Page                | What it does                                                                                                                                                                              | Opens                                                                                  |
 | :------------ | :------------------ | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------- |
-| **Home**      | `Dashboard.jsx`     | KPI tiles (active customers, collected revenue, pending dues, delivered stock today), today's log list, quick actions                                                                     | `addCustomer`, `addImport`, **Generate Bills**, `addAdj`, `addPause`, `addBrand`       |
-| **Customers** | `Customers.jsx`     | Identity-only customer cards (name, address, phone, status, balance) with search + status filter, WhatsApp share, deactivate (OCC-guarded), each card lists that customer's subscriptions | `editCustomer`, `addSubscription` (prefilled with the customer id)                     |
-| **Subs**      | `Subscriptions.jsx` | Full subscription management: search/filter, add / edit / delete (version-checked) / history                                                                                              | `addSubscription` (with `NEW_SUB_DEFAULTS`), `editSubscription`, `subscriptionHistory` |
-| **Delivery**  | `Delivery.jsx`      | The daily driver page: date picker, **Generate** button, per-log delivered/skipped toggle with brand breakdown, add extra delivery                                                        | `addAdHoc`                                                                             |
-| **Imports**   | `Imports.jsx`       | Milk purchases from suppliers: draft → **Confirm** / delete (both via OCC RPCs), month/brand/status filters, brand manager (add + edit per-milk-type rates)                               | `addImport` (add _and_ edit — the modal handles both), `addBrand`, `editBrand`         |
-| **Billing**   | `Billing.jsx`       | Monthly bills per customer: month picker, status filter, KPIs, lock/unlock, record payment, bill detail, WhatsApp share, issue credit note                                                | `payment`, `billDetail`, `addCreditNote`                                               |
-| **More**      | `More.jsx`          | Adjustments ledger + **Apply** buttons, pause periods, live diagnostics, health check, PIN rotation                                                                                       | `addAdj`, `addPause`, `changePin`                                                      |
+| **Home**      | `Dashboard.jsx`     | KPI tiles (active customers, collected revenue, pending dues, delivered stock today — with a completion ring), today's log list, clickable recent bills, quick actions                     | `addCustomer`, `addImport`, **Generate Bills**, `addAdj`, `addPause`, `addBrand`       |
+| **Customers** | `Customers.jsx`     | Identity-only customer cards (name, address, phone, status, balance) with search + status chips with counts, WhatsApp share, deactivate (OCC-guarded), each card lists that customer's subscriptions | `editCustomer`, `addSubscription` (prefilled with the customer id)            |
+| **Subs**      | `Subscriptions.jsx` | Full subscription management: search/filter chips, add / edit / delete (version-checked) / history                                                                                        | `addSubscription` (with `NEW_SUB_DEFAULTS`), `editSubscription`, `subscriptionHistory` |
+| **Delivery**  | `Delivery.jsx`      | The daily driver page: date stepper (prev/next/Today), clickable stat tiles that switch the list view (scheduled / delivered / skipped / brand × type stock table), per-log done/skip toggle with search, add extra delivery | `addAdHoc`                                                    |
+| **Imports**   | `Imports.jsx`       | Milk purchases from suppliers: draft → **Confirm** / delete (both via OCC RPCs), month/day/range views + brand/status filters, day-stock card, qty & cost breakdown, brand manager (add + edit per-milk-type rates) | `addImport` (add _and_ edit — the modal handles both), `addBrand`, `editBrand` |
+| **Billing**   | `Billing.jsx`       | Monthly bills per customer: month picker, text search + status chips with counts + sort (newest/due/name), KPIs, lock/unlock, record payment, bill detail, WhatsApp share, issue credit note | `payment`, `billDetail`, `addCreditNote`                                             |
+| **More**      | `More.jsx`          | Admin back office: Security (PIN rotation), Adjustments ledger + **Apply**, Credit Notes + **Apply**, pause periods, live diagnostics, health check                                                       | `addAdj`, `addPause`, `changePin`, `addCreditNote`                             |
 
 `App.jsx` is the mount point: `useAuth` → `useAppState` → `useAppHandlers` →
 `ErrorBoundary` → `AppShell` → page + modals + `Toast`. The login screen is
@@ -365,7 +415,8 @@ show specific, actionable messages.
 src/
 ├── main.jsx                 # Mounts <App/> into #app-root
 ├── App.jsx                  # Auth gate → ErrorBoundary → Shell + Page + Modals
-├── index.css                # All form/shell classes (.field, .btn-*, .card, …)
+├── index.css                # "Ledger" design system: light/dark tokens +
+│                             # all form/shell classes (.field, .btn-*, .card, …)
 ├── lib/
 │   ├── supabaseClient.js    # Lazy client + configError (no module-eval throw)
 │   ├── api.js               # 🔑 callApi + DISPATCH table (39 actions) + barrel
@@ -375,15 +426,16 @@ src/
 │   │   ├── customers.js / subscriptions.js / delivery.js / billing.js
 │   │   ├── adjustments.js / imports.js / admin.js
 │   ├── constants.js         # DAYS, MILK_TYPES, PAY_MODES, NEW_SUB_DEFAULTS, OPERATOR_EMAIL (status palette lives in ui.jsx)
-│   ├── filters.js           # Pure filters (customers/imports/bills) + month options
-│   ├── utils.js             # fmt, toNum, getToday (IST), getDaysAgoIST, cleanPhone, brandLabel, matchBrandByMilkType, generateKey
+│   ├── breakdowns.js        # Pure brand × type aggregations shared by Delivery + Imports
+│   ├── filters.js           # Pure filters (customers/imports/bills + search/sort) + month options
+│   ├── utils.js             # fmt, toNum, getToday (IST), getDaysAgoIST, shiftDate, cleanPhone, brandLabel, matchBrandByMilkType, generateKey
 │   ├── validation.js        # Barrel: customer + import + subscription validators
 │   ├── validation/          # customer.js, import.js, subscription.js
 │   └── database.types.ts    # Generated types — never edit manually
 ├── hooks/
 │   ├── useAuth.js           # Supabase Auth session + 6-digit PIN login
 │   ├── useAppState.js       # Composition root (+ useDayTick)
-│   ├── useAppUi / useEntityStore (+ useFilterState) / useAppDerived
+│   ├── useAppUi / useEntityStore (+ useFilterState, hydration flags) / useAppDerived
 │   ├── useAppHandlers.js    # Spreads 6 domain hooks
 │   ├── useBusy.js           # Re-entrancy guard + SyntheticEvent filter
 │   └── handlers/            # shared.js (useHelpers) + 6 domain handler hooks
@@ -397,11 +449,10 @@ src/
 └── test/setup.js            # Vitest + Testing Library setup
 
 public/                      # sw.js, register-sw.js, app.css, apply-dark-mode.js,
-                             # manifest.json, icons/favicon
+                             # manifest.json, icons/favicon, robots.txt
 supabase/
 ├── schema.sql               # Generated present-state schema — never edit manually
-└── migrations/              # Created when migrations are added (currently absent);
-                             # historical ledger once it exists
+└── migrations/              # Historical ledger (present since the 2026-11 baseline)
 scripts/db-baseline.js       # db:baseline → two baseline migrations (schema + data)
 e2e/                         # Playwright + live-DB Vitest suites (see e2e/README.md)
 ```
@@ -531,7 +582,7 @@ deliberately thin; don't assume the suite exercises a path you changed.
 - **useHelpers** (shared by all handler hooks, positional contracts):
   `showToast(msg, type)`, `executeApiAction(action, payload, successMsg,
 getList, setList, mapFromApi, resKey)`, `handleFormAction(…)`,
-  `handleIdAction(…)`, and `saveWithValidation(form, validateFn, handlers,
+  and `saveWithValidation(form, validateFn, handlers,
 entityName)` which routes to `add<Entity>`/`update<Entity>` based on the
   presence of `form.id`.
 - **One action = one mutation = at most one success toast**; duplicate calls

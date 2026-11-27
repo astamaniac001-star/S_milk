@@ -1,4 +1,4 @@
-import { Field, Modal, Btn, IS, ActiveBrandOptions } from "../ui.jsx";
+import { Field, Modal, Btn, ActiveBrandOptions } from "../ui.jsx";
 import { useBusy } from "../../hooks/useBusy.js";
 import { MILK_TYPES } from "../../lib/constants.js";
 import { CustomerDateFields } from "./shared";
@@ -16,7 +16,20 @@ export function AdHocLogModal({
 }) {
   const [busy, save] = useBusy(onSave);
   return (
-    <Modal title="Add Extra Delivery" onClose={onClose}>
+    <Modal
+      title="Add Extra Delivery"
+      onClose={onClose}
+      footer={
+        <>
+          <Btn onClick={save} disabled={busy}>
+            {busy ? "Adding..." : "Add Delivery"}
+          </Btn>
+          <Btn variant="secondary" onClick={onClose} disabled={busy}>
+            Cancel
+          </Btn>
+        </>
+      }
+    >
       <CustomerDateFields
         form={form}
         data={data}
@@ -26,7 +39,7 @@ export function AdHocLogModal({
       />
       <Field label="Brand">
         <select
-          style={IS()}
+          className="input"
           value={form?.brandId ?? data?.brandId ?? ""}
           onChange={onChange("brandId")}
         >
@@ -37,7 +50,7 @@ export function AdHocLogModal({
       </Field>
       <Field label="Product">
         <select
-          style={IS()}
+          className="input"
           value={form?.product ?? data?.product ?? "Full Cream"}
           onChange={onChange("product")}
         >
@@ -52,27 +65,19 @@ export function AdHocLogModal({
         <input
           type="number"
           step="0.5"
-          style={IS()}
+          className="input"
           value={form?.qty ?? 1}
           onChange={onChange("qty")}
         />
       </Field>
       <Field label="Reason (Optional)">
         <input
-          style={IS()}
+          className="input"
           value={form?.reason ?? ""}
           onChange={onChange("reason")}
           placeholder="Guests, Festival..."
         />
       </Field>
-      <div style={{ display: "flex", gap: 8 }}>
-        <Btn onClick={save} disabled={busy}>
-          {busy ? "Adding..." : "Add Delivery"}
-        </Btn>
-        <Btn variant="secondary" onClick={onClose} disabled={busy}>
-          Cancel
-        </Btn>
-      </div>
     </Modal>
   );
 }

@@ -1,106 +1,57 @@
 // ── Imports.jsx ───────────────────────────────────────────────────────────────
+// Milk purchases from brands/suppliers ("imports") + the per-brand quick-save
+// row + the brand × type stock breakdowns. View modes: month / single day /
+// inclusive date range (2026-11-10); Day mode also shows the confirmed-stock
+// card fed by getDailyInventory.
+
 import { useRef, useState, useMemo } from "react";
-import { fmt, getToday, toNum, brandLabel } from "../lib/utils.js";
+import { fmt, getToday, toNum } from "../lib/utils.js";
 import { buildMonthOptions, defaultImportRange } from "../lib/filters.js";
+import {
+  buildQuantityBreakdown,
+  buildStockBreakdown,
+} from "../lib/breakdowns.js";
 import {
   Card,
   Btn,
-  IS,
   Section,
-  StatGrid,
   Empty,
   Badge,
   Modal,
 } from "../components/ui.jsx";
+import {
+  CalendarRange,
+  Droplets,
+  Package,
+  Pencil,
+  Tag,
+} from "lucide-react";
 
 const STATUS_FILTERS = ["Draft", "Confirmed", "Reconciled"];
-
-// Shared sort: brand name, then milk type (audit 2026-11-09 F16 — the
-// sort expression was cloned between buildQuantityBreakdown and
-// buildImportDeliveryBreakdown).
-function sortBrandTypeRows(rows) {
-  return rows.sort((a, b) =>
-    a.brand === b.brand
-      ? a.type.localeCompare(b.type)
-      : a.brand.localeCompare(b.brand),
-  );
-}
-
-function buildQuantityBreakdown(imports) {
-  const map = new Map();
-  (imports || []).forEach((i) => {
-    const key = `${i.brand}||${i.type}`;
-    if (!map.has(key))
-      map.set(key, { brand: i.brand, type: i.type, qty: 0, cost: 0 });
-    const row = map.get(key);
-    row.qty += toNum(i.qty);
-    row.cost += toNum(i.total);
-  });
-  return sortBrandTypeRows(Array.from(map.values()));
-}
-
-// Same logic as Delivery.jsx's buildTotalBreakdown but for the Imports modal:
-// aggregates imports (qty) + today's delivered logs by brand/type.
-function buildImportDeliveryBreakdown(imports, logs, brands, logDate, today) {
-  const targetDate = logDate || today;
-  const dayImports = (imports || []).filter(
-    (i) => i.status === "Confirmed" && i.date === targetDate,
-  );
-  const deliveredLogs = (logs || []).filter(
-    (l) => l.delivered && l.date === targetDate,
-  );
-
-  const map = new Map();
-  const ensure = (brand, type) => {
-    const key = `${brand}||${type}`;
-    if (!map.has(key)) map.set(key, { brand, type, imported: 0, delivered: 0 });
-    return map.get(key);
-  };
-
-  dayImports.forEach((i) => {
-    const r = ensure(i.brand, i.type || "Mixed");
-    r.imported += toNum(i.qty);
-  });
-
-  deliveredLogs.forEach((l) => {
-    const milkType = l.product || "Milk";
-    // Brand-aware: log.brandId resolves directly; legacy rows fall back to
-    // the milk-type heuristic.
-    const brandName = brandLabel(l, brands);
-    const r = ensure(brandName, milkType);
-    r.delivered += toNum(l.qty);
-  });
-
-  const rows = Array.from(map.values());
-  return sortBrandTypeRows(rows);
-}
 
 // Shared table for the two breakdown modals (audit 2026-11-09 F16 — the
 // thead/tbody markup was cloned verbatim between QtyBreakdownModal and
 // DeliveryBreakdownModal). First two columns left-aligned, the rest right.
 function BreakdownTable({ headers, rows, renderCells }) {
   return (
-    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-      <thead>
-        <tr style={{ borderBottom: "2px solid var(--border-color)" }}>
-          {headers.map((h, i) => (
-            <th
-              key={h}
-              style={{ padding: "6px", textAlign: i < 2 ? "left" : "right" }}
-            >
-              {h}
-            </th>
-          ))}
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((r, i) => (
-          <tr key={i} style={{ borderBottom: "1px solid var(--border-color)" }}>
-            {renderCells(r)}
+    <div style={{ overflowX: "auto" }}>
+      <table className="data-table">
+        <thead>
+          <tr>
+            {headers.map((h, i) => (
+              <th key={h} className={i < 2 ? "" : "num"}>
+                {h}
+              </th>
+            ))}
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => (
+            <tr key={i}>{renderCells(r)}</tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -112,12 +63,10 @@ function QtyBreakdownModal({ rows, onClose }) {
         rows={rows}
         renderCells={(r) => (
           <>
-            <td style={{ padding: "6px", fontWeight: 600 }}>{r.brand}</td>
-            <td style={{ padding: "6px" }}>{r.type}</td>
-            <td style={{ padding: "6px", textAlign: "right" }}>{r.qty}</td>
-            <td style={{ padding: "6px", textAlign: "right" }}>
-              {fmt(r.cost)}
-            </td>
+            <td style={{ fontWeight: 600 }}>{r.brand}</td>
+            <td>{r.type}</td>
+            <td className="num">{r.qty}</td>
+            <td className="num">{fmt(r.cost)}</td>
           </>
         )}
       />
@@ -137,12 +86,10 @@ function DeliveryBreakdownModal({ rows, dateLabel, onClose }) {
         rows={rows}
         renderCells={(r) => (
           <>
-            <td style={{ padding: "6px", fontWeight: 600 }}>{r.brand}</td>
-            <td style={{ padding: "6px" }}>{r.type}</td>
-            <td style={{ padding: "6px", textAlign: "right" }}>{r.imported}</td>
-            <td style={{ padding: "6px", textAlign: "right" }}>
-              {r.delivered}
-            </td>
+            <td style={{ fontWeight: 600 }}>{r.brand}</td>
+            <td>{r.type}</td>
+            <td className="num">{r.imported}</td>
+            <td className="num">{r.delivered}</td>
           </>
         )}
       />
@@ -196,37 +143,14 @@ function BrandImportRow({ brand, today, onSaveImport, onOpenModal }) {
   const canSave = !!form.date && qty > 0 && rate > 0;
 
   return (
-    <Card style={{ padding: 12 }}>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          gap: 8,
-        }}
-      >
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div
-            style={{
-              fontSize: 16,
-              fontWeight: 700,
-              color: "var(--text-primary, #0f172a)",
-            }}
-          >
-            {brand.name}{" "}
-            <span
-              style={{
-                fontSize: 13,
-                fontWeight: 500,
-                color: "var(--text-secondary, #475569)",
-              }}
-            >
-              · {brand.defaultMilkType || "—"}
-            </span>
+    <Card>
+      <div className="import-row">
+        <div className="row-main">
+          <div className="row-title">
+            {brand.name}
+            <span className="pill">{brand.defaultMilkType || "—"}</span>
           </div>
-          <div
-            style={{ fontSize: 12, color: "var(--text-secondary, #6b7280)" }}
-          >
+          <div className="row-sub">
             {brand.supplier || "—"}
             {brand.phone ? " · " + brand.phone : ""}
             {brand.rate ? " · ₹" + brand.rate + "/L" : ""}
@@ -238,94 +162,56 @@ function BrandImportRow({ brand, today, onSaveImport, onOpenModal }) {
           variant="secondary"
           onClick={() => onOpenModal?.("editBrand", brand)}
         >
-          Edit
+          <Pencil size={13} aria-hidden="true" /> Edit
         </Btn>
-        <Btn small variant="secondary" onClick={() => setOpen((o) => !o)}>
+        <Btn
+          small
+          variant="secondary"
+          aria-expanded={open}
+          onClick={() => setOpen((o) => !o)}
+        >
           {open ? "Close" : "Add"}
         </Btn>
       </div>
+
       {open && (
-        <div
-          style={{
-            marginTop: 10,
-            paddingTop: 10,
-            borderTop: "1px dashed var(--border-color, #e2e8f0)",
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: 8,
-          }}
-        >
-          <div style={{ gridColumn: "1 / -1" }}>
-            <label
-              style={{
-                fontSize: 12,
-                color: "var(--text-secondary, #475569)",
-                display: "block",
-                marginBottom: 4,
-              }}
-            >
-              Date
+        <div className="brand-form">
+          <div className="brand-form-grid">
+            <label className="field" style={{ gridColumn: "1 / -1" }}>
+              <span className="field-label">Date</span>
+              <input
+                type="date"
+                className="input"
+                value={form.date}
+                onChange={handleChange("date")}
+              />
             </label>
-            <input
-              type="date"
-              style={IS()}
-              value={form.date}
-              onChange={handleChange("date")}
-            />
-          </div>
-          <div>
-            <label
-              style={{
-                fontSize: 12,
-                color: "var(--text-secondary, #475569)",
-                display: "block",
-                marginBottom: 4,
-              }}
-            >
-              Litres
+            <label className="field">
+              <span className="field-label">Litres</span>
+              <input
+                type="number"
+                className="input"
+                value={form.qty}
+                placeholder="0"
+                onChange={handleChange("qty")}
+              />
             </label>
-            <input
-              type="number"
-              style={IS()}
-              value={form.qty}
-              placeholder="0"
-              onChange={handleChange("qty")}
-            />
-          </div>
-          <div>
-            <label
-              style={{
-                fontSize: 12,
-                color: "var(--text-secondary, #475569)",
-                display: "block",
-                marginBottom: 4,
-              }}
-            >
-              Rate (₹/L)
+            <label className="field">
+              <span className="field-label">Rate (₹/L)</span>
+              <input
+                type="number"
+                step="0.5"
+                className="input"
+                value={form.rate}
+                placeholder="0"
+                onChange={handleChange("rate")}
+              />
             </label>
-            <input
-              type="number"
-              step="0.5"
-              style={IS()}
-              value={form.rate}
-              placeholder="0"
-              onChange={handleChange("rate")}
-            />
           </div>
-          <div
-            style={{
-              gridColumn: "1 / -1",
-              background: "#f0fdf4",
-              border: "1px solid #bbf7d0",
-              borderRadius: 8,
-              padding: "8px 12px",
-              fontSize: 13,
-              color: "#166534",
-            }}
-          >
+          <div className="brand-total tnum">
             Total: <strong>{fmt(total)}</strong>
           </div>
-          <div style={{ gridColumn: "1 / -1", display: "flex", gap: 8 }}>
+          <div className="toolbar-actions">
             <Btn onClick={handleSave} disabled={!canSave || busy}>
               {busy ? "Saving..." : "Save Draft"}
             </Btn>
@@ -349,7 +235,7 @@ export default function Imports({
   brands = [],
   logs = [],
   logDate,
-  impFilter,
+  impFilter = {},
   onImpFilterChange,
   onOpenModal,
   onConfirm,
@@ -381,13 +267,11 @@ export default function Imports({
     onImpFilterChange(next);
   };
 
-  const totalQty = safeFiltered
-    .filter((i) => i.status === "Confirmed")
-    .reduce((s, i) => s + Number(i.qty || 0), 0);
-
-  const totalCost = safeFiltered
-    .filter((i) => i.status === "Confirmed")
-    .reduce((s, i) => s + Number(i.total || 0), 0);
+  const confirmed = safeFiltered.filter((i) => i.status === "Confirmed");
+  const totalQty = Math.round(
+    confirmed.reduce((s, i) => s + Number(i.qty || 0), 0) * 100,
+  ) / 100;
+  const totalCost = confirmed.reduce((s, i) => s + Number(i.total || 0), 0);
 
   // Only trust an inventory payload that belongs to the currently-selected
   // day — the payload carries its own `date` (from getDailyInventory), so a
@@ -422,7 +306,12 @@ export default function Imports({
   );
   const deliveryBreakdown = useMemo(
     () =>
-      buildImportDeliveryBreakdown(allImports, logs, brands, logDate, today),
+      buildStockBreakdown({
+        imports: allImports,
+        logs,
+        brands,
+        date: logDate || today,
+      }).rows,
     [allImports, logs, brands, logDate, today],
   );
 
@@ -431,7 +320,7 @@ export default function Imports({
       <Section
         title="Milk Imports"
         action={
-          <div style={{ display: "flex", gap: 6 }}>
+          <div className="toolbar-actions">
             <Btn
               small
               variant="secondary"
@@ -439,175 +328,167 @@ export default function Imports({
             >
               + Brand
             </Btn>
-            <Btn
-              small
-              variant="primary"
-              onClick={() => onOpenModal("addImport")}
-            >
+            <Btn small variant="primary" onClick={() => onOpenModal("addImport")}>
               + Import
             </Btn>
           </div>
         }
       />
-      <div
-        style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}
-      >
-        {/* View mode (2026-11-10): month (as before), a single day, or an
-            inclusive date range. Only the active mode's picker renders, so
-            the default month view is unchanged for existing flows/e2e. */}
-        <select
-          id="import-view"
-          name="import-view"
-          aria-label="Show imports by"
-          value={viewMode}
-          onChange={(e) => handleViewMode(e.target.value)}
-          style={{ ...IS(), flex: 1 }}
-        >
-          <option value="month">By month</option>
-          <option value="day">By day</option>
-          <option value="range">By date range</option>
-        </select>
-        {viewMode === "month" && (
+
+      <Card>
+        <div className="filter-bar">
+          {/* View mode (2026-11-10): month (as before), a single day, or an
+              inclusive date range. Only the active mode's picker renders, so
+              the default month view is unchanged for existing flows/e2e. */}
           <select
-            id="import-month"
-            name="import-month"
-            aria-label="Filter imports by month"
-            value={impFilter.month}
-            onChange={(e) =>
-              onImpFilterChange({ ...impFilter, month: e.target.value })
-            }
-            style={{ ...IS(), flex: 1 }}
+            id="import-view"
+            name="import-view"
+            aria-label="Show imports by"
+            className="input filter-control"
+            value={viewMode}
+            onChange={(e) => handleViewMode(e.target.value)}
           >
-            <option value="">All months</option>
-            {buildMonthOptions(allImports).map((m) => (
-              <option key={m.value} value={m.value}>
-                {m.label}
+            <option value="month">By month</option>
+            <option value="day">By day</option>
+            <option value="range">By date range</option>
+          </select>
+          {viewMode === "month" && (
+            <select
+              id="import-month"
+              name="import-month"
+              aria-label="Filter imports by month"
+              className="input filter-control"
+              value={impFilter.month || ""}
+              onChange={(e) =>
+                onImpFilterChange({ ...impFilter, month: e.target.value })
+              }
+            >
+              <option value="">All months</option>
+              {buildMonthOptions(allImports).map((m) => (
+                <option key={m.value} value={m.value}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+          )}
+          {viewMode === "day" && (
+            <input
+              type="date"
+              id="import-day"
+              name="import-day"
+              aria-label="Show imports for date"
+              className="input filter-control"
+              value={impFilter.day || ""}
+              onChange={(e) =>
+                onImpFilterChange({ ...impFilter, day: e.target.value })
+              }
+            />
+          )}
+          {viewMode === "range" && (
+            <>
+              <input
+                type="date"
+                id="import-from"
+                name="import-from"
+                aria-label="Show imports from date"
+                className="input filter-control"
+                value={impFilter.from || ""}
+                onChange={(e) =>
+                  onImpFilterChange({ ...impFilter, from: e.target.value })
+                }
+              />
+              <input
+                type="date"
+                id="import-to"
+                name="import-to"
+                aria-label="Show imports to date"
+                className="input filter-control"
+                value={impFilter.to || ""}
+                onChange={(e) =>
+                  onImpFilterChange({ ...impFilter, to: e.target.value })
+                }
+              />
+            </>
+          )}
+          <select
+            id="import-brand"
+            name="import-brand"
+            aria-label="Filter imports by brand"
+            className="input filter-control"
+            value={impFilter.brand || ""}
+            onChange={(e) =>
+              onImpFilterChange({ ...impFilter, brand: e.target.value })
+            }
+          >
+            <option value="">All Brands</option>
+            {(brands || []).map((b) => (
+              <option key={b.id} value={b.name}>
+                {b.name}
               </option>
             ))}
           </select>
-        )}
-        {viewMode === "day" && (
-          <input
-            type="date"
-            id="import-day"
-            name="import-day"
-            aria-label="Show imports for date"
-            value={impFilter.day || ""}
+          <select
+            id="import-status"
+            name="import-status"
+            aria-label="Filter imports by status"
+            className="input filter-control"
+            value={impFilter.status || ""}
             onChange={(e) =>
-              onImpFilterChange({ ...impFilter, day: e.target.value })
+              onImpFilterChange({ ...impFilter, status: e.target.value })
             }
-            style={{ ...IS(), flex: 1 }}
-          />
-        )}
-        {viewMode === "range" && (
-          <>
-            <input
-              type="date"
-              id="import-from"
-              name="import-from"
-              aria-label="Show imports from date"
-              value={impFilter.from || ""}
-              onChange={(e) =>
-                onImpFilterChange({ ...impFilter, from: e.target.value })
-              }
-              style={{ ...IS(), flex: 1 }}
-            />
-            <input
-              type="date"
-              id="import-to"
-              name="import-to"
-              aria-label="Show imports to date"
-              value={impFilter.to || ""}
-              onChange={(e) =>
-                onImpFilterChange({ ...impFilter, to: e.target.value })
-              }
-              style={{ ...IS(), flex: 1 }}
-            />
-          </>
-        )}
-        <select
-          id="import-brand"
-          name="import-brand"
-          value={impFilter.brand}
-          onChange={(e) =>
-            onImpFilterChange({ ...impFilter, brand: e.target.value })
-          }
-          style={{ ...IS(), flex: 1 }}
-        >
-          <option value="">All Brands</option>
-          {(brands || []).map((b) => (
-            <option key={b.id} value={b.name}>
-              {b.name}
-            </option>
-          ))}
-        </select>
-        <select
-          id="import-status"
-          name="import-status"
-          value={impFilter.status}
-          onChange={(e) =>
-            onImpFilterChange({ ...impFilter, status: e.target.value })
-          }
-          style={{ ...IS(), flex: 1 }}
-        >
-          <option value="">All Status</option>
-          {STATUS_FILTERS.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
-      </div>
+          >
+            <option value="">All Status</option>
+            {STATUS_FILTERS.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+        </div>
+      </Card>
 
       {/* Day view stock card — daily inventory from getDailyInventory
           (Confirmed imports only). Fetched by useEntityStore whenever the
           operator is in Day mode with a date picked; the fetch is wired at
           the composition root (useAppState → useEntityStore importDay). */}
       {viewMode === "day" && (
-        <div
-          style={{
-            background: "var(--info-bg, #eff6ff)",
-            border: "1px solid var(--border-color, #e2e8f0)",
-            borderRadius: 8,
-            padding: "10px 12px",
-            marginBottom: 10,
-            fontSize: 13,
-          }}
-        >
-          <div style={{ fontWeight: 700, marginBottom: 6 }}>
-            Stock for {impFilter.day || "— pick a date"}
+        <div className="stock-card">
+          <div className="stock-head">
+            <span className="stock-title">
+              <CalendarRange size={14} aria-hidden="true" /> Stock for{" "}
+              {impFilter.day || "— pick a date"}
+            </span>
+            <span className="pill">Confirmed</span>
           </div>
           {dayInventory ? (
             <>
-              <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
+              <div className="stock-stats">
                 <span>
-                  Imported: <strong>{toNum(inventory.totalImported)} L</strong>
+                  Imported:{" "}
+                  <strong className="tnum">
+                    {toNum(inventory.totalImported)} L
+                  </strong>
                 </span>
                 <span>
                   Delivered:{" "}
-                  <strong>{toNum(inventory.totalDelivered)} L</strong>
+                  <strong className="tnum">
+                    {toNum(inventory.totalDelivered)} L
+                  </strong>
                 </span>
                 <span>
-                  Remaining: <strong>{toNum(inventory.remaining)} L</strong>
+                  Remaining:{" "}
+                  <strong className="tnum">{toNum(inventory.remaining)} L</strong>
                 </span>
                 {toNum(inventory.shortage) > 0 && (
-                  <span style={{ color: "#991b1b", fontWeight: 700 }}>
+                  <span className="stock-shortage">
                     Shortage: {toNum(inventory.shortage)} L
                   </span>
                 )}
               </div>
-              <div
-                style={{
-                  fontSize: 11,
-                  color: "var(--text-secondary, #6b7280)",
-                  marginTop: 4,
-                }}
-              >
-                Imported counts Confirmed imports only.
-              </div>
+              <div className="stock-note">Imported counts Confirmed imports only.</div>
             </>
           ) : (
-            <div style={{ color: "var(--text-secondary, #6b7280)" }}>
+            <div className="stock-note">
               {impFilter.day
                 ? "Loading stock…"
                 : "Pick a date to see that day's stock."}
@@ -616,23 +497,29 @@ export default function Imports({
         </div>
       )}
 
-      {/* CLICKABLE: opens brand+type qty+price breakdown modal */}
-      <div
-        onClick={() => setModal("qtyBreakdown")}
-        style={{ cursor: "pointer" }}
-      >
-        <StatGrid
-          items={[
-            {
-              label: "Total Qty & Cost",
-              value: `${totalQty} L · ${fmt(totalCost)}`,
-              icon: "🥛",
-              bg: "var(--info-bg)",
-              tx: "var(--info-text)",
-            },
-            { label: "Imports", value: safeFiltered.length, icon: "📦" },
-          ]}
-        />
+      {/* Qty & cost tile is a real button (keyboard accessible) and opens the
+          brand+type breakdown modal. */}
+      <div className="stat-grid">
+        <button
+          type="button"
+          className="stat-tile"
+          onClick={() => setModal("qtyBreakdown")}
+          aria-label="Open quantity and cost breakdown"
+          style={{ "--accent": "var(--brand-500)" }}
+        >
+          <div className="stat-label">
+            <Droplets size={13} aria-hidden="true" /> Total Qty & Cost
+          </div>
+          <div className="stat-value stat-value-compact tnum">
+            {totalQty} L · {fmt(totalCost)}
+          </div>
+        </button>
+        <div className="stat-tile" style={{ "--accent": "var(--info-text)" }}>
+          <div className="stat-label">
+            <Package size={13} aria-hidden="true" /> Imports
+          </div>
+          <div className="stat-value">{safeFiltered.length}</div>
+        </div>
       </div>
 
       {/* Imported stock vs delivered milk for the selected delivery date */}
@@ -640,7 +527,7 @@ export default function Imports({
         style={{
           display: "flex",
           justifyContent: "flex-end",
-          margin: "8px 0 4px",
+          margin: "10px 0 4px",
         }}
       >
         <Btn
@@ -653,77 +540,69 @@ export default function Imports({
       </div>
 
       {safeFiltered.length === 0 ? (
-        <Empty msg="No imports match filters" />
+        <Empty msg="No imports match filters" icon={Package} />
       ) : (
-        safeFiltered.map((imp) => (
-          <Card key={imp.id}>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "flex-start",
-              }}
-            >
-              <div>
-                <div style={{ fontWeight: 600, fontSize: 14, color: "#111" }}>
-                  {imp.brand}
+        <div className="list">
+          {safeFiltered.map((imp) => (
+            <Card key={imp.id}>
+              <div className="import-row">
+                <div className="row-main">
+                  <div className="row-title">
+                    {imp.brand}
+                    <span className="pill">{imp.type}</span>
+                  </div>
+                  <div className="row-sub tnum">{imp.date}</div>
+                  <div className="row-sub tnum">
+                    {imp.qty} L @ {fmt(imp.rate)}/L ={" "}
+                    <strong>{fmt(imp.total)}</strong>
+                  </div>
+                  <div className="row-sub">
+                    <span className="pill">v{imp.version}</span>
+                  </div>
                 </div>
-                <div style={{ fontSize: 12, color: "#6b7280" }}>
-                  {imp.date} · {imp.type}
-                </div>
-                <div style={{ fontSize: 13, color: "#374151", marginTop: 4 }}>
-                  {imp.qty} L @ {fmt(imp.rate)}/L ={" "}
-                  <strong>{fmt(imp.total)}</strong>
-                </div>
-                <div style={{ fontSize: 11, color: "#9ca3af" }}>
-                  v{imp.version}
-                </div>
+                <Badge label={imp.status} />
               </div>
-              <Badge label={imp.status} />
-            </div>
-            {imp.status === "Draft" && (
-              <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
-                <Btn
-                  small
-                  variant="secondary"
-                  onClick={() => onOpenModal("addImport", imp)}
-                >
-                  Edit
-                </Btn>
-                <Btn small variant="success" onClick={() => onConfirm(imp.id)}>
-                  Confirm
-                </Btn>
-                <Btn small variant="danger" onClick={() => handleDelete(imp)}>
-                  Delete
-                </Btn>
-              </div>
-            )}
-          </Card>
-        ))
+              {imp.status === "Draft" && (
+                <div className="row-actions" style={{ marginTop: 12 }}>
+                  <Btn
+                    small
+                    variant="secondary"
+                    onClick={() => onOpenModal("addImport", imp)}
+                  >
+                    Edit
+                  </Btn>
+                  <Btn small variant="success" onClick={() => onConfirm(imp.id)}>
+                    Confirm
+                  </Btn>
+                  <Btn small variant="danger" onClick={() => handleDelete(imp)}>
+                    Delete
+                  </Btn>
+                </div>
+              )}
+            </Card>
+          ))}
+        </div>
       )}
 
-      <div
-        style={{
-          fontWeight: 600,
-          fontSize: 13,
-          color: "#374151",
-          margin: "12px 0 8px",
-        }}
-      >
-        Brands
+      <div className="section-head" style={{ marginTop: 18 }}>
+        <h3 className="card-head-title">
+          <Tag size={14} aria-hidden="true" /> Brands
+        </h3>
       </div>
       {(brands || []).length === 0 ? (
-        <Empty msg="No brands yet. Tap + Brand to add one." />
+        <Empty msg="No brands yet. Tap + Brand to add one." icon={Tag} />
       ) : (
-        (brands || []).map((b) => (
-          <BrandImportRow
-            key={b.id}
-            brand={b}
-            today={today}
-            onSaveImport={onSaveImport}
-            onOpenModal={onOpenModal}
-          />
-        ))
+        <div className="list">
+          {(brands || []).map((b) => (
+            <BrandImportRow
+              key={b.id}
+              brand={b}
+              today={today}
+              onSaveImport={onSaveImport}
+              onOpenModal={onOpenModal}
+            />
+          ))}
+        </div>
       )}
 
       {modal === "qtyBreakdown" && (

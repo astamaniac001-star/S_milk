@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Modal, Btn, Field, IS } from "../ui.jsx";
+import { Modal, Btn, Field } from "../ui.jsx";
 import { useBusy } from "../../hooks/useBusy.js";
 
 // FIX (audit 2026-07-24): no longer imports `callApi` directly (rule §1).
@@ -32,45 +32,11 @@ export function ChangePinModal({ onClose, showToast, onRotatePin }) {
     setter(e.target.value.replace(/\D/g, "").slice(0, 6));
 
   return (
-    <Modal title="Change Operator PIN" onClose={onClose}>
-      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-        <Field label="Current PIN">
-          <input
-            type="password"
-            inputMode="numeric"
-            maxLength={6}
-            value={currentPin}
-            onChange={handleChange(setCurrentPin)}
-            style={IS()}
-            placeholder="Enter 6-digit PIN"
-          />
-        </Field>
-
-        <Field label="New PIN">
-          <input
-            type="password"
-            inputMode="numeric"
-            maxLength={6}
-            value={newPin}
-            onChange={handleChange(setNewPin)}
-            style={IS()}
-            placeholder="Enter new 6-digit PIN"
-          />
-        </Field>
-
-        <Field label="Confirm New PIN">
-          <input
-            type="password"
-            inputMode="numeric"
-            maxLength={6}
-            value={confirmPin}
-            onChange={handleChange(setConfirmPin)}
-            style={IS()}
-            placeholder="Re-enter new 6-digit PIN"
-          />
-        </Field>
-
-        <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+    <Modal
+      title="Change Operator PIN"
+      onClose={onClose}
+      footer={
+        <>
           <Btn
             onClick={handleSubmit}
             disabled={
@@ -85,8 +51,44 @@ export function ChangePinModal({ onClose, showToast, onRotatePin }) {
           <Btn variant="secondary" onClick={onClose} disabled={busy}>
             Cancel
           </Btn>
-        </div>
-      </div>
+        </>
+      }
+    >
+      <Field label="Current PIN">
+        <input
+          type="password"
+          inputMode="numeric"
+          maxLength={6}
+          value={currentPin}
+          onChange={handleChange(setCurrentPin)}
+          className="input"
+          placeholder="Enter 6-digit PIN"
+        />
+      </Field>
+
+      <Field label="New PIN">
+        <input
+          type="password"
+          inputMode="numeric"
+          maxLength={6}
+          value={newPin}
+          onChange={handleChange(setNewPin)}
+          className="input"
+          placeholder="Enter new 6-digit PIN"
+        />
+      </Field>
+
+      <Field label="Confirm New PIN">
+        <input
+          type="password"
+          inputMode="numeric"
+          maxLength={6}
+          value={confirmPin}
+          onChange={handleChange(setConfirmPin)}
+          className="input"
+          placeholder="Re-enter new 6-digit PIN"
+        />
+      </Field>
     </Modal>
   );
 }

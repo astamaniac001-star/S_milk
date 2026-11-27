@@ -20,9 +20,16 @@ vi.mock("../components/ui.jsx", () => ({
   Empty: ({ msg }) => <div data-testid="empty">{msg}</div>,
   Badge: ({ label }) => <div data-testid="badge">{label}</div>,
 }));
-vi.mock("lucide-react", () => ({
-  ShieldCheck: () => <svg data-testid="shield" />,
-}));
+// 2026-11 redesign: More.jsx now imports several lucide icons for card
+// headers. Spread the real module (icons render as inline SVGs, harmless in
+// jsdom) and keep the one stub the suite historically relied on.
+vi.mock("lucide-react", async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    ShieldCheck: () => <svg data-testid="shield" />,
+  };
+});
 
 import More from "./More.jsx";
 

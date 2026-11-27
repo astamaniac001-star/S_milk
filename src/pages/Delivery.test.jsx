@@ -71,7 +71,7 @@ describe("Delivery Page", () => {
     const user = userEvent.setup();
     render(<Delivery {...defaultProps} />);
 
-    const toggleButton = screen.getByText("✗ Skip");
+    const toggleButton = screen.getByText("Skip");
     await user.click(toggleButton);
 
     expect(defaultProps.onToggleLog).toHaveBeenCalledWith("log1", true);
@@ -81,7 +81,9 @@ describe("Delivery Page", () => {
     const user = userEvent.setup();
     render(<Delivery {...defaultProps} />);
 
-    const generateButton = screen.getByText("⚡ Generate Deliveries");
+    const generateButton = screen.getByRole("button", {
+      name: /Generate Deliveries/,
+    });
     await user.click(generateButton);
 
     expect(defaultProps.generateDailyLogs).toHaveBeenCalledWith("2026-07-04");
@@ -90,8 +92,8 @@ describe("Delivery Page", () => {
   it("shows Scheduled view by default with both delivered and skipped logs", () => {
     render(<Delivery {...defaultProps} />);
     // Both buttons should be present on the Scheduled view (toggle-style)
-    expect(screen.getAllByText("✗ Skip").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText("✓ Done")).toBeInTheDocument();
+    expect(screen.getAllByText("Skip").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("Done")).toBeInTheDocument();
   });
 
   it("Delivered tile filters the list to only delivered logs and renders them read-only", async () => {
@@ -103,9 +105,9 @@ describe("Delivery Page", () => {
     // Suresh was delivered; Ramesh was skipped → only Suresh should show
     expect(screen.getByText("Suresh")).toBeInTheDocument();
     expect(screen.queryByText("Ramesh")).not.toBeInTheDocument();
-    // Read-only view shows the ✓ Done indicator but no toggle buttons
-    expect(screen.getByText("✓ Done")).toBeInTheDocument();
-    expect(screen.queryByText("✗ Skip")).not.toBeInTheDocument();
+    // Read-only view shows the Done indicator but no toggle buttons
+    expect(screen.getByText("Done")).toBeInTheDocument();
+    expect(screen.queryByText("Skip")).not.toBeInTheDocument();
   });
 
   it("Skipped tile filters to only skipped logs", async () => {
@@ -115,10 +117,10 @@ describe("Delivery Page", () => {
     await user.click(screen.getByLabelText(/Skipped:/));
     expect(screen.getByText("Ramesh")).toBeInTheDocument();
     expect(screen.queryByText("Suresh")).not.toBeInTheDocument();
-    // Skipped view is read-only — shows ✗ Skip indicator
-    expect(screen.getByText("✗ Skip")).toBeInTheDocument();
-    // No ✓ Done in the skipped list
-    expect(screen.queryByText("✓ Done")).not.toBeInTheDocument();
+    // Skipped view is read-only — shows Skip indicator
+    expect(screen.getByText("Skip")).toBeInTheDocument();
+    // No Done in the skipped list
+    expect(screen.queryByText("Done")).not.toBeInTheDocument();
   });
 
   it("search bar filters the active list by customer name", async () => {

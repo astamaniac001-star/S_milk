@@ -5,9 +5,12 @@ import {
   Section,
   Empty,
   Badge,
+  ProgressRing,
+  Skeleton,
 } from "../components/ui.jsx";
 import {
   UserPlus,
+  Users,
   Package,
   Receipt,
   Scale,
@@ -51,6 +54,10 @@ function monthLabel(YYYYMM) {
   return MONTH_NAMES[monthIdx];
 }
 
+function openBillDetail(onOpenModal, bill) {
+  if (onOpenModal) onOpenModal("billDetail", bill);
+}
+
 export default function Dashboard({
   today,
   todayLogs = [],
@@ -60,6 +67,7 @@ export default function Dashboard({
   totalRevenue = 0,
   pendingDues = 0,
   confirmedStock = 0,
+  loading = false,
   onSetTab,
   onOpenModal,
   onGenerateBill,
@@ -78,104 +86,97 @@ export default function Dashboard({
     .toFixed(1);
 
   return (
-    // FIX M9: Replaced undefined Tailwind classes (space-y-6) with inline flex styles
-    <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-      {/* FIX (2026-11-21 audit — AI-D P2-9/AI-L D1): the operator KPIs were
-          passed in but never rendered, while the README promised them. Scope
-          note: revenue/dues are computed from the VIEWED bill month's bills
-          (state.bills), stock from today's delivered logs. */}
-      <Card>
-        <StatGrid
-          items={[
-            {
-              label: "Active Customers",
-              value: activeC.length,
-              icon: <UserPlus size={20} style={{ color: "var(--info-text)" }} />,
-            },
-            {
-              label: "Collected (month)",
-              value: fmt(totalRevenue),
-              icon: (
-                <CheckCircle size={20} style={{ color: "var(--success-text)" }} />
-              ),
-            },
-            {
-              label: "Pending Dues (month)",
-              value: fmt(pendingDues),
-              icon: (
-                <XCircle size={20} style={{ color: "var(--danger-text)" }} />
-              ),
-            },
-            {
-              label: "Delivered Today (L)",
-              value: `${Number(confirmedStock).toFixed(1)} L`,
-              icon: <Droplet size={20} style={{ color: "var(--info-text)" }} />,
-            },
-          ]}
-        />
-      </Card>
+    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      {/* KPIs — computed from the VIEWED bill month's bills (revenue/dues)
+          and today's delivered logs (stock). Labels are contract-stable. */}
+      <StatGrid
+        items={[
+          {
+            label: "Active Customers",
+            value: activeC.length,
+            icon: <Users size={16} aria-hidden="true" />,
+            accent: "var(--info-text)",
+          },
+          {
+            label: "Collected (month)",
+            value: fmt(totalRevenue),
+            icon: <CheckCircle size={16} aria-hidden="true" />,
+            accent: "var(--success-text)",
+          },
+          {
+            label: "Pending Dues (month)",
+            value: fmt(pendingDues),
+            icon: <XCircle size={16} aria-hidden="true" />,
+            accent: "var(--danger-text)",
+          },
+          {
+            label: "Delivered Today (L)",
+            value: `${Number(confirmedStock).toFixed(1)} L`,
+            icon: <Droplet size={16} aria-hidden="true" />,
+            accent: "var(--brand-500)",
+          },
+        ]}
+      />
 
       <Card>
-        <h2
-          style={{
-            fontSize: 18,
-            fontWeight: 600,
-            marginBottom: 16,
-            color: "var(--text-main)",
-          }}
-        >
-          Today's Delivery ({today})
-        </h2>
+        <div className="section-head">
+          <h2 className="card-head-title">Today's Delivery ({today})</h2>
+          <Btn small variant="ghost" onClick={() => onSetTab("delivery")}>
+            View Log <ArrowRight size={14} />
+          </Btn>
+        </div>
 
-        {/* FIX M10: Moved "View Log" to the new action prop on StatGrid */}
+        <div className="chart-wrap" style={{ marginBottom: 14 }}>
+          <ProgressRing
+            value={deliveredCount}
+            max={todayLogs.length}
+            size={84}
+            label={`${deliveredCount} of ${todayLogs.length} deliveries completed`}
+          />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="row-title">Route progress</div>
+            <div className="row-sub">
+              {deliveredCount} of {todayLogs.length} deliveries completed
+            </div>
+            <div className="row-sub tnum">
+              {totalLiters} L delivered · {skippedCount} skipped
+            </div>
+          </div>
+        </div>
+
         <StatGrid
           items={[
             {
               label: "Delivered",
               value: deliveredCount,
-              icon: (
-                <CheckCircle
-                  size={20}
-                  style={{ color: "var(--success-text)" }}
-                />
-              ),
+              icon: <CheckCircle size={16} aria-hidden="true" />,
+              accent: "var(--success-text)",
             },
             {
               label: "Skipped",
               value: skippedCount,
-              icon: (
-                <XCircle size={20} style={{ color: "var(--danger-text)" }} />
-              ),
+              icon: <XCircle size={16} aria-hidden="true" />,
+              accent: "var(--danger-text)",
             },
             {
               label: "Total (L)",
               value: `${totalLiters} L`,
-              icon: <Droplet size={20} style={{ color: "var(--info-text)" }} />,
+              icon: <Droplet size={16} aria-hidden="true" />,
+              accent: "var(--brand-500)",
             },
           ]}
-          action={
-            <Btn small variant="ghost" onClick={() => onSetTab("delivery")}>
-              View Log <ArrowRight size={14} style={{ marginLeft: 4 }} />
-            </Btn>
-          }
         />
       </Card>
 
       <Section title="Quick Actions">
-        {/* FIX M9: Replaced grid-cols-2 md:grid-cols-3 with responsive auto-fit grid */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
-            gap: "12px",
-          }}
-        >
+        <div className="quick-actions">
           {QUICK_ACTIONS.map((q) => {
             const Icon = q.icon;
             return (
-              <Btn
+              <button
                 key={q.label}
-                variant="secondary"
+                type="button"
+                className="quick-action-btn"
                 onClick={() => {
                   if (q.type === "generate") {
                     const currentMonth = (today || "").substring(0, 7);
@@ -185,89 +186,81 @@ export default function Dashboard({
                       )
                     )
                       // FIX (2026-11-21 audit — AI-S M1): pass the confirmed
-                      // month explicitly. The dialog text and the handler
-                      // target previously diverged (dialog said today's
-                      // month, handler ran state.billMonth).
+                      // month explicitly so the dialog text and handler
+                      // target can't diverge.
                       onGenerateBill(currentMonth);
                   } else {
                     onOpenModal(q.type);
                   }
                 }}
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  gap: 8,
-                  padding: "16px 8px",
-                }}
               >
-                <Icon size={20} />
-                <span style={{ fontSize: 13, fontWeight: 500 }}>{q.label}</span>
-              </Btn>
+                <Icon size={20} aria-hidden="true" />
+                <span>{q.label}</span>
+              </button>
             );
           })}
         </div>
       </Section>
 
       <Card>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            marginBottom: 16,
-          }}
-        >
-          <h2
-            style={{ fontSize: 18, fontWeight: 600, color: "var(--text-main)" }}
-          >
-            Recent Bills
-          </h2>
+        <div className="section-head">
+          <h2 className="card-head-title">Recent Bills</h2>
           <Btn variant="ghost" small onClick={() => onSetTab("billing")}>
-            View all <ArrowRight size={14} style={{ marginLeft: 4 }} />
+            View all <ArrowRight size={14} />
           </Btn>
         </div>
 
-        {bills.slice(0, 3).length === 0 ? (
-          <Empty message="No bills generated yet." />
+        {loading && bills.length === 0 ? (
+          <div className="list" aria-hidden="true">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="row">
+                <div className="row-main">
+                  <Skeleton w="38%" h={15} />
+                  <div style={{ height: 8 }} />
+                  <Skeleton w="55%" h={12} />
+                </div>
+                <Skeleton w={70} h={26} radius={999} />
+              </div>
+            ))}
+          </div>
+        ) : bills.slice(0, 3).length === 0 ? (
+          <Empty
+            message="No bills generated yet."
+            hint="Generate a month from Quick Actions to see bills here."
+          />
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+          <div className="list">
             {bills.slice(0, 3).map((b) => (
               <div
                 key={b.id}
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  padding: 12,
-                  background: "var(--bg-muted)", // FIX M8: Dark mode aware background
-                  borderRadius: 8,
+                className="row"
+                role="button"
+                tabIndex={0}
+                style={{ cursor: "pointer" }}
+                aria-label={`Open bill for ${customerName(b.custId)} — ${monthLabel(b.month)}`}
+                onClick={() => openBillDetail(onOpenModal, b)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    openBillDetail(onOpenModal, b);
+                  }
                 }}
               >
-                <div>
-                  <p
-                    style={{
-                      fontWeight: 500,
-                      color: "var(--text-main)",
-                      margin: 0,
-                    }}
-                  >
-                    {customerName(b.custId)}
-                  </p>
-                  <p
-                    style={{
-                      fontSize: 14,
-                      color: "var(--text-muted)",
-                      margin: "4px 0 0 0",
-                    }}
-                  >
-                    {monthLabel(b.month)}
-                  </p>
+                <div className="row-main">
+                  <div className="row-title">{customerName(b.custId)}</div>
+                  <div className="row-sub tnum">
+                    {monthLabel(b.month)} · {fmt(b.paid)} paid
+                  </div>
                 </div>
-
-                {/* FIX M10: Badge only accepts 'label' for status colors. Render amount as text. */}
-                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                  <span style={{ fontWeight: 600, color: "var(--text-main)" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    flexShrink: 0,
+                  }}
+                >
+                  <span className="amount" style={{ fontWeight: 700 }}>
                     {fmt(b.amount)}
                   </span>
                   <Badge label={b.status} />

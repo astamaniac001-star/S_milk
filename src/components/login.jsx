@@ -24,91 +24,82 @@ export default function Login({ onLogin, error, loading }) {
   const displayError = error || localError;
 
   return (
-    <div className="login-container">
-      <div className="login-card">
-        <form
-          onSubmit={handleSubmit}
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: 16,
-            textAlign: "left",
-          }}
-        >
-          <div
-            style={{
-              width: 56,
-              height: 56,
-              margin: "0 auto 20px",
-              borderRadius: 16,
-              background: "var(--brand-50, #eef2ff)",
-              color: "var(--brand-600, #4f46e5)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-            aria-hidden="true"
-          >
-            <Milk size={28} strokeWidth={2} />
-          </div>
-          <h2>Milk Delivery Admin</h2>
-          <p>Enter your 6-digit PIN to continue.</p>
-
-          <div className="field">
-            <label className="field-label" htmlFor="pin-input">
-              PIN
-            </label>
-            <input
-              id="pin-input"
-              type="password" /* FIX M15: Hide digits from shoulder surfers */
-              inputMode="numeric"
-              autoComplete="current-password" /* FIX M15: Correct semantic autocomplete */
-              maxLength={6}
-              value={pin}
-              onChange={handleChange}
-              className="input"
-              style={{
-                textAlign: "center",
-                fontSize: 24,
-                letterSpacing: 8,
-                fontWeight: 600,
-              }}
-              aria-invalid={!!displayError}
-              aria-describedby={displayError ? "pin-error" : undefined}
-              autoFocus
-            />
+    <main className="login-container">
+      <div className="login-shell">
+        <section className="login-intro">
+          <div className="login-wordmark">
+            <span className="login-mark" aria-hidden="true">
+              <Milk size={17} strokeWidth={2} />
+            </span>
+            S Milk
           </div>
 
-          <Btn
-            type="submit"
-            full
-            disabled={loading || pin.length < 6}
-            style={{ marginTop: 8 }}
-          >
-            {loading ? "Verifying…" : "Login"}
-          </Btn>
+          <div>
+            <h1>Milk Delivery Admin</h1>
+            <p className="login-lede">
+              Delivery log, subscriptions, imports and monthly bills for a
+              single milk route.
+            </p>
+          </div>
 
-          {displayError && (
-            <div
-              id="pin-error"
-              role="alert" /* FIX M7: Announce errors to screen readers */
-              style={{
-                background:
-                  "var(--danger-bg, #fef2f2)" /* FIX M8: Dark mode support */,
-                color: "var(--danger-text, #dc2626)",
-                padding: 12,
-                borderRadius: 8,
-                fontSize: 13,
-                fontWeight: 500,
-                textAlign: "center",
-                border: "1px solid var(--danger-text, #fecaca)",
-              }}
-            >
-              {displayError}
+          <div className="login-meta" aria-hidden="true">
+            <span>Operator access</span>
+            <span>One device</span>
+          </div>
+        </section>
+
+        <section className="login-panel" aria-labelledby="login-title">
+          <h2 id="login-title">Sign in</h2>
+          <p className="login-panel-sub">Enter your 6-digit PIN to continue.</p>
+
+          <form onSubmit={handleSubmit}>
+            <div className="field">
+              <label className="field-label" htmlFor="pin-input">
+                PIN
+              </label>
+              <input
+                id="pin-input"
+                type="password" /* FIX M15: Hide digits from shoulder surfers */
+                inputMode="numeric"
+                autoComplete="current-password" /* FIX M15: Correct semantic autocomplete */
+                maxLength={6}
+                value={pin}
+                onChange={handleChange}
+                className="input"
+                style={{
+                  textAlign: "center",
+                  fontSize: 22,
+                  letterSpacing: 8,
+                  fontWeight: 500,
+                  fontFamily: "var(--font-mono)",
+                }}
+                aria-invalid={!!displayError}
+                aria-describedby={displayError ? "pin-error" : undefined}
+                autoFocus
+              />
             </div>
-          )}
-        </form>
+
+            <Btn
+              type="submit"
+              full
+              disabled={loading || pin.length < 6}
+              style={{ marginTop: 4 }}
+            >
+              {loading ? "Verifying…" : "Login"}
+            </Btn>
+
+            {displayError && (
+              <div
+                id="pin-error"
+                role="alert" /* FIX M7: Announce errors to screen readers */
+                className="login-error"
+              >
+                {displayError}
+              </div>
+            )}
+          </form>
+        </section>
       </div>
-    </div>
+    </main>
   );
 }

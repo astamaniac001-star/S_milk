@@ -1,4 +1,4 @@
-import { Field, Modal, Btn, IS } from "../ui.jsx";
+import { Field, Modal, Btn } from "../ui.jsx";
 import { useBusy } from "../../hooks/useBusy.js";
 
 function getCustomerModalTitle(isEdit) {
@@ -18,10 +18,23 @@ export function CustomerModal({
 }) {
   const [busy, save] = useBusy(onSave);
   return (
-    <Modal title={getCustomerModalTitle(isEdit)} onClose={onClose}>
+    <Modal
+      title={getCustomerModalTitle(isEdit)}
+      onClose={onClose}
+      footer={
+        <>
+          <Btn onClick={save} disabled={busy}>
+            {busy ? "Saving..." : getCustomerModalButtonText(isEdit)}
+          </Btn>
+          <Btn variant="secondary" onClick={onClose} disabled={busy}>
+            Cancel
+          </Btn>
+        </>
+      }
+    >
       <Field label="Full Name *">
         <input
-          style={IS()}
+          className="input"
           value={form?.name ?? data?.name ?? ""}
           onChange={onChange("name")}
           placeholder="Ramesh Sharma"
@@ -29,7 +42,7 @@ export function CustomerModal({
       </Field>
       <Field label="Delivery Address *">
         <input
-          style={IS()}
+          className="input"
           value={form?.address ?? data?.address ?? ""}
           onChange={onChange("address")}
           placeholder="14, Shivaji Nagar"
@@ -37,23 +50,17 @@ export function CustomerModal({
       </Field>
       <Field label="Phone (10 digits)">
         <input
-          style={IS()}
+          className="input"
+          type="tel"
+          inputMode="numeric"
           value={form?.phone ?? data?.phone ?? ""}
           onChange={onChange("phone")}
           placeholder="9876543210"
         />
       </Field>
-      <div style={{ fontSize: 12, color: "#6b7280", marginTop: 2 }}>
+      <div className="modal-note">
         Milk type, quantity, and delivery days are managed as subscriptions
         (Subscriptions tab).
-      </div>
-      <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-        <Btn onClick={save} disabled={busy}>
-          {busy ? "Saving..." : getCustomerModalButtonText(isEdit)}
-        </Btn>
-        <Btn variant="secondary" onClick={onClose} disabled={busy}>
-          Cancel
-        </Btn>
       </div>
     </Modal>
   );

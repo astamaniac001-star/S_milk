@@ -1,6 +1,7 @@
-import { Field, Modal, Btn, IS } from "../ui.jsx";
+import { Field, Modal, Btn } from "../ui.jsx";
 import { useBusy } from "../../hooks/useBusy.js";
 import { MILK_TYPES } from "../../lib/constants.js";
+import { X } from "lucide-react";
 
 // fallow-ignore-next-line complexity
 export function BrandModal({
@@ -45,10 +46,23 @@ export function BrandModal({
     );
 
   return (
-    <Modal title={data?.id ? "Edit Brand" : "Add Milk Brand"} onClose={onClose}>
+    <Modal
+      title={data?.id ? "Edit Brand" : "Add Milk Brand"}
+      onClose={onClose}
+      footer={
+        <>
+          <Btn onClick={save} disabled={busy}>
+            {busy ? "Saving..." : "Save"}
+          </Btn>
+          <Btn variant="secondary" onClick={onClose} disabled={busy}>
+            Cancel
+          </Btn>
+        </>
+      }
+    >
       <Field label="Brand Name *">
         <input
-          style={IS()}
+          className="input"
           value={form?.name ?? data?.name ?? ""}
           onChange={onChange("name")}
           placeholder="Amul"
@@ -56,7 +70,7 @@ export function BrandModal({
       </Field>
       <Field label="Supplier Name">
         <input
-          style={IS()}
+          className="input"
           value={form?.supplier ?? data?.supplier ?? ""}
           onChange={onChange("supplier")}
           placeholder="Amul Dairy Ltd."
@@ -64,7 +78,9 @@ export function BrandModal({
       </Field>
       <Field label="Supplier Phone">
         <input
-          style={IS()}
+          className="input"
+          type="tel"
+          inputMode="numeric"
           value={form?.phone ?? data?.phone ?? ""}
           onChange={onChange("phone")}
           placeholder="9000000001"
@@ -75,12 +91,9 @@ export function BrandModal({
           {rows.map((row, i) => {
             const taken = usedByOtherRows(i);
             return (
-              <div
-                key={i}
-                style={{ display: "flex", gap: 8, alignItems: "center" }}
-              >
+              <div className="rate-row" key={i}>
                 <select
-                  style={{ ...IS(), flex: 1 }}
+                  className="input"
                   aria-label={`Type ${i + 1}`}
                   value={row.milkType ?? ""}
                   onChange={(e) => updateRow(i, { milkType: e.target.value })}
@@ -96,7 +109,7 @@ export function BrandModal({
                   type="number"
                   step="0.5"
                   min="0"
-                  style={{ ...IS(), width: 110 }}
+                  className="input"
                   aria-label={`Rate ${i + 1}`}
                   value={row.rate ?? ""}
                   onChange={(e) => updateRow(i, { rate: e.target.value })}
@@ -109,7 +122,7 @@ export function BrandModal({
                   disabled={busy || rows.length === 1}
                   style={{ padding: "6px 10px" }}
                 >
-                  ✕
+                  <X size={14} aria-hidden="true" />
                 </Btn>
               </div>
             );
@@ -119,14 +132,6 @@ export function BrandModal({
           </Btn>
         </div>
       </Field>
-      <div style={{ display: "flex", gap: 8 }}>
-        <Btn onClick={save} disabled={busy}>
-          {busy ? "Saving..." : "Save"}
-        </Btn>
-        <Btn variant="secondary" onClick={onClose} disabled={busy}>
-          Cancel
-        </Btn>
-      </div>
     </Modal>
   );
 }

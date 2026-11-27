@@ -1,5 +1,6 @@
 // ── More.jsx ──────────────────────────────────────────────────────────────────
-// "More" tab: Security / Adjustments / Pause Periods / Diagnostics / System Health.
+// "More" tab — the operator's back office: Security / Adjustments / Credit
+// Notes / Pause Periods / Diagnostics / System Health.
 
 import { useState } from "react";
 import { fmt } from "../lib/utils.js";
@@ -11,7 +12,16 @@ import {
   Badge,
   CardHeader,
 } from "../components/ui.jsx";
-import { ShieldCheck } from "lucide-react";
+import {
+  Activity,
+  CheckCircle2,
+  HeartPulse,
+  PauseCircle,
+  ShieldCheck,
+  SlidersHorizontal,
+  Ticket,
+  XCircle,
+} from "lucide-react";
 
 // FIX (AI-m audit M-4, 2026-08-01): HEALTH was a static reference list that
 // never updated when the "Run Health Check" button was clicked — the toast
@@ -45,10 +55,8 @@ function AdjustmentAmount({ amount }) {
   // adjustment amount is a deduction — it REDUCES the bill the customer
   // owes (a credit in the customer's favor), hence the green "+".
   // A negative amount adds to the bill (extra charge) and renders red.
-  const color =
-    amount < 0 ? "var(--danger-text, #991b1b)" : "var(--success-text, #166534)";
   return (
-    <div style={{ fontSize: 13, color, fontWeight: 600 }}>
+    <div className={`ledger-amount tnum ${amount < 0 ? "neg" : "pos"}`}>
       {amount > 0 ? "+" : ""}
       {fmt(amount)}
     </div>
@@ -57,14 +65,7 @@ function AdjustmentAmount({ amount }) {
 
 function AdjustmentActions({ applied, onApply }) {
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "flex-end",
-        gap: 4,
-      }}
-    >
+    <div className="ledger-side">
       <Badge label={applied ? "Applied" : "Pending"} />
       {!applied && (
         <Btn small variant="success" onClick={onApply}>
@@ -82,63 +83,43 @@ function AdjustmentActions({ applied, onApply }) {
 // stored billId, or the viewed month's bill for that customer).
 function CreditNoteItem({ cn, onApplyCn, resolveCustomer, targetBillId }) {
   return (
-    <div
-      key={cn.id}
-      style={{
-        padding: "8px 0",
-        borderBottom: "1px solid var(--border-color, #f3f4f6)",
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "flex-start",
-        }}
-      >
-        <div>
-          <div
-            style={{
-              fontSize: 13,
-              fontWeight: 500,
-              color: "var(--text-main, #111)",
-            }}
-          >
-            {resolveCustomer.customerNameById(cn.customerId)}
-          </div>
-          <div style={{ fontSize: 12, color: "var(--text-muted, #6b7280)" }}>
-            {cn.date || "—"} · {cn.reason}
-          </div>
-          <div style={{ fontSize: 13, color: "#166534", fontWeight: 600 }}>
-            {fmt(cn.amount)}
-          </div>
-          {!cn.applied && !targetBillId && (
-            <div style={{ fontSize: 11, color: "#92400e", marginTop: 2 }}>
-              No {cn.date?.substring(0, 7) || "current"}-month bill found for
-              this customer yet — generate bills first.
-            </div>
-          )}
+    <div className="ledger-row">
+      <div className="ledger-main">
+        <div className="ledger-title">
+          {resolveCustomer.customerNameById(cn.customerId)}
         </div>
-        {/* Hide Apply entirely when no target bill can be resolved — a
-            silent no-op button (the old adjustment behavior AI-L flagged)
-            teaches operators that Apply is broken. */}
-        {cn.applied || targetBillId ? (
-          <AdjustmentActions
-            applied={!!cn.applied}
-            onApply={() => {
-              if (
-                window.confirm(
-                  `Apply this credit note to the ${cn.date?.substring(0, 7) || "current"}-month bill? This action is irreversible.`,
-                )
-              ) {
-                onApplyCn(cn.id, targetBillId, cn.version);
-              }
-            }}
-          />
-        ) : (
-          <Badge label="Pending" />
+        <div className="ledger-sub">
+          {cn.date || "—"} · {cn.reason}
+        </div>
+        <div className="ledger-amount tnum pos">{fmt(cn.amount)}</div>
+        {!cn.applied && !targetBillId && (
+          <div className="ledger-hint">
+            No {cn.date?.substring(0, 7) || "current"}-month bill found for
+            this customer yet — generate bills first.
+          </div>
         )}
       </div>
+      {/* Hide Apply entirely when no target bill can be resolved — a
+          silent no-op button (the old adjustment behavior AI-L flagged)
+          teaches operators that Apply is broken. */}
+      {cn.applied || targetBillId ? (
+        <AdjustmentActions
+          applied={!!cn.applied}
+          onApply={() => {
+            if (
+              window.confirm(
+                `Apply this credit note to the ${cn.date?.substring(0, 7) || "current"}-month bill? This action is irreversible.`,
+              )
+            ) {
+              onApplyCn(cn.id, targetBillId, cn.version);
+            }
+          }}
+        />
+      ) : (
+        <div className="ledger-side">
+          <Badge label="Pending" />
+        </div>
+      )}
     </div>
   );
 }
@@ -165,6 +146,7 @@ function CreditNotesCard({
     <Card>
       <CardHeader
         title="Credit Notes"
+        icon={Ticket}
         action={
           <Btn small onClick={() => onOpenModal("addCreditNote")}>
             + Add
@@ -172,7 +154,7 @@ function CreditNotesCard({
         }
       />
       {creditNotes.length === 0 ? (
-        <Empty msg="No credit notes" />
+        <Empty msg="No credit notes" icon={Ticket} />
       ) : (
         creditNotes.map((cn) => (
           <CreditNoteItem
@@ -217,50 +199,29 @@ function buildAdjusterResolver(customers, bills) {
 
 function AdjustmentItem({ a, onApplyAdj, resolveCustomer }) {
   return (
-    <div
-      // FIX H1: Use adjustmentId mapped from API, fallback to id
-      key={a.adjustmentId || a.id}
-      style={{
-        padding: "8px 0",
-        borderBottom: "1px solid var(--border-color, #f3f4f6)",
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "flex-start",
-        }}
-      >
-        <div>
-          <div
-            style={{
-              fontSize: 13,
-              fontWeight: 500,
-              color: "var(--text-main, #111)",
-            }}
-          >
-            {resolveCustomer.customerNameForAdjustment(a)}
-          </div>
-          <div style={{ fontSize: 12, color: "var(--text-muted, #6b7280)" }}>
-            {a.date} · {a.reason}
-          </div>
-          <AdjustmentAmount amount={a.amount} />
+    <div className="ledger-row" key={a.adjustmentId || a.id}>
+      <div className="ledger-main">
+        <div className="ledger-title">
+          {resolveCustomer.customerNameForAdjustment(a)}
         </div>
-        <AdjustmentActions
-          applied={!!a.applied}
-          onApply={() => {
-            if (!a.billId) return;
-            if (
-              window.confirm(
-                `Apply adjustment to this bill? This action is irreversible.`,
-              )
-            ) {
-              onApplyAdj(a.adjustmentId || a.id, a.billId, a.version);
-            }
-          }}
-        />
+        <div className="ledger-sub">
+          {a.date} · {a.reason}
+        </div>
+        <AdjustmentAmount amount={a.amount} />
       </div>
+      <AdjustmentActions
+        applied={!!a.applied}
+        onApply={() => {
+          if (!a.billId) return;
+          if (
+            window.confirm(
+              `Apply adjustment to this bill? This action is irreversible.`,
+            )
+          ) {
+            onApplyAdj(a.adjustmentId || a.id, a.billId, a.version);
+          }
+        }}
+      />
     </div>
   );
 }
@@ -275,6 +236,7 @@ function AdjustmentsCard({
     <Card>
       <CardHeader
         title="Adjustments"
+        icon={SlidersHorizontal}
         action={
           <Btn small onClick={() => onOpenModal("addAdj")}>
             + Add
@@ -282,7 +244,7 @@ function AdjustmentsCard({
         }
       />
       {adjustments.length === 0 ? (
-        <Empty msg="No adjustments" />
+        <Empty msg="No adjustments" icon={SlidersHorizontal} />
       ) : (
         adjustments.map((a) => (
           <AdjustmentItem
@@ -302,6 +264,7 @@ function PausePeriodsCard({ pauses, onOpenModal, resolveCustomer }) {
     <Card>
       <CardHeader
         title="Pause Periods"
+        icon={PauseCircle}
         action={
           <Btn small onClick={() => onOpenModal("addPause")}>
             + Add
@@ -309,39 +272,19 @@ function PausePeriodsCard({ pauses, onOpenModal, resolveCustomer }) {
         }
       />
       {pauses.length === 0 ? (
-        <Empty msg="No pause periods" />
+        <Empty msg="No pause periods" icon={PauseCircle} />
       ) : (
         pauses.map((p) => (
-          <div
-            key={p.id}
-            style={{
-              padding: "8px 0",
-              borderBottom: "1px solid var(--border-color, #f3f4f6)",
-            }}
-          >
-            <div
-              style={{
-                fontSize: 13,
-                fontWeight: 500,
-                color: "var(--text-main, #111)",
-              }}
-            >
-              {resolveCustomer.customerNameById(p.custId)}
-            </div>
-            <div style={{ fontSize: 12, color: "var(--text-muted, #6b7280)" }}>
-              {p.start} → {p.end || "open"}
-            </div>
-            {p.reason && (
-              <div
-                style={{
-                  fontSize: 12,
-                  color: "var(--text-muted, #9ca3af)",
-                  opacity: 0.8,
-                }}
-              >
-                {p.reason}
+          <div className="ledger-row" key={p.id}>
+            <div className="ledger-main">
+              <div className="ledger-title">
+                {resolveCustomer.customerNameById(p.custId)}
               </div>
-            )}
+              <div className="ledger-sub">
+                {p.start} → {p.end || "open"}
+              </div>
+              {p.reason && <div className="ledger-sub dim">{p.reason}</div>}
+            </div>
           </div>
         ))
       )}
@@ -349,41 +292,27 @@ function PausePeriodsCard({ pauses, onOpenModal, resolveCustomer }) {
   );
 }
 
-// NEW: Security Card for PIN Rotation
+// Security Card for PIN Rotation
 function SecurityCard({ onOpenModal }) {
   return (
     <Card>
-      <CardHeader title="Security" />
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 12,
-          marginBottom: 12,
-        }}
-      >
-        <ShieldCheck
-          size={24}
-          style={{ color: "var(--success-text, #166534)" }}
-        />
+      <CardHeader title="Security" icon={ShieldCheck} />
+      <div className="security-body">
+        <span className="security-icon" aria-hidden="true">
+          <ShieldCheck size={20} />
+        </span>
         <div>
-          <div
-            style={{
-              fontSize: 14,
-              fontWeight: 600,
-              color: "var(--text-main, #111)",
-            }}
-          >
-            Operator PIN
-          </div>
-          <div style={{ fontSize: 12, color: "var(--text-muted, #6b7280)" }}>
+          <div className="ledger-title">Operator PIN</div>
+          <div className="ledger-sub">
             Secured via Supabase Auth. Rotate regularly for safety.
           </div>
         </div>
       </div>
-      <Btn full variant="secondary" onClick={() => onOpenModal("changePin")}>
-        Change PIN
-      </Btn>
+      <div className="card-actions">
+        <Btn full variant="secondary" onClick={() => onOpenModal("changePin")}>
+          Change PIN
+        </Btn>
+      </div>
     </Card>
   );
 }
@@ -393,6 +322,7 @@ function DiagnosticsCard({ diagRan, diagResults, onRunDiag }) {
     <Card>
       <CardHeader
         title="Diagnostics"
+        icon={Activity}
         action={
           <Btn small onClick={onRunDiag}>
             Run
@@ -400,57 +330,31 @@ function DiagnosticsCard({ diagRan, diagResults, onRunDiag }) {
         }
       />
       {!diagRan || !diagResults ? (
-        <div
-          style={{
-            fontSize: 12,
-            color: "var(--text-muted, #9ca3af)",
-            textAlign: "center",
-            padding: "12px 0",
-          }}
-        >
-          Tap Run to check connectivity
-        </div>
+        <div className="diag-placeholder">Tap Run to check connectivity</div>
       ) : (
         <>
           {Object.entries(diagResults.probes || {}).map(([label, p]) => (
-            <div
-              key={label}
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                padding: "5px 0",
-                borderBottom: "1px solid var(--border-color, #f3f4f6)",
-                fontSize: 12,
-              }}
-            >
-              <span style={{ color: "var(--text-main, #111)" }}>
-                {p?.ok ? "✅" : "❌"} {label}
+            <div className="diag-row" key={label}>
+              <span className="diag-label">
+                {p?.ok ? (
+                  <CheckCircle2
+                    className="diag-ok"
+                    size={12}
+                    aria-hidden="true"
+                  />
+                ) : (
+                  <XCircle className="diag-bad" size={12} aria-hidden="true" />
+                )}
+                {label}
               </span>
-              <span
-                style={{
-                  color: p?.ok
-                    ? "var(--success-text, #166534)"
-                    : "var(--danger-text, #991b1b)",
-                  fontWeight: 500,
-                }}
-              >
+              <span className={`diag-value ${p?.ok ? "ok" : "bad"}`}>
                 {p?.value}
                 {p?.detail ? ` — ${p.detail}` : ""}
               </span>
             </div>
           ))}
           {!diagResults.ok && diagResults.error && (
-            <div
-              style={{
-                fontSize: 11,
-                color: "var(--danger-text, #991b1b)",
-                marginTop: 10,
-                fontStyle: "italic",
-              }}
-            >
-              {diagResults.error}
-            </div>
+            <div className="diag-error">{diagResults.error}</div>
           )}
         </>
       )}
@@ -487,43 +391,24 @@ function SystemHealthCard({ onHealthCheck }) {
 
   return (
     <Card>
-      <CardHeader title="System Health" />
+      <CardHeader title="System Health" icon={HeartPulse} />
       {rows.map((x) => (
-        <div
-          key={x.label}
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            padding: "5px 0",
-            borderBottom: "1px solid var(--border-color, #f3f4f6)",
-            fontSize: 12,
-          }}
-        >
-          <span style={{ color: "var(--text-muted, #6b7280)" }}>{x.label}</span>
+        <div className="diag-row" key={x.label}>
+          <span className="diag-label muted">{x.label}</span>
           <span
-            style={{
-              color:
-                x.ok === null
-                  ? "var(--text-muted, #6b7280)"
-                  : x.ok
-                    ? "var(--success-text, #166534)"
-                    : "var(--danger-text, #991b1b)",
-              fontWeight: 500,
-            }}
+            className={`diag-value ${
+              x.ok === null ? "muted" : x.ok ? "ok" : "bad"
+            }`}
           >
             {x.value}
           </span>
         </div>
       ))}
-      <Btn
-        full
-        variant="secondary"
-        style={{ marginTop: 10 }}
-        onClick={run}
-        disabled={running}
-      >
-        {running ? "Checking..." : "Run Health Check"}
-      </Btn>
+      <div className="card-actions">
+        <Btn full variant="secondary" onClick={run} disabled={running}>
+          {running ? "Checking..." : "Run Health Check"}
+        </Btn>
+      </div>
     </Card>
   );
 }
@@ -546,36 +431,42 @@ export default function More({
   const resolveCustomer = buildAdjusterResolver(customers, bills);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+    <div className="page-stack">
       <Section title="Admin Tools" />
 
-      <SecurityCard onOpenModal={onOpenModal} />
+      {/* Ops row: security + the two live-probe cards */}
+      <div className="more-grid more-grid-3">
+        <SecurityCard onOpenModal={onOpenModal} />
+        <DiagnosticsCard
+          diagRan={diagRan}
+          diagResults={diagResults}
+          onRunDiag={onRunDiag}
+        />
+        <SystemHealthCard onHealthCheck={onHealthCheck} />
+      </div>
 
-      <AdjustmentsCard
-        adjustments={adjustments}
-        onOpenModal={onOpenModal}
-        onApplyAdj={onApplyAdj}
-        resolveCustomer={resolveCustomer}
-      />
-      <CreditNotesCard
-        creditNotes={creditNotes}
-        bills={bills}
-        billMonth={billMonth}
-        onOpenModal={onOpenModal}
-        onApplyCn={onApplyCn}
-        resolveCustomer={resolveCustomer}
-      />
-      <PausePeriodsCard
-        pauses={pauses}
-        onOpenModal={onOpenModal}
-        resolveCustomer={resolveCustomer}
-      />
-      <DiagnosticsCard
-        diagRan={diagRan}
-        diagResults={diagResults}
-        onRunDiag={onRunDiag}
-      />
-      <SystemHealthCard onHealthCheck={onHealthCheck} />
+      {/* Ledger row: the three correction registries */}
+      <div className="more-grid more-grid-2">
+        <AdjustmentsCard
+          adjustments={adjustments}
+          onOpenModal={onOpenModal}
+          onApplyAdj={onApplyAdj}
+          resolveCustomer={resolveCustomer}
+        />
+        <CreditNotesCard
+          creditNotes={creditNotes}
+          bills={bills}
+          billMonth={billMonth}
+          onOpenModal={onOpenModal}
+          onApplyCn={onApplyCn}
+          resolveCustomer={resolveCustomer}
+        />
+        <PausePeriodsCard
+          pauses={pauses}
+          onOpenModal={onOpenModal}
+          resolveCustomer={resolveCustomer}
+        />
+      </div>
     </div>
   );
 }

@@ -26,6 +26,8 @@ export function useAppDerived(state) {
     custFilter,
     impFilter,
     billFilter,
+    billSearch = "",
+    billSort = "",
     logDate,
     // FIX (audit 2026-07-25, perf + rule §2 DRY): take `today` from
     // `useAppState` instead of recomputing getToday() inline. This:
@@ -78,8 +80,33 @@ export function useAppDerived(state) {
 
     const filteredC = filterCustomers(customers, custSearch, custFilter);
 
+    // Unfiltered customer count + per-status counts for the Customers chip
+    // row. `totalCustomers` is the TRUE total — the page header previously
+    // rendered the filtered length as the total, which changed as the
+    // operator typed in the search box.
+    const custStatusCounts = {
+      All: customers.length,
+      Active: 0,
+      Paused: 0,
+      Inactive: 0,
+    };
+    for (const c of customers) {
+      if (custStatusCounts[c.status] !== undefined) {
+        custStatusCounts[c.status] += 1;
+      }
+    }
+
     const filteredImports = filterImports(imports, impFilter);
-    const filteredB = filterBills(bills, billFilter);
+    // Bills: search + sort live in the pure filter (rule §2 — the page never
+    // re-filters). The customer map powers name search/sort.
+    const customerNames = new Map(customers.map((c) => [c.id, c.name]));
+    const filteredB = filterBills(
+      bills,
+      billFilter,
+      billSearch,
+      customerNames,
+      billSort,
+    );
 
     const activeBrandsCount = brands.filter(
       (b) => b.status === "Active",
@@ -98,6 +125,8 @@ export function useAppDerived(state) {
       todayLogs,
       selectedDateLogs,
       confirmedStock,
+      totalCustomers: customers.length,
+      custStatusCounts,
     };
   }, [
     customers,
@@ -111,6 +140,8 @@ export function useAppDerived(state) {
     custFilter,
     impFilter,
     billFilter,
+    billSearch,
+    billSort,
     logDate,
     today,
   ]);

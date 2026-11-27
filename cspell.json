@@ -14,6 +14,7 @@
     "cust",
     "Cust",
     "custs",
+    "focusables",
     "bils",
     "adjs",
     "paus",
@@ -74,6 +75,8 @@
     "fallowignore",
     "Postg",
     "nullsafe",
-    "plpgsql"
+    "plpgsql",
+    "wordmark",
+    "lede"
   ]
 }

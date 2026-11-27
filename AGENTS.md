@@ -47,7 +47,8 @@ It's **not** a customer-facing app: single-operator, installable PWA, offline-to
 src/
 â”œâ”€â”€ main.jsx                 # Mounts <App/> into #app-root (React.StrictMode)
 â”œâ”€â”€ App.jsx                  # Auth gate â†’ ErrorBoundary â†’ Shell + Page + Modals + Toast
-â”œâ”€â”€ index.css                # All form/shell classes (.field, .input, .btn-*, .card, .modal-overlay, .toast, .bottom-nav)
+â”œâ”€â”€ index.css                # "Ledger" design system: light/dark tokens +
+                             # all form/shell classes (.field, .input, .btn-*, .card, .modal-overlay, .toast, .bottom-nav)
 â”œâ”€â”€ lib/
 â”‚   â”œâ”€â”€ supabaseClient.js    # Single lazy `supabase` instance + configError (no module-eval throw)
 â”‚   â”œâ”€â”€ api.js               # ðŸ”‘ callApi(action, payload) â€” barrel + DISPATCH table (39 actions)
@@ -62,9 +63,12 @@ src/
 â”‚   â”‚   â”œâ”€â”€ imports.js       # milk_imports CRUD + confirm/delete RPCs + getBrands + saveBrand + getDailyInventory
 â”‚   â”‚   â””â”€â”€ admin.js         # getPauses, addPausePeriod, runDiagnostics, healthCheck, rotatePIN
 â”‚   â”œâ”€â”€ constants.js         # DAYS, MILK_TYPES (7), PAY_MODES (7), NEW_SUB_DEFAULTS, OPERATOR_EMAIL (status palette lives in ui.jsx)
+â”‚   â”œâ”€â”€ breakdowns.js        # Pure aggregations shared by Delivery + Imports:
+â”‚   â”‚                    # sortBrandTypeRows, buildQuantityBreakdown, buildStockBreakdown
 â”‚   â”œâ”€â”€ filters.js           # Pure filters (customers/imports/bills) + month
-â”‚   â”‚                    # options + import day/range modes + defaultImportRange
-â”‚   â”œâ”€â”€ utils.js             # toNum, fmt, getToday [Asia/Kolkata], getDaysAgoIST, cleanPhone, dayLabels, matchBrandByMilkType, brandLabel, generateKey
+â”‚   â”‚                    # options + import day/range modes + defaultImportRange +
+â”‚   â”‚                    # bill search + newest/due/name sort (filterBills)
+â”‚   â”œâ”€â”€ utils.js             # toNum, fmt, getToday [Asia/Kolkata], getDaysAgoIST, shiftDate, cleanPhone, dayLabels, matchBrandByMilkType, brandLabel, generateKey
 â”‚   â”œâ”€â”€ validation.js        # Barrel re-exporting validation/*
 â”‚   â”œâ”€â”€ validation/          # customer.js, import.js, subscription.js (validateSubscriptionForm)
 â”‚   â””â”€â”€ database.types.ts    # Generated current Supabase types; never edit manually
@@ -75,6 +79,8 @@ src/
 â”‚   â”œâ”€â”€ useAppHandlers.js    # Spreads 6 domain handler hooks
 â”‚   â”œâ”€â”€ useBusy.js           # Re-entrancy guard; filters React SyntheticEvents from args
 â”‚   â”œâ”€â”€ useEntityStore.js    # 9 entity arrays + safeFetch + refresh + useFilterState
+â”‚   â”‚                    # + hydration flags (coreLoading/dateLoading/loading)
+â”‚   â”‚                    # + billSearch/billSort filter state
 â”‚   â””â”€â”€ handlers/
 â”‚       â”œâ”€â”€ shared.js        # useHelpers(): showToast, executeApiAction, handleFormAction, saveWithValidation
 â”‚       â”œâ”€â”€ useCustomerHandlers.js
@@ -92,14 +98,19 @@ src/
 â”‚   â”œâ”€â”€ AppModals.jsx        # MODAL_RENDERERS: 15 modal types â†’ components
 â”‚   â”œâ”€â”€ ErrorBoundary.jsx    # Class component â€” Reload / Sign-out & reload
 â”‚   â”œâ”€â”€ login.jsx            # 6-digit operator PIN form
-â”‚   â”œâ”€â”€ ui.jsx               # Badge, Toast, Modal, Btn, Field, Card, CardHeader, Empty, Section, StatGrid, ActiveBrandOptions (valueKey="id"), ActiveCustomerOptions
+â”‚   â”œâ”€â”€ ui.jsx               # Badge, Toast, Modal (focus trap + footer slot), Btn, Field, Card,
+â”‚   â”‚                    # CardHeader (icon/subtitle), Empty, Section, StatGrid (accent),
+â”‚   â”‚                    # ActiveBrandOptions (valueKey="id"), ActiveCustomerOptions,
+â”‚   â”‚                    # + redesign primitives: IconButton, Toolbar, SearchInput, ChipRow,
+â”‚   â”‚                    #   Skeleton, ProgressRing, MiniBars
 â”‚   â”œâ”€â”€ forms.jsx            # Barrel re-exporting 11 modals from modals/
 â”‚   â””â”€â”€ modals/              # 12 modal components (incl. shared.jsx); ChangePinModal imported directly
 â”œâ”€â”€ assets/                  # Static images (vite.svg, react.svg, hero.png)
 â””â”€â”€ test/setup.js            # Vitest + Testing Library setup (referenced from vite.config.js)
 
 public/                      # sw.js (cache-first shell), register-sw.js, app.css,
-                             # apply-dark-mode.js (early dark-mode strip), manifest.json, icons
+                             # apply-dark-mode.js (early theme apply; stored preference wins,
+                             # else prefers-color-scheme), manifest.json, icons, robots.txt
 supabase/
 â”œâ”€â”€ schema.sql               # Generated present-state schema; never edit manually
 â””â”€â”€ migrations/              # Historical ledger (present since the 2026-11 baseline;
@@ -165,6 +176,43 @@ scripts, Google Fonts, and `*.supabase.co` (HTTP+WSS) only.
 `editSubscription`. 12 modal components; `CustomerModal` serves add+edit,
 `BrandModal` serves `addBrand`+`editBrand`, `SubscriptionModal` serves
 `addSubscription`+`editSubscription`, `ImportModal` serves add+edit of imports.
+
+**UI design system** ("Ledger", 2026-11 rebuild):
+
+- `index.css` owns everything: light + dark token blocks on `:root`/`.dark`,
+  then primitives, shell, modal, login, and per-page helpers. Tokens are CSS
+  variables (`--brand-500`, `--bg-surface`, `--text-primary`, â€¦); pages never
+  hardcode hex except inside `var(x, fallback)` pairs.
+- Theme: a stored `darkMode` preference always wins; with no stored value the
+  OS `prefers-color-scheme` decides. `public/apply-dark-mode.js` applies the
+  class before first paint; `AppShell` is the toggle source of truth and keeps
+  the `<meta name="theme-color">` in sync.
+- Visual language: warm-paper light theme / ink dark theme, one pine-green
+  accent, 1px hairline borders, 4–8px radii. IBM Plex Sans for UI, IBM Plex
+  Mono for labels/numbers/money/dates. No gradients, glass, glow, ambient
+  decoration, or emoji in product chrome — icons are lucide only.
+- Layout: `.bottom-nav` is the single nav element — CSS switches it between a
+  mobile bottom bar (2px active underline) and a desktop left rail (2px pine
+  rule on the active item); `.page-stack`/`.control-bar`/`.stat-grid`/`.list`/
+  `.row` are the page building blocks. Lists read as continuous divided
+  panels and stat tiles form one ruled KPI strip.
+- Pages render **state**, not derivation: search/sort/filter inputs live in
+  `useFilterState`, flow through the pure filters in `lib/filters.js`, and are
+  computed once in `useAppDerived` (bills: `billSearch` + `billSort` +
+  `filterBills(bills, status, search, customerNames, sort)`). Pages must not
+  re-filter, re-sort, or aggregate shared data locally — shared aggregations
+  live in `lib/breakdowns.js` (brand Ã— type stock/qty math used by Delivery
+  and Imports).
+- Hydration: `useEntityStore` exposes `coreLoading` / `dateLoading` /
+  `loading` so pages show skeletons during the first fetch instead of a false
+  "no data" empty state. Manual refreshes and date changes do NOT re-raise
+  the flags (no skeleton flash over live rows).
+- Modals render their actions in `Modal`'s `footer` slot; forms keep the
+  single curried-event contract (`onChange(key)(event)`) and every e2e
+  selector (placeholders, aria-labels, field order in `ImportModal`).
+- Accessibility bar: Lighthouse must stay at 1.0/1.0/1.0 on the login screen
+  (contrast tokens `--text-muted` etc. are calibrated for 4.5:1; login renders
+  a `<main>` landmark; `public/robots.txt` opts out of indexing).
 
 ## Architecture rules â€” please follow
 

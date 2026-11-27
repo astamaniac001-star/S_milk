@@ -2,7 +2,6 @@ import {
   Field,
   Modal,
   Btn,
-  IS,
   ActiveCustomerOptions,
   ActiveBrandOptions,
 } from "../ui.jsx";
@@ -42,18 +41,9 @@ export function SubscriptionModal({
       <button
         key={d.value}
         type="button"
+        className="day-toggle"
         onClick={() => toggleDay(d.value)}
         aria-pressed={isSelected}
-        style={{
-          padding: "6px 10px",
-          borderRadius: 6,
-          border: isSelected ? "1px solid #1e40af" : "1px solid #d1d5db",
-          background: isSelected ? "#dbeafe" : "#fff",
-          color: isSelected ? "#1e40af" : "#6b7280",
-          fontWeight: isSelected ? 600 : 400,
-          cursor: "pointer",
-          fontSize: 12,
-        }}
       >
         {d.label}
       </button>
@@ -64,10 +54,20 @@ export function SubscriptionModal({
     <Modal
       title={data?.id ? "Edit Subscription" : "Add Subscription"}
       onClose={onClose}
+      footer={
+        <>
+          <Btn onClick={save} disabled={busy}>
+            {busy ? "Saving..." : "Save"}
+          </Btn>
+          <Btn variant="secondary" onClick={onClose} disabled={busy}>
+            Cancel
+          </Btn>
+        </>
+      }
     >
       <Field label="Customer *">
         <select
-          style={IS()}
+          className="input"
           value={form?.customerId ?? data?.customerId ?? ""}
           onChange={onChange("customerId")}
           // A subscription's customer cannot be reassigned — the update path
@@ -81,7 +81,7 @@ export function SubscriptionModal({
       </Field>
       <Field label="Brand *">
         <select
-          style={IS()}
+          className="input"
           value={form?.brandId ?? data?.brandId ?? ""}
           onChange={onChange("brandId")}
         >
@@ -92,7 +92,7 @@ export function SubscriptionModal({
       </Field>
       <Field label="Milk Type *">
         <select
-          style={IS()}
+          className="input"
           value={form?.milkType ?? data?.milkType ?? ""}
           onChange={onChange("milkType")}
         >
@@ -108,25 +108,16 @@ export function SubscriptionModal({
         <input
           type="number"
           step="0.5"
-          style={IS()}
+          className="input"
           value={form?.qty ?? data?.qty ?? 1}
           onChange={onChange("qty")}
         />
       </Field>
       <Field label="Delivery Days *">
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          {DAYS_OF_WEEK.map(renderDayButton)}
-        </div>
+        <div className="day-row">{DAYS_OF_WEEK.map(renderDayButton)}</div>
       </Field>
       <Field label="Status">
-        <label
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            cursor: "pointer",
-          }}
-        >
+        <label className="check-row">
           <input
             type="checkbox"
             checked={
@@ -143,17 +134,9 @@ export function SubscriptionModal({
               onChange("isActive")({ target: { value: e.target.checked } })
             }
           />
-          <span style={{ fontSize: 13, color: "#111" }}>Active</span>
+          <span>Active</span>
         </label>
       </Field>
-      <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-        <Btn onClick={save} disabled={busy}>
-          {busy ? "Saving..." : "Save"}
-        </Btn>
-        <Btn variant="secondary" onClick={onClose} disabled={busy}>
-          Cancel
-        </Btn>
-      </div>
     </Modal>
   );
 }

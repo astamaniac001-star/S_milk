@@ -16,6 +16,7 @@
 // child renders are protected.
 
 import { Component } from "react";
+import { AlertTriangle } from "lucide-react";
 import { Btn } from "./ui.jsx";
 import { supabase } from "../lib/supabaseClient.js";
 
@@ -80,64 +81,22 @@ export class ErrorBoundary extends Component {
     if (!error) return this.props.children;
 
     return (
-      <div
-        style={{
-          minHeight: "100vh",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          padding: 20,
-          background: "#f8fafc",
-          fontFamily: "system-ui, sans-serif",
-        }}
-      >
-        <div
-          style={{
-            maxWidth: 420,
-            background: "#fff",
-            borderRadius: 16,
-            padding: 24,
-            boxShadow: "0 8px 32px rgba(0,0,0,0.18)",
-            textAlign: "center",
-          }}
-        >
-          <div style={{ fontSize: 40, marginBottom: 8 }}>⚠️</div>
-          <h2 style={{ margin: "0 0 8px", color: "#991b1b", fontSize: 18 }}>
-            Something went wrong
-          </h2>
-          <p
-            style={{
-              color: "#6b7280",
-              fontSize: 13,
-              margin: "0 0 16px",
-              lineHeight: 1.5,
-            }}
-          >
+      <div className="error-page">
+        <div className="error-card">
+          <div className="error-icon">
+            <AlertTriangle size={22} aria-hidden="true" />
+          </div>
+          <h2>Something went wrong</h2>
+          <p>
             The app hit an unexpected error. Your data is safe — reloading
             usually fixes this. If it keeps happening, sign out and back in.
           </p>
 
-          <div
-            style={{
-              background: "#fef2f2",
-              border: "0.5px solid #fecaca",
-              borderRadius: 8,
-              padding: "8px 12px",
-              fontSize: 11,
-              color: "#7f1d1d",
-              fontFamily: "monospace",
-              textAlign: "left",
-              whiteSpace: "pre-wrap",
-              wordBreak: "break-word",
-              maxHeight: 120,
-              overflowY: "auto",
-              marginBottom: 16,
-            }}
-          >
+          <div className="error-detail">
             {String(error?.message || error || "Unknown error")}
           </div>
 
-          <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
+          <div className="error-actions">
             <Btn onClick={this.handleReload}>Reload</Btn>
             <Btn variant="secondary" onClick={this.handleSignOut}>
               Sign out & reload

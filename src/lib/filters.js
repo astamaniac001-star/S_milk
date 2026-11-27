@@ -109,8 +109,57 @@ export function buildMonthOptions(imports) {
     });
 }
 
-export function filterBills(bills, billFilter) {
-  return billFilter === "All"
-    ? bills
-    : bills.filter((b) => b.status === billFilter);
+// Bill list: status filter + optional text search + optional sort. All extra
+// arguments are optional, so the original `filterBills(bills, status)` calls
+// keep their exact behavior and ordering.
+//   search       — case-insensitive match on customer name, month, or status
+//   customerNames — Map<customerId, name> (used by the search)
+//   sort         — "newest" | "due" | "name" ("" = leave input order)
+export function filterBills(
+  bills,
+  billFilter,
+  search = "",
+  customerNames = null,
+  sort = "",
+) {
+  const q = (search || "").trim().toLowerCase();
+  let rows =
+    !billFilter || billFilter === "All"
+      ? (bills || []).slice()
+      : (bills || []).filter((b) => b.status === billFilter);
+
+  if (q) {
+    rows = rows.filter((b) => {
+      const name = customerNames?.get?.(b.custId) || "";
+      return (
+        name.toLowerCase().includes(q) ||
+        String(b.month || "")
+          .toLowerCase()
+          .includes(q) ||
+        String(b.status || "")
+          .toLowerCase()
+          .includes(q)
+      );
+    });
+  }
+
+  const nameOf = (b) => customerNames?.get?.(b.custId) || "";
+  const dueOf = (b) => {
+    const n = Number(b.amount) - Number(b.paid);
+    return Number.isFinite(n) ? n : 0;
+  };
+
+  if (sort === "newest") {
+    rows.sort(
+      (a, b) =>
+        String(b.month || "").localeCompare(String(a.month || "")) ||
+        nameOf(a).localeCompare(nameOf(b)),
+    );
+  } else if (sort === "due") {
+    rows.sort((a, b) => dueOf(b) - dueOf(a) || nameOf(a).localeCompare(nameOf(b)));
+  } else if (sort === "name") {
+    rows.sort((a, b) => nameOf(a).localeCompare(nameOf(b)));
+  }
+
+  return rows;
 }
